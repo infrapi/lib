@@ -9,7 +9,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
-	resty.dev/v3 v3.0.0-beta.6.0.20260127085140-f531c9de7027
+	resty.dev/v3 v3.0.0-rc.3
 )
 
 require (
