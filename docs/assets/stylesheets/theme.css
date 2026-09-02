@@ -1,0 +1,357 @@
+/* Palette and type borrowed from canirun.ai: near-black surfaces, hairline
+   edges, green accent, Geist Sans/Mono with uppercase mono labels. */
+
+[data-md-color-scheme="slate"] {
+  --cr-surface: #000;
+  --cr-raised: #0a0a0a;
+  --cr-card: #111;
+  --cr-hover: #181818;
+  --cr-edge: #222;
+  --cr-edge-subtle: #1a1a1a;
+  --cr-primary: #ededef;
+  --cr-secondary: #8a8a97;
+  --cr-muted: #6e6e78;
+  --cr-accent: #22c55e;
+  --cr-accent-dim: #16a34a;
+  --cr-info: #3b82f6;
+  --cr-warning: #f59e0b;
+  --cr-danger: #ef4444;
+}
+
+[data-md-color-scheme="default"] {
+  --cr-surface: #fff;
+  --cr-raised: #f8f8fa;
+  --cr-card: #f0f0f3;
+  --cr-hover: #e6e6ea;
+  --cr-edge: #d1d1d6;
+  --cr-edge-subtle: #e0e0e4;
+  --cr-primary: #18181b;
+  --cr-secondary: #52525b;
+  --cr-muted: #a1a1aa;
+  --cr-accent: #16a34a;
+  --cr-accent-dim: #15803d;
+  --cr-info: #2563eb;
+  --cr-warning: #d97706;
+  --cr-danger: #dc2626;
+}
+
+[data-md-color-scheme] {
+  --md-default-bg-color: var(--cr-surface);
+  --md-default-bg-color--light: var(--cr-raised);
+  --md-default-bg-color--lighter: var(--cr-card);
+  --md-default-bg-color--lightest: var(--cr-hover);
+
+  --md-default-fg-color: var(--cr-primary);
+  --md-default-fg-color--light: var(--cr-secondary);
+  --md-default-fg-color--lighter: var(--cr-muted);
+  --md-default-fg-color--lightest: var(--cr-edge);
+
+  --md-primary-fg-color: var(--cr-surface);
+  --md-primary-fg-color--light: var(--cr-raised);
+  --md-primary-fg-color--dark: var(--cr-surface);
+  --md-primary-bg-color: var(--cr-primary);
+  --md-primary-bg-color--light: var(--cr-secondary);
+
+  --md-accent-fg-color: var(--cr-accent);
+  --md-accent-fg-color--transparent: color-mix(in srgb, var(--cr-accent) 10%, transparent);
+  --md-accent-bg-color: var(--cr-surface);
+
+  --md-typeset-color: var(--cr-primary);
+  --md-typeset-a-color: var(--cr-accent);
+  --md-typeset-mark-color: color-mix(in srgb, var(--cr-accent) 25%, transparent);
+  --md-typeset-kbd-color: var(--cr-card);
+  --md-typeset-kbd-accent-color: var(--cr-edge);
+  --md-typeset-kbd-border-color: var(--cr-edge);
+  --md-typeset-table-color: var(--cr-edge);
+
+  --md-code-bg-color: var(--cr-raised);
+  --md-code-fg-color: var(--cr-primary);
+  --md-code-hl-color: color-mix(in srgb, var(--cr-accent) 18%, transparent);
+  --md-code-hl-comment-color: var(--cr-muted);
+  --md-code-hl-string-color: var(--cr-accent);
+  --md-code-hl-keyword-color: var(--cr-info);
+  --md-code-hl-function-color: var(--cr-primary);
+  --md-code-hl-number-color: var(--cr-warning);
+  --md-code-hl-constant-color: var(--cr-warning);
+  --md-code-hl-name-color: var(--cr-primary);
+  --md-code-hl-operator-color: var(--cr-secondary);
+  --md-code-hl-punctuation-color: var(--cr-secondary);
+  --md-code-hl-variable-color: var(--cr-primary);
+  --md-code-hl-special-color: var(--cr-danger);
+
+  --md-footer-bg-color: var(--cr-surface);
+  --md-footer-bg-color--dark: var(--cr-surface);
+  --md-footer-fg-color: var(--cr-primary);
+  --md-footer-fg-color--light: var(--cr-secondary);
+  --md-footer-fg-color--lighter: var(--cr-muted);
+
+  --md-shadow-z1: none;
+  --md-shadow-z2: none;
+  --md-shadow-z3: none;
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--cr-accent) 30%, transparent);
+  color: var(--cr-primary);
+}
+
+/* Header and footer are flat surfaces separated by a hairline, not colored bars. */
+.md-header {
+  background-color: var(--cr-surface);
+  color: var(--cr-primary);
+  border-bottom: 1px solid var(--cr-edge);
+  box-shadow: none;
+}
+
+.md-header__title {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.md-footer {
+  border-top: 1px solid var(--cr-edge);
+}
+
+.md-footer-meta {
+  background-color: var(--cr-surface);
+  border-top: 1px solid var(--cr-edge-subtle);
+}
+
+.md-footer__link {
+  opacity: 1;
+  color: var(--cr-secondary);
+}
+
+.md-footer__link:hover {
+  color: var(--cr-accent);
+}
+
+.md-copyright {
+  color: var(--cr-muted);
+}
+
+/* Search */
+.md-search__form {
+  background-color: var(--cr-card);
+  border: 1px solid var(--cr-edge);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.md-search__form:hover,
+[data-md-toggle="search"]:checked ~ .md-header .md-search__form {
+  background-color: var(--cr-hover);
+}
+
+.md-search__input::placeholder {
+  color: var(--cr-muted);
+}
+
+.md-search__output {
+  border-radius: 6px;
+}
+
+.md-search-result__meta {
+  font-family: var(--md-code-font-family);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cr-muted);
+}
+
+/* Navigation: mono uppercase section labels, accent on the active page. */
+.md-nav {
+  font-size: 0.7rem;
+}
+
+.md-nav__title {
+  font-family: var(--md-code-font-family);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cr-muted);
+  box-shadow: none;
+}
+
+.md-nav__link {
+  color: var(--cr-secondary);
+}
+
+.md-nav__link:focus,
+.md-nav__link:hover {
+  color: var(--cr-primary);
+}
+
+.md-nav__link--active,
+.md-nav__link--active:hover {
+  color: var(--cr-accent);
+}
+
+.md-sidebar--secondary .md-nav__list .md-nav__list {
+  border-left: 1px solid var(--cr-edge-subtle);
+}
+
+/* Typography */
+.md-typeset {
+  font-size: 0.76rem;
+  line-height: 1.65;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4 {
+  color: var(--cr-primary);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+.md-typeset h1 {
+  font-size: 1.6rem;
+}
+
+.md-typeset h2 {
+  margin-top: 2.2em;
+  padding-top: 0.8em;
+  border-top: 1px solid var(--cr-edge-subtle);
+}
+
+.md-typeset a {
+  text-decoration-color: color-mix(in srgb, var(--cr-accent) 40%, transparent);
+  text-underline-offset: 3px;
+}
+
+.md-typeset a:hover {
+  color: var(--cr-accent-dim);
+  text-decoration: underline;
+}
+
+.md-typeset hr {
+  border-bottom-color: var(--cr-edge-subtle);
+}
+
+.md-typeset blockquote {
+  border-left: 2px solid var(--cr-edge);
+  color: var(--cr-secondary);
+}
+
+/* Code */
+.md-typeset code,
+.md-typeset pre > code {
+  border-radius: 4px;
+}
+
+.md-typeset code {
+  border: 1px solid var(--cr-edge-subtle);
+  padding: 0.1em 0.35em;
+}
+
+.md-typeset pre > code {
+  border: 1px solid var(--cr-edge);
+  background-color: var(--cr-raised);
+}
+
+.md-typeset .highlighttable .md-code__content code {
+  border-radius: 0;
+}
+
+.md-typeset .md-code__content {
+  border-radius: 4px;
+}
+
+/* Tables read like the model list: mono uppercase heads, hairline rules. */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--cr-edge);
+  border-radius: 6px;
+  font-size: 0.68rem;
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--cr-raised);
+  font-family: var(--md-code-font-family);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cr-muted);
+}
+
+.md-typeset table:not([class]) td {
+  border-top: 1px solid var(--cr-edge-subtle);
+}
+
+.md-typeset table:not([class]) tr:hover {
+  background-color: var(--cr-hover);
+}
+
+/* Admonitions carry the type colour on a hairline card, like the site's
+   tinted status chips. [class] only raises specificity over the theme rules. */
+.md-typeset .admonition,
+.md-typeset details {
+  --cr-callout: var(--cr-accent);
+}
+
+.md-typeset .note, .md-typeset .info, .md-typeset .abstract, .md-typeset .question {
+  --cr-callout: var(--cr-info);
+}
+
+.md-typeset .warning, .md-typeset .caution {
+  --cr-callout: var(--cr-warning);
+}
+
+.md-typeset .danger, .md-typeset .failure, .md-typeset .bug {
+  --cr-callout: var(--cr-danger);
+}
+
+.md-typeset .quote {
+  --cr-callout: var(--cr-muted);
+}
+
+.md-typeset .admonition[class],
+.md-typeset details[class] {
+  background-color: var(--cr-raised);
+  border: 1px solid var(--cr-edge);
+  border-left: 2px solid var(--cr-callout);
+  border-radius: 6px;
+  box-shadow: none;
+  font-size: 0.72rem;
+}
+
+.md-typeset .admonition-title[class],
+.md-typeset summary[class] {
+  background-color: color-mix(in srgb, var(--cr-callout) 10%, transparent);
+  border: none;
+  font-family: var(--md-code-font-family);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.md-typeset .admonition-title[class]::before,
+.md-typeset summary[class]::before {
+  background-color: var(--cr-callout);
+}
+
+.md-typeset .admonition[class]:focus-within,
+.md-typeset details[class]:focus-within {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cr-callout) 20%, transparent);
+}
+
+/* Tabbed blocks */
+.md-typeset .tabbed-labels > label {
+  font-family: var(--md-code-font-family);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Revision date line */
+.md-source-file {
+  font-family: var(--md-code-font-family);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cr-muted);
+}

@@ -26,3 +26,4 @@ test-local-*.go
 coverage.html
 legacy/
 cover*.out
+site/
