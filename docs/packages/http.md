@@ -122,7 +122,7 @@ client, err := infrahttp.NewClient(&infrahttp.ClientOptions{
 |-------|---------|
 | `Enabled` | Turns hedging on. |
 | `Delay` | Wait before each additional request. `0` sends them immediately. |
-| `UpTo` | Maximum concurrent hedged requests. `0` disables hedging. |
+| `UpTo` | Maximum concurrent hedged requests. Anything below `2` leaves hedging inert. |
 | `MaxPerSecond` | Rate cap across hedged requests, fractional allowed. `0` is unlimited. |
 | `NonReadOnlyAllowed` | Also hedge `POST`, `PUT`, `PATCH` and `DELETE`. |
 

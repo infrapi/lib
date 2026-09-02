@@ -1,3 +1,4 @@
+// Package server builds the gin engine shared by InfraPI services.
 package server
 
 import (

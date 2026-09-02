@@ -1,3 +1,5 @@
+// Package http provides the InfraPI API client: a resty client with TLS,
+// retry and hedging defaults, and helpers to call /api/{version}/{application}.
 package http
 
 import (
@@ -11,17 +13,24 @@ import (
 	"resty.dev/v3"
 )
 
+// Client is an InfraPI API client. It carries the options it was built with and
+// exposes the underlying resty client for anything the wrapper does not cover.
 type Client struct {
 	ClientOptions
 
 	RestyClient *resty.Client
 }
 
-// Default and opinionated client for infrapi, but the client expose resty and tls config, to allow customization.
+// ClientOptions configures a Client. Only Server and Application are mandatory;
+// the defaults are opinionated, and resty and the TLS config stay reachable for
+// anything they do not cover.
 type ClientOptions struct {
+	// Scheme of the API endpoint (default: https)
 	Protocol string
-	Server   string
-	Port     int
+	// Host of the API endpoint
+	Server string
+	// Port of the API endpoint (default: 443)
+	Port int
 
 	// InfraPI token, should be set
 	Token string
@@ -79,19 +88,31 @@ type HedgingOptions struct {
 	NonReadOnlyAllowed bool
 }
 
+// RequestOptions carries the per-request overrides of a single call.
 type RequestOptions struct {
-	Server      string
-	Data        []byte
-	Headers     map[string]string
+	// Host to call instead of the client one
+	Server string
+
+	// Raw request body
+	Data []byte
+
+	// Headers added to the request, replacing the JSON defaults when set
+	Headers map[string]string
+
+	// Status codes accepted as a success, both bounds included
+	// (default: DefaultMinHttpCode and DefaultMaxHttpCode)
 	MinHttpCode int
 	MaxHttpCode int
 }
 
+// Response is the outcome of a call. It is always returned, including with an
+// error, so the status code and the payload of a failed call stay readable.
 type Response struct {
 	Code int
 	Body []byte
 }
 
+// Defaults applied to every request when the options leave them unset.
 const (
 	DefaultGlobalTimeout = time.Duration(60) * time.Second
 	DefaultContent       = "application/json"
@@ -99,11 +120,15 @@ const (
 	DefaultMaxHttpCode   = 400
 )
 
+// NewClient returns a Client configured with opts. Server and Application are
+// mandatory.
 func NewClient(opts *ClientOptions) (*Client, error) {
 	c := new(Client)
 	return c.Update(opts)
 }
 
+// Update rebuilds the client in place from opts, replacing its TLS, header,
+// timeout, retry and hedging configuration.
 func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 	if opts == nil {
 		return nil, fmt.Errorf("NewClient(opts *ClientOptions) must set ClientOptions")
@@ -213,10 +238,13 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 
 	// Configure hedging
 	if opts.Hedging != nil && opts.Hedging.Enabled {
-		c.RestyClient.EnableHedging(opts.Hedging.Delay, opts.Hedging.UpTo, opts.Hedging.MaxPerSecond)
-		if opts.Hedging.NonReadOnlyAllowed {
-			c.RestyClient.SetHedgingAllowNonReadOnly(true)
-		}
+		c.RestyClient.SetHedging(
+			resty.NewHedging().
+				SetDelay(opts.Hedging.Delay).
+				SetMaxRequest(opts.Hedging.UpTo).
+				SetMaxRequestPerSecond(opts.Hedging.MaxPerSecond).
+				SetNonReadOnlyAllowed(opts.Hedging.NonReadOnlyAllowed),
+		)
 	}
 
 	// Set default values
@@ -244,30 +272,40 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 	return c, nil
 }
 
+// Get performs a GET request on path.
 func (c *Client) Get(path string, opts *RequestOptions) (*Response, error) {
 	return c.Do("GET", path, opts)
 }
 
+// Post performs a POST request on path.
 func (c *Client) Post(path string, opts *RequestOptions) (*Response, error) {
 	return c.Do("POST", path, opts)
 }
 
+// Put performs a PUT request on path.
 func (c *Client) Put(path string, opts *RequestOptions) (*Response, error) {
 	return c.Do("PUT", path, opts)
 }
 
+// Delete performs a DELETE request on path.
 func (c *Client) Delete(path string, opts *RequestOptions) (*Response, error) {
 	return c.Do("DELETE", path, opts)
 }
 
+// Patch performs a PATCH request on path.
 func (c *Client) Patch(path string, opts *RequestOptions) (*Response, error) {
 	return c.Do("PATCH", path, opts)
 }
 
+// Head performs a HEAD request on path.
 func (c *Client) Head(path string, opts *RequestOptions) (*Response, error) {
 	return c.Do("HEAD", path, opts)
 }
 
+// Do sends method to {Protocol}://{Server}:{Port}/api/{APIVersion}/{Application}/{path}
+// and returns the response. A status code outside the accepted range is
+// returned as an error carrying the HTTP status text, with the response filled
+// in. opts may be nil.
 func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response, error) {
 	r := &Response{
 		Code: http.StatusInternalServerError,

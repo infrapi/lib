@@ -4,8 +4,7 @@ import (
 	"os"
 )
 
-// Default envvars
-
+// DefaultConfig holds the read and validation rules of every INFRAPI_APP_* key.
 type DefaultConfig struct {
 	AppName                 *VariableOpts
 	AppLogLevel             *VariableOpts
@@ -25,7 +24,8 @@ type DefaultConfig struct {
 	AppCorsMaxAge           *VariableOpts
 }
 
-// All validator to use, customizable by enduser
+// NewDefaultConfig returns the rules applied to the INFRAPI_APP_* keys. A
+// service may tighten or relax any of them before reading its configuration.
 func NewDefaultConfig() *DefaultConfig {
 	hostname, _ := os.Hostname()
 
