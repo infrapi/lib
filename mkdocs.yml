@@ -4,6 +4,7 @@ site_url: https://infrapi.github.io/lib/
 repo_url: https://github.com/infrapi/lib
 repo_name: infrapi/lib
 edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 InfraPI - MIT License
 
 theme:
   name: material

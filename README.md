@@ -51,3 +51,7 @@ func main() {
 ```
 
 Continue with [Getting started](https://infrapi.github.io/lib/getting-started/).
+
+## License
+
+MIT, see [LICENSE](https://github.com/infrapi/lib/blob/main/LICENSE).
