@@ -83,8 +83,10 @@ Each package has a self-contained program under `examples/`:
 ```bash
 go run ./examples/config
 go run ./examples/http
+go run ./examples/listener
 go run ./examples/server
 ```
 
-`examples/config` and `examples/server` expect to be run from the repository root:
-they point `INFRAPI_CONFIG_DOTENV_FILE` at dotenv files shipped next to the source.
+`examples/config`, `examples/listener` and `examples/server` expect to be run from
+the repository root: they point `INFRAPI_CONFIG_DOTENV_FILE` at dotenv files
+shipped next to the source.

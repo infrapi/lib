@@ -59,7 +59,8 @@ engine, err := server.NewServerGin(cfg)
 ## Graceful shutdown
 
 `NewServerGin` returns the handler, not a running server, so the lifecycle stays in your
-hands:
+hands. Pair it with [`listener`](listener.md) when the socket comes from the
+configuration or from systemd:
 
 ```go
 srv := &http.Server{

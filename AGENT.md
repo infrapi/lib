@@ -10,6 +10,7 @@ InfraPI services import:
 ```text
 pkg/config    dotenv loading, go-playground validation, typed AppConfig
 pkg/http      resty v3 API client (TLS/mTLS, retry, hedging)
+pkg/listener  service socket, TCP or systemd socket activation
 pkg/server    gin.Engine factory (CORS, trusted proxies, /-/metadata)
 examples/     one runnable program per package
 docs/         MkDocs Material site

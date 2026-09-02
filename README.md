@@ -1,11 +1,12 @@
 # infrapi/lib
 
-Opinionated Go building blocks shared by InfraPI services. Three small packages, no framework:
+Opinionated Go building blocks shared by InfraPI services. Four small packages, no framework:
 
 | Package | Import path | What it does |
 |---------|-------------|--------------|
 | [`config`](https://infrapi.github.io/lib/packages/config/) | `github.com/infrapi/lib/pkg/config` | Reads a dotenv file, validates values, exposes a typed `AppConfig`. |
 | [`http`](https://infrapi.github.io/lib/packages/http/) | `github.com/infrapi/lib/pkg/http` | Resty-based API client with TLS/mTLS, retry and hedging. |
+| [`listener`](https://infrapi.github.io/lib/packages/listener/) | `github.com/infrapi/lib/pkg/listener` | Opens the service socket, TCP or systemd socket activation. |
 | [`server`](https://infrapi.github.io/lib/packages/server/) | `github.com/infrapi/lib/pkg/server` | `gin.Engine` pre-wired with CORS, trusted proxies and a metadata endpoint. |
 
 ## Install

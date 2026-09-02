@@ -47,6 +47,7 @@ is only needed for a manual out-of-band publish.
 ```text
 pkg/config    dotenv loading, validation, AppConfig
 pkg/http      resty-based API client
+pkg/listener  service socket, TCP or systemd socket activation
 pkg/server    gin engine factory
 examples/     one runnable program per package
 docs/         this site
