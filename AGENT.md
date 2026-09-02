@@ -12,7 +12,7 @@ pkg/config    dotenv loading, go-playground validation, typed AppConfig
 pkg/errors    application error: RFC 9457 payload, cause, remediation
 pkg/http      resty v3 API client (TLS/mTLS, retry, hedging)
 pkg/listener  service socket, TCP or systemd socket activation
-pkg/server    gin.Engine factory (CORS, trusted proxies, /-/metadata)
+pkg/server    gin.Engine factory (CORS, proxies, /-/metadata /-/metrics /-/openapi.json /-/docs)
 examples/     one runnable program per package
 docs/         MkDocs Material site
 ```
@@ -65,7 +65,9 @@ The palette and type live in `docs/assets/stylesheets/theme.css`.
   paths relative to the repository root, so run them from there.
 - `pkg/http` tests take around 37s of the Makefile's 60s budget, most of it real
   retry backoff. Keep new timing tests short.
-- Known behaviours, deliberate until someone decides otherwise: `pkg/server`
-  adds `gin.Logger()` and `gin.Recovery()` on top of `gin.Default()`, which
-  already installs both; and the HTTP client's default success range is
-  `200..400` inclusive, so a `400` response is not an error.
+- `/-/docs` serves Swagger UI from `cdn.jsdelivr.net`, pinned by version in
+  `pkg/server/openapi.go`. The specification itself is generated in process and
+  needs nothing external.
+- Known behaviour, deliberate until someone decides otherwise: the HTTP client's
+  default success range is `200..400` inclusive, so a `400` response is not an
+  error.

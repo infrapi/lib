@@ -49,7 +49,7 @@ pkg/config    dotenv loading, validation, AppConfig
 pkg/errors    RFC 9457 error carried back to API clients
 pkg/http      resty-based API client
 pkg/listener  service socket, TCP or systemd socket activation
-pkg/server    gin engine factory
+pkg/server    gin engine factory, metrics and OpenAPI endpoints
 examples/     one runnable program per package
 docs/         this site
 ```

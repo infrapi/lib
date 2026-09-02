@@ -133,7 +133,7 @@ func example4() {
 	fmt.Printf("Engine ready: %T\n\n", engine)
 }
 
-// Example 5: Start the server, hit /-/metadata, then shut it down gracefully.
+// Example 5: Start the server, hit the built-in endpoints, then shut it down.
 func example5() {
 	fmt.Println("--- Example 5: Live Server with Graceful Shutdown ---")
 
@@ -159,13 +159,20 @@ func example5() {
 	go func() { _ = srv.Serve(listener) }()
 	fmt.Printf("Server listening on %s\n", addr)
 
-	// Hit the /-/metadata endpoint.
-	resp, err := http.Get(fmt.Sprintf("http://%s/-/metadata", addr))
-	if err != nil {
-		log.Fatalf("GET /-/metadata: %v", err)
+	// Hit the endpoints every InfraPI service exposes out of the box.
+	for _, path := range []string{
+		infraserver.MetricsPath,
+		infraserver.OpenAPIPath,
+		infraserver.DocsPath,
+		"/-/metadata",
+	} {
+		resp, err := http.Get(fmt.Sprintf("http://%s%s", addr, path))
+		if err != nil {
+			log.Fatalf("GET %s: %v", path, err)
+		}
+		fmt.Printf("GET %-16s → %d %s\n", path, resp.StatusCode, resp.Header.Get("Content-Type"))
+		_ = resp.Body.Close()
 	}
-	defer func() { _ = resp.Body.Close() }()
-	fmt.Printf("GET /-/metadata → %d\n", resp.StatusCode)
 
 	// Graceful shutdown.
 	quit := make(chan os.Signal, 1)

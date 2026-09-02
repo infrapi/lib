@@ -2,6 +2,7 @@
 package server
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -10,8 +11,14 @@ import (
 	"github.com/infrapi/lib/pkg/config"
 )
 
-// NewServerGin creates a gin.Engine pre-configured with CORS, recovery, logging,
-// and a /-/metadata health endpoint derived from the supplied AppConfig.
+// NewServerGin creates a gin.Engine pre-configured from the supplied AppConfig:
+// CORS, recovery, logging, request metrics, and four endpoints every InfraPI
+// service exposes without asking for them.
+//
+//	GET /-/metadata      the application identity
+//	GET /-/metrics       Prometheus exposition format
+//	GET /-/openapi.json  OpenAPI 3.1, generated from the route table
+//	GET /-/docs          Swagger UI reading that specification
 func NewServerGin(cfg *config.AppConfig) (*gin.Engine, error) {
 	app := gin.Default()
 
@@ -28,11 +35,12 @@ func NewServerGin(cfg *config.AppConfig) (*gin.Engine, error) {
 	corsConfig.MaxAge = time.Duration(cfg.AppCorsMaxAge) * time.Hour
 
 	app.Use(cors.New(corsConfig))
-	app.Use(gin.Recovery())
-	app.Use(gin.Logger())
+
+	m := newMetrics(cfg.AppFqdn)
+	app.Use(m.middleware())
 
 	app.GET("/-/metadata", func(c *gin.Context) {
-		c.JSON(200, gin.H{
+		c.JSON(http.StatusOK, gin.H{
 			"appName":     cfg.AppName,
 			"appPlatform": cfg.AppPlatform,
 			"appRegion":   cfg.AppRegion,
@@ -41,6 +49,10 @@ func NewServerGin(cfg *config.AppConfig) (*gin.Engine, error) {
 			"appUrl":      cfg.AppUrl,
 		})
 	})
+
+	app.GET(MetricsPath, m.handler())
+
+	openAPIHandlers(app, cfg)
 
 	return app, nil
 }
