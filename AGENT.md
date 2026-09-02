@@ -9,6 +9,7 @@ InfraPI services import:
 
 ```text
 pkg/config    dotenv loading, go-playground validation, typed AppConfig
+pkg/errors    application error: RFC 9457 payload, cause, remediation
 pkg/http      resty v3 API client (TLS/mTLS, retry, hedging)
 pkg/listener  service socket, TCP or systemd socket activation
 pkg/server    gin.Engine factory (CORS, trusted proxies, /-/metadata)

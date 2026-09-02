@@ -46,6 +46,7 @@ is only needed for a manual out-of-band publish.
 
 ```text
 pkg/config    dotenv loading, validation, AppConfig
+pkg/errors    RFC 9457 error carried back to API clients
 pkg/http      resty-based API client
 pkg/listener  service socket, TCP or systemd socket activation
 pkg/server    gin engine factory

@@ -63,6 +63,7 @@ nav:
   - Getting started: getting-started.md
   - Packages:
       - config: packages/config.md
+      - errors: packages/errors.md
       - http: packages/http.md
       - listener: packages/listener.md
       - server: packages/server.md

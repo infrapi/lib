@@ -82,6 +82,7 @@ Each package has a self-contained program under `examples/`:
 
 ```bash
 go run ./examples/config
+go run ./examples/errors
 go run ./examples/http
 go run ./examples/listener
 go run ./examples/server
