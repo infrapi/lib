@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -273,6 +274,57 @@ func TestAPIClient_methods(t *testing.T) {
 	_, err = client.Get("fail", &RequestOptions{Server: "bad.local"})
 	if err == nil {
 		t.Fatalf("client_test.go(getFail): should return error")
+	}
+}
+
+func TestAPIClient_NewRequest(t *testing.T) {
+	setup_api_client_server(t)
+	defer shutdown_api_client_server()
+
+	client, err := NewClient(&ClientOptions{
+		Server:           "127.0.0.1",
+		Application:      "puppet",
+		Protocol:         "http",
+		Port:             8080,
+		RetryWaitTime:    10 * time.Millisecond,
+		RetryMaxWaitTime: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("client_test.go(NewClient): %s", err)
+	}
+
+	const okURL = "http://127.0.0.1:8080/api/v1/puppet/ok"
+	ctx := context.Background()
+
+	res, err := client.NewRequest(ctx).Get(okURL)
+	checkOk(t, res, err, "GET")
+
+	res, err = client.NewRequest(ctx).SetBody([]byte("hello")).Post(okURL)
+	checkOk(t, res, err, "POST")
+
+	res, err = client.NewRequest(ctx).Put(okURL)
+	checkOk(t, res, err, "PUT")
+
+	res, err = client.NewRequest(ctx).Patch(okURL)
+	checkOk(t, res, err, "PATCH")
+
+	res, err = client.NewRequest(ctx).Delete(okURL)
+	checkOk(t, res, err, "DELETE")
+
+	res, err = client.NewRequest(ctx).Get("http://127.0.0.1:8080/api/v1/puppet/fail")
+	if err != nil {
+		t.Fatalf("client_test.go(NewRequest fail): %s", err)
+	}
+	if res.Code != 404 {
+		t.Fatalf("client_test.go(NewRequest fail): expect 404 but got %d", res.Code)
+	}
+
+	res, err = client.NewRequest(ctx).Get("http://127.0.0.1:19999/")
+	if err == nil {
+		t.Fatalf("client_test.go(NewRequest unreachable): expected error")
+	}
+	if res.Code != nhttp.StatusInternalServerError {
+		t.Fatalf("client_test.go(NewRequest unreachable): expect %d but got %d", nhttp.StatusInternalServerError, res.Code)
 	}
 }
 

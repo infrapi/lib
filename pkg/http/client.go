@@ -1,8 +1,13 @@
 // Package http provides the InfraPI API client: a resty client with TLS,
 // retry and hedging defaults, and helpers to call /api/{version}/{application}.
+// Callers whose target does not fit that URL shape - a third-party API with
+// its own path layout - use [Client.NewRequest] instead, which keeps this
+// client's TLS, retry and header configuration without exposing resty to
+// them.
 package http
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -387,4 +392,57 @@ func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response
 	}
 
 	return r, nil
+}
+
+// Request is a single call sharing this client's TLS, retry, header and
+// timeout configuration, built against an arbitrary URL rather than the
+// {Protocol}://{Server}:{Port}/api/{APIVersion}/{Application}/{path} shape Do
+// assumes. Build one with [Client.NewRequest].
+type Request struct {
+	resty *resty.Request
+}
+
+// NewRequest returns a Request bound to ctx, for a call whose URL Do's
+// api/{version}/{application}/{path} shape does not fit.
+func (c *Client) NewRequest(ctx context.Context) *Request {
+	return &Request{resty: c.RestyClient.R().SetContext(ctx)}
+}
+
+// SetBody sets the request body and returns the Request, to be chained on
+// NewRequest. See resty.Request.SetBody for the types accepted: a []byte, a
+// string, or a value json.Marshal can encode.
+func (r *Request) SetBody(body any) *Request {
+	r.resty.SetBody(body)
+	return r
+}
+
+// Get sends the request to url.
+func (r *Request) Get(url string) (*Response, error) { return r.do(r.resty.Get, url) }
+
+// Post sends the request to url.
+func (r *Request) Post(url string) (*Response, error) { return r.do(r.resty.Post, url) }
+
+// Put sends the request to url.
+func (r *Request) Put(url string) (*Response, error) { return r.do(r.resty.Put, url) }
+
+// Patch sends the request to url.
+func (r *Request) Patch(url string) (*Response, error) { return r.do(r.resty.Patch, url) }
+
+// Delete sends the request to url.
+func (r *Request) Delete(url string) (*Response, error) { return r.do(r.resty.Delete, url) }
+
+// do runs call against url and translates resty's response into a Response,
+// the same type Do returns, so callers never see a resty type.
+func (r *Request) do(call func(url string) (*resty.Response, error), url string) (*Response, error) {
+	res := &Response{Code: http.StatusInternalServerError}
+
+	resp, err := call(url)
+	if err != nil {
+		return res, err
+	}
+
+	res.Code = resp.StatusCode()
+	res.Body = resp.Bytes()
+
+	return res, nil
 }

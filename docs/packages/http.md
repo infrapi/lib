@@ -155,9 +155,29 @@ client, err := infrahttp.NewClient(&infrahttp.ClientOptions{
 
 An mTLS keypair needs both halves: cert and key must come from the same source.
 
+## A different URL shape
+
+`Do` always builds `{Protocol}://{Server}:{Port}/api/{APIVersion}/{Application}/{path}`.
+A caller targeting something else - a third-party API with its own path layout - uses
+`NewRequest` instead, which keeps this client's TLS, retry, header and timeout
+configuration without going through that URL template, and without exposing resty to the
+caller:
+
+```go
+resp, err := client.NewRequest(ctx).
+	SetBody(payload).
+	Post("https://third-party.example.com/v2/widgets")
+```
+
+`NewRequest(ctx)` returns a `*Request` with `Get`, `Post`, `Put`, `Patch` and `Delete`,
+each taking the full URL and returning the same `*Response` as `Do`. Unlike `Do`, a
+`Request` applies no success-range check: any response that comes back, 2xx or not, is
+returned without an error, and the caller decides what counts as a failure. `pkg/apisix`
+is built this way, on top of `NewRequest` rather than resty directly.
+
 ## Escape hatch
 
-`client.RestyClient` is the underlying `*resty.Client`. Anything the wrapper does not
-expose - middlewares, cookies, proxies, custom transports - is configurable there.
+`client.RestyClient` is the underlying `*resty.Client`. Anything neither wrapper exposes -
+middlewares, cookies, proxies, custom transports - is configurable there.
 
 `examples/http` runs all of this against a local server, including retry and hedging.
