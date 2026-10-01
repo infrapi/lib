@@ -106,6 +106,18 @@ func TestErrorCode(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, ErrorCode(fmt.Errorf("hello world")))
 }
 
+func TestAs(t *testing.T) {
+	own := New(http.StatusNotFound, "user.Get", "no user with id %d", 42)
+
+	var found *Error
+	assert.True(t, As(fmt.Errorf("handler: %w", own), &found))
+	assert.Same(t, own, found)
+
+	var notFound *Error
+	assert.False(t, As(fmt.Errorf("open app.env: %w", os.ErrNotExist), &notFound))
+	assert.Nil(t, notFound)
+}
+
 func TestErrorCast(t *testing.T) {
 	assert.Nil(t, ErrorCast(nil))
 

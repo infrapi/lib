@@ -84,6 +84,22 @@ return infraerrors.Wrap(err, http.StatusBadGateway, "config.Read",
     cause into a string: every `errors.Is` above that point stops matching. Use
     `Wrap`.
 
+## Finding an Error in a chain
+
+`As` is `errors.As`, re-exported so a caller just checking for an `*Error` never
+needs to import the standard library `errors` package itself:
+
+```go
+var apiErr *infraerrors.Error
+if infraerrors.As(err, &apiErr) {
+	fmt.Println(apiErr.Code, apiErr.Message)
+}
+```
+
+Reach for the standard library's own `errors.Is` and `errors.As` directly when
+matching something other than `*Error` - a sentinel like `os.ErrNotExist`, or a
+foreign package's own error type.
+
 The printed form carries every member that is set, which is more than the
 payload shows:
 

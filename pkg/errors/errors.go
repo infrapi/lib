@@ -175,6 +175,19 @@ func ErrorCode(err error) int {
 	return http.StatusInternalServerError
 }
 
+// As finds the first error in the chain of err that matches target, and if
+// found, sets target to that error and returns true. It is errors.As,
+// re-exported so callers do not need to import the standard library errors
+// package just to unwrap an *Error:
+//
+//	var apiErr *errors.Error
+//	if errors.As(err, &apiErr) {
+//		fmt.Println(apiErr.Code, apiErr.Message)
+//	}
+func As(err error, target any) bool {
+	return errs.As(err, target)
+}
+
 // ErrorCast returns the first Error in the chain of err, or an untyped 500
 // Error wrapping err when the chain holds none.
 //
