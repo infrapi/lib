@@ -11,7 +11,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"net/http"
 	"os"
 	"time"
 
@@ -237,7 +236,7 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 				if err != nil {
 					return true
 				}
-				return r.StatusCode() == http.StatusTooManyRequests || r.StatusCode() >= 500
+				return r.StatusCode() == StatusTooManyRequests || r.StatusCode() >= StatusInternalServerError
 			},
 		)
 
@@ -279,32 +278,32 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 
 // Get performs a GET request on path.
 func (c *Client) Get(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("GET", path, opts)
+	return c.Do(MethodGet, path, opts)
 }
 
 // Post performs a POST request on path.
 func (c *Client) Post(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("POST", path, opts)
+	return c.Do(MethodPost, path, opts)
 }
 
 // Put performs a PUT request on path.
 func (c *Client) Put(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("PUT", path, opts)
+	return c.Do(MethodPut, path, opts)
 }
 
 // Delete performs a DELETE request on path.
 func (c *Client) Delete(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("DELETE", path, opts)
+	return c.Do(MethodDelete, path, opts)
 }
 
 // Patch performs a PATCH request on path.
 func (c *Client) Patch(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("PATCH", path, opts)
+	return c.Do(MethodPatch, path, opts)
 }
 
 // Head performs a HEAD request on path.
 func (c *Client) Head(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("HEAD", path, opts)
+	return c.Do(MethodHead, path, opts)
 }
 
 // Do sends method to {Protocol}://{Server}:{Port}/api/{APIVersion}/{Application}/{path}
@@ -313,7 +312,7 @@ func (c *Client) Head(path string, opts *RequestOptions) (*Response, error) {
 // in. opts may be nil.
 func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response, error) {
 	r := &Response{
-		Code: http.StatusInternalServerError,
+		Code: StatusInternalServerError,
 	}
 	if opts == nil {
 		opts = &RequestOptions{}
@@ -364,17 +363,17 @@ func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response
 	var err error
 
 	switch method {
-	case "GET":
+	case MethodGet:
 		resp, err = req.Get(uri)
-	case "POST":
+	case MethodPost:
 		resp, err = req.Post(uri)
-	case "PUT":
+	case MethodPut:
 		resp, err = req.Put(uri)
-	case "DELETE":
+	case MethodDelete:
 		resp, err = req.Delete(uri)
-	case "PATCH":
+	case MethodPatch:
 		resp, err = req.Patch(uri)
-	case "HEAD":
+	case MethodHead:
 		resp, err = req.Head(uri)
 	default:
 		return r, fmt.Errorf("unsupported HTTP method: %s", method)
@@ -388,7 +387,7 @@ func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response
 	r.Body = resp.Bytes()
 
 	if resp.StatusCode() < opts.MinHttpCode || resp.StatusCode() > opts.MaxHttpCode {
-		return r, fmt.Errorf("%s", http.StatusText(r.Code))
+		return r, fmt.Errorf("%s", StatusText(r.Code))
 	}
 
 	return r, nil
@@ -434,7 +433,7 @@ func (r *Request) Delete(url string) (*Response, error) { return r.do(r.resty.De
 // do runs call against url and translates resty's response into a Response,
 // the same type Do returns, so callers never see a resty type.
 func (r *Request) do(call func(url string) (*resty.Response, error), url string) (*Response, error) {
-	res := &Response{Code: http.StatusInternalServerError}
+	res := &Response{Code: StatusInternalServerError}
 
 	resp, err := call(url)
 	if err != nil {

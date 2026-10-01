@@ -175,6 +175,16 @@ each taking the full URL and returning the same `*Response` as `Do`. Unlike `Do`
 returned without an error, and the caller decides what counts as a failure. `pkg/apisix`
 is built this way, on top of `NewRequest` rather than resty directly.
 
+`StatusText(code)` and the `StatusBadGateway` constant are `net/http`'s own, re-exported
+so a caller deciding what counts as a failure - and building an
+[`errors.Error`](errors.md) to report it - never needs to import `net/http` itself either:
+
+```go
+if resp.Code < 200 || resp.Code >= 300 {
+	return infraerrors.New(resp.Code, "myapp.Call", "%s", infrahttp.StatusText(resp.Code))
+}
+```
+
 ## Escape hatch
 
 `client.RestyClient` is the underlying `*resty.Client`. Anything neither wrapper exposes -
