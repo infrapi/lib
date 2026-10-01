@@ -4,16 +4,18 @@ Working notes for coding agents on this repository. Read before touching code.
 
 ## Project
 
-`github.com/infrapi/lib` is a Go 1.26.7 library, no binary. Six packages that
+`github.com/infrapi/lib` is a Go 1.26.7 library, no binary. Eight packages that
 InfraPI services import:
 
 ```text
 pkg/cluster   dskit clustering: pluggable KV, a ring per role, leader or broadcast
 pkg/config    dotenv loading, go-playground validation, typed AppConfig + ClusterConfig
 pkg/errors    application error: RFC 9457 payload, cause, remediation
+pkg/gateway   typed CRUD client for the APISIX Admin API (routes/services/upstreams/consumers)
 pkg/http      resty v3 API client (TLS/mTLS, retry, hedging)
 pkg/listener  service socket, TCP or systemd socket activation
 pkg/server    gin.Engine factory (CORS, proxies, /-/metadata /-/metrics /-/openapi.json /-/docs)
+pkg/tofu      drive any OpenTofu provider plugin/resource type, and a declarative apply/destroy on top
 examples/     one runnable program per package
 docs/         MkDocs Material site
 ```
@@ -96,6 +98,22 @@ The palette and type live in `docs/assets/stylesheets/theme.css`.
 - Known behaviour, deliberate until someone decides otherwise: the HTTP client's
   default success range is `200..400` inclusive, so a `400` response is not an
   error.
+- `pkg/tofu` tests run against a real `terraform-provider-local` binary:
+  `github.com/opentofu/provider-client`'s `Provider` interface is sealed, so
+  it cannot be mocked. The tests download and cache the binary under
+  `$TMPDIR/infrapi-lib-tofu-testcache` on first use and `t.Skip` if there is
+  no network access, so `make test` still passes offline once the cache is
+  warm, or skips cleanly if it never was.
+- `provider-client` does not expose a plan response's "requires replacement"
+  attribute list, so `tofu.Provider.Update` cannot detect that a resource
+  type needs a destroy+recreate for a given attribute change; it surfaces
+  the provider's resulting incomplete state as an error instead of silently
+  returning it. See that method's godoc before changing it.
+- `pkg/gateway`'s own tests run against an in-process stand-in Admin API, no real
+  APISIX needed. `TestIntegration_RealAdminAPI` is the exception: it is skipped
+  unless `APISIX_ADMIN_SERVER` and `APISIX_ADMIN_APIKEY` name a reachable one,
+  so `make test` still passes with no APISIX around. See that test's godoc to
+  run it for real.
 
 ### pkg/cluster and dskit
 

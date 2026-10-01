@@ -65,7 +65,9 @@ nav:
       - cluster: packages/cluster.md
       - config: packages/config.md
       - errors: packages/errors.md
+      - gateway: packages/gateway.md
       - http: packages/http.md
       - listener: packages/listener.md
       - server: packages/server.md
+      - tofu: packages/tofu.md
   - Development: development.md
