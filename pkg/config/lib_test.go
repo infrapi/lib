@@ -477,3 +477,57 @@ func TestGetDuration_missing_key_no_default(t *testing.T) {
 	_, err := c.GetDuration(&VariableOpts{Key: "MISSING_DURATION"})
 	assert.Error(t, err)
 }
+
+// ---- Optional
+
+func TestGetString_optional_missing_key(t *testing.T) {
+	c := &Variables{
+		Values:        map[string]string{},
+		Path:          ".env",
+		DefaultConfig: NewDefaultConfig(),
+	}
+
+	v, err := c.GetString(&VariableOpts{Key: "TESTING_ENV_VAR_MISSING", Optional: true})
+	require.NoError(t, err)
+	assert.Empty(t, v)
+}
+
+func TestGetString_optional_empty_value(t *testing.T) {
+	c := &Variables{
+		Values:        map[string]string{"TESTING_ENV_VAR_EMPTY": ""},
+		Path:          ".env",
+		DefaultConfig: NewDefaultConfig(),
+	}
+
+	v, err := c.GetString(&VariableOpts{Key: "TESTING_ENV_VAR_EMPTY", Optional: true})
+	require.NoError(t, err)
+	assert.Empty(t, v)
+}
+
+// Optional only excuses an absent value. A value that is present is still held
+// to the validator.
+func TestGetString_optional_still_validates_a_present_value(t *testing.T) {
+	c := &Variables{
+		Values:        map[string]string{"TESTING_ENV_VAR_IP": "not-an-ip"},
+		Path:          ".env",
+		DefaultConfig: NewDefaultConfig(),
+	}
+
+	_, err := c.GetString(&VariableOpts{Key: "TESTING_ENV_VAR_IP", Validator: "ip", Optional: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not compliant with validator rule")
+}
+
+// A default wins over Optional, so a key can be both optional and defaulted
+// without the default being skipped.
+func TestGetString_optional_with_default(t *testing.T) {
+	c := &Variables{
+		Values:        map[string]string{},
+		Path:          ".env",
+		DefaultConfig: NewDefaultConfig(),
+	}
+
+	v, err := c.GetString(&VariableOpts{Key: "TESTING_ENV_VAR_MISSING", Default: "fallback", Optional: true})
+	require.NoError(t, err)
+	assert.Equal(t, "fallback", v)
+}

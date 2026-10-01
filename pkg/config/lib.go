@@ -34,6 +34,12 @@ type VariableOpts struct {
 
 	// Hide from error and log messages
 	Sensible bool
+
+	// Optional accepts an absent or empty key that has no Default, in which
+	// case GetString returns the empty string instead of an error. It only
+	// makes sense for keys read with GetString: the parsing getters have no
+	// empty value to return.
+	Optional bool
 }
 
 func getDotEnv() string {
@@ -62,8 +68,9 @@ func NewConfig() (*Variables, error) {
 }
 
 // GetString returns the value of opts.Key. An absent or empty key falls back to
-// opts.Default, and is an error when no default is set. Only values coming from
-// the dotenv file are checked against opts.Validator; defaults are trusted.
+// opts.Default, and is an error when no default is set unless opts.Optional is
+// true, which returns the empty string. Only values coming from the dotenv file
+// are checked against opts.Validator; defaults are trusted.
 func (v *Variables) GetString(opts *VariableOpts) (string, error) {
 	if opts == nil {
 		return "", fmt.Errorf("opts cannot be nil")
@@ -72,6 +79,9 @@ func (v *Variables) GetString(opts *VariableOpts) (string, error) {
 	value, ok := v.Values[opts.Key]
 	if !ok || value == "" {
 		if opts.Default == "" {
+			if opts.Optional {
+				return "", nil
+			}
 			return "", fmt.Errorf("key %s value is empty and opts.Default not provided, dotenv located at %s", opts.Key, v.Path)
 		}
 		return opts.Default, nil
