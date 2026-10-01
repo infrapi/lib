@@ -8,6 +8,25 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
+  # dskit is a pseudo-version on an untagged branch, so this directory sees
+  # frequent commit bumps. Keep the limit low and remember that a dskit upgrade
+  # may also move the hashicorp/memberlist replace in pkg/cluster/go.mod.
+  - package-ecosystem: gomod
+    directory: /pkg/cluster
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: gomod
+    directory: /examples/cluster
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

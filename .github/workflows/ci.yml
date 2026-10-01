@@ -19,6 +19,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          # pkg/cluster and examples/cluster are modules of their own, and the
+          # dskit tree they pull is large enough that missing it from the cache
+          # key costs minutes on every run.
+          cache-dependency-path: |
+            go.sum
+            pkg/cluster/go.sum
+            examples/cluster/go.sum
 
       - name: Install lint and security tools
         run: |
@@ -52,6 +59,21 @@ jobs:
           fetch-depth: 0
 
       - uses: go-semantic-release/action@v1
+        id: semrel
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           allow-initial-development-versions: false
+
+      # The module proxy resolves github.com/infrapi/lib/pkg/cluster@vX.Y.Z from
+      # a tag literally named pkg/cluster/vX.Y.Z, which go-semantic-release does
+      # not create. The submodules are versioned in lockstep with the library
+      # because they cannot build without the matching pkg/config, so one
+      # version number is the honest description of the pair.
+      - name: Tag the submodules in lockstep
+        if: steps.semrel.outputs.version != ''
+        run: |
+          for module in pkg/cluster examples/cluster; do
+            tag="$module/v${{ steps.semrel.outputs.version }}"
+            git tag "$tag"
+            git push origin "$tag"
+          done

@@ -23,7 +23,24 @@ kubeconfig
 tmp
 _local/
 test-local-*.go
-coverage.html
+# `go build` inside one of the cluster examples drops a binary named after its
+# directory. Listed rather than globbed: a pattern wide enough to catch them all
+# also swallows internal/demo.
+examples/cluster/leader/leader
+examples/cluster/broadcast/broadcast
+examples/cluster/roles/roles
+examples/cluster/gated/gated
+examples/cluster/state/state
+examples/cluster/pages/pages
+examples/cluster/shutdown/shutdown
+examples/cluster/node/node
+examples/cluster/zones/zones
+coverage*.html
 legacy/
 cover*.out
 site/
+
+# A local Go workspace is a developer's business, not the repository's: see
+# AGENT.md on why the submodules use replace directives instead.
+go.work
+go.work.sum

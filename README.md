@@ -1,9 +1,10 @@
 # infrapi/lib
 
-Opinionated Go building blocks shared by InfraPI services. Five small packages, no framework:
+Opinionated Go building blocks shared by InfraPI services. Six small packages, no framework:
 
 | Package | Import path | What it does |
 |---------|-------------|--------------|
+| [`cluster`](https://infrapi.github.io/lib/packages/cluster/) | `github.com/infrapi/lib/pkg/cluster` | Runs a service as coordinated replicas: a ring per role, leader or broadcast. Its own module. |
 | [`config`](https://infrapi.github.io/lib/packages/config/) | `github.com/infrapi/lib/pkg/config` | Reads a dotenv file, validates values, exposes a typed `AppConfig`. |
 | [`errors`](https://infrapi.github.io/lib/packages/errors/) | `github.com/infrapi/lib/pkg/errors` | RFC 9457 application error with an HTTP status, a cause and a remediation hint. |
 | [`http`](https://infrapi.github.io/lib/packages/http/) | `github.com/infrapi/lib/pkg/http` | Resty-based API client with TLS/mTLS, retry and hedging. |
@@ -16,7 +17,14 @@ Opinionated Go building blocks shared by InfraPI services. Five small packages, 
 go get github.com/infrapi/lib
 ```
 
-Requires Go 1.25 or later.
+`cluster` is a module of its own, so that a service which does not cluster does
+not inherit the dependency tree of [dskit](https://github.com/grafana/dskit):
+
+```bash
+go get github.com/infrapi/lib/pkg/cluster
+```
+
+Requires Go 1.26.7 or later.
 
 ## In one minute
 

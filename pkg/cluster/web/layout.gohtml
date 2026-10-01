@@ -1,0 +1,16 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<style>{{template "cluster.css"}}</style>
+</head>
+<body>
+<main>
+{{template "content" .}}
+<footer>infrapi/lib cluster &middot; rendered {{.Now.Format "2006-01-02 15:04:05 MST"}}</footer>
+</main>
+</body>
+</html>
+{{end}}

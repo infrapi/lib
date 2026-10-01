@@ -1,6 +1,6 @@
 module github.com/infrapi/lib
 
-go 1.26.0
+go 1.26.7
 
 require (
 	github.com/gin-contrib/cors v1.7.8
