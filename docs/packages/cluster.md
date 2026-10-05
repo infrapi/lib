@@ -155,7 +155,7 @@ backend-agnostic.
 |-------|-----|
 | `memberlist` | Gossip between replicas. No external dependency, one TCP port. The default. |
 | `etcd` | A central store, when one is already operated. |
-| `inmemory` | A process-wide map. Single replica, and tests. It reaches no other process, so `INFRAPI_CLUSTER_JOIN_MEMBERS` with it is refused. |
+| `inmemory` | A process-wide map. **Tests and single-replica runs only**: it coordinates nothing beyond the process, so two replicas on it each get their own ring and each elect themselves. `INFRAPI_CLUSTER_JOIN_MEMBERS` with it is refused, which is the one mistake it can catch for you. |
 
 dskit also implements a `consul` store and a mirroring `multi` store for
 migrating between two backends. Neither is wired up here; both would cost one
@@ -238,8 +238,8 @@ Applies only when the store is `memberlist`.
 | `INFRAPI_CLUSTER_GOSSIP_TO_THE_DEAD_TIME` | `30s` |
 | `INFRAPI_CLUSTER_LEAVE_TIMEOUT` | `20s` |
 | `INFRAPI_CLUSTER_BROADCAST_TIMEOUT_ON_SHUTDOWN` | `10s` |
-| `INFRAPI_CLUSTER_OBSOLETE_ENTRIES_TIMEOUT` | `30s` |
-| `INFRAPI_CLUSTER_LEFT_INSTANCES_TIMEOUT` | `5m` |
+| `INFRAPI_CLUSTER_OBSOLETE_ENTRIES_TIMEOUT` | `30s` (a fully deleted key) |
+| `INFRAPI_CLUSTER_TOMBSTONE_TIMEOUT` | `5m` (a deleted entry inside a value) |
 | `INFRAPI_CLUSTER_GOSSIP_COMPRESSION_ENABLED` | `true` |
 | `INFRAPI_CLUSTER_MESSAGE_HISTORY_BUFFER_BYTES` | `0` |
 | `INFRAPI_CLUSTER_GOSSIP_TLS_ENABLED` | `false` |
@@ -589,6 +589,44 @@ the gossip store later.
 
 `examples/cluster/state-proto` carries a worked example: the proto, the
 hand-written type, and the property tests.
+
+### Deleting: what actually happens, and when it is really gone
+
+This is the part worth understanding before designing around it, because a
+deletion is real but it is not immediate, and three different settings govern
+three different stages.
+
+**Deleting is an update.** Do not remove the entry — write it back with a
+`deleted` flag. Two reasons, and both are hard:
+
+- `WatchPrefix` does not report deletions. dskit skips its callback when the
+  value comes back nil, which is exactly what a key whose value was deleted
+  gives. (`WatchKey` does report them, with a nil value, but you can only watch
+  a key you already know about.) An entry carrying a flag is never nil, so every
+  watcher is told like any other change.
+- On gossip, a peer that never heard about the removal would re-add the entry at
+  the next merge. The flag is what lets `Merge` decide that "deleted at T2"
+  supersedes "present at T1".
+
+**Then it is gone in three stages**, and only the last one frees anything:
+
+| Stage | Governed by | Default | What it does |
+|-------|-------------|---------|--------------|
+| Hidden from the application | nothing — every read | — | The store calls `RemoveTombstones` with a zero limit before handing a value over, so a deleted entry never reaches your code. |
+| Still gossiped | `INFRAPI_CLUSTER_TOMBSTONE_TIMEOUT` | `5m` | The entry stays in the value and keeps propagating, so a replica that was down or partitioned still learns of the deletion when it comes back. After this it may be dropped for good. |
+| The whole key removed | `INFRAPI_CLUSTER_OBSOLETE_ENTRIES_TIMEOUT` | `30s` | Only applies to a key whose *entire* value was deleted, which is what `kv.Client.Delete` does. Not your per-entry flag. |
+
+The one to reason about is the middle row. `INFRAPI_CLUSTER_TOMBSTONE_TIMEOUT` is
+how long the cluster remembers that something was deleted — so it is also the
+longest a replica may be absent and still come back converged. A replica away
+for longer than that can rejoin holding an entry everyone else has forgotten,
+and re-introduce it. Set it longer than your worst realistic outage, not
+shorter: the cost is a little state and bandwidth, and the alternative is an item
+coming back from the dead.
+
+dskit names that setting `-memberlist.left-ingesters-timeout` and documents it in
+ring terms, which is why it is easy to miss: it is the limit passed to
+`RemoveTombstones` on *any* gossiped value, not just on ring membership.
 
 !!! danger "The store is a membership store, not a cache"
 

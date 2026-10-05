@@ -621,3 +621,66 @@ func TestRoleSpec_replication_factor_override(t *testing.T) {
 	assert.Equal(t, 1, d.ringConfigFor(modeSpecs[ModeLeader]).ReplicationFactor)
 	assert.Equal(t, 1, d.ringConfigFor(modeSpecs[ModeBroadcast]).ReplicationFactor)
 }
+
+// A startup failure is almost always the store being out of reach, and the
+// error dskit returns says nothing about where the store was meant to be.
+func TestStart_failure_names_the_store(t *testing.T) {
+	role := uniqueRole(t, "a", ModeLeader)
+	cfg := testClusterConfig(t, map[string]string{
+		"INFRAPI_CLUSTER_KV_STORE":          storeEtcd,
+		"INFRAPI_CLUSTER_ETCD_ENDPOINTS":    `["127.0.0.1:1"]`,
+		"INFRAPI_CLUSTER_ETCD_DIAL_TIMEOUT": "300ms",
+		"INFRAPI_CLUSTER_ETCD_MAX_RETRIES":  "1",
+		"INFRAPI_CLUSTER_START_TIMEOUT":     "3s",
+		"INFRAPI_CLUSTER_ROLES":             `["` + role.Name + `"]`,
+	})
+
+	c, err := New(testAppConfig(), cfg, Options{
+		Roles:      []RoleSpec{role},
+		Logger:     testLogger(),
+		Registerer: prometheus.NewRegistry(),
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = c.Stop(context.Background()) })
+
+	err = c.Start(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "store etcd at [127.0.0.1:1]",
+		"the message has to say which address was unreachable")
+}
+
+func TestStoreLocation(t *testing.T) {
+	for name, tc := range map[string]struct {
+		values map[string]string
+		want   string
+	}{
+		"etcd names its endpoints": {
+			values: map[string]string{
+				"INFRAPI_CLUSTER_KV_STORE":       storeEtcd,
+				"INFRAPI_CLUSTER_ETCD_ENDPOINTS": `["10.0.0.1:2379"]`,
+			},
+			want: "store etcd at [10.0.0.1:2379]",
+		},
+		"gossip names its seeds": {
+			values: map[string]string{
+				"INFRAPI_CLUSTER_KV_STORE":     storeMemberlist,
+				"INFRAPI_CLUSTER_JOIN_MEMBERS": `["10.0.0.2:7946"]`,
+			},
+			want: "store memberlist, seeding off [10.0.0.2:7946]",
+		},
+		"gossip with no seeds says so": {
+			values: map[string]string{"INFRAPI_CLUSTER_KV_STORE": storeMemberlist},
+			want:   "store memberlist, no seed members configured",
+		},
+		"anything else just names itself": {
+			values: map[string]string{"INFRAPI_CLUSTER_KV_STORE": storeInmemory},
+			want:   "store inmemory",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tc.values["INFRAPI_CLUSTER_ROLES"] = "[]"
+			c := &Cluster{cfg: testClusterConfig(t, tc.values)}
+			assert.Equal(t, tc.want, c.storeLocation())
+		})
+	}
+}

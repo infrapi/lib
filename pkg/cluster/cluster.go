@@ -338,6 +338,12 @@ func (c *Cluster) Start(ctx context.Context) error {
 	c.serviceCtx, c.serviceCancel = context.WithCancel(context.WithoutCancel(ctx))
 
 	if err := c.start(startCtx); err != nil {
+		// A startup failure is almost always the store being unreachable, and
+		// the error coming back from dskit says nothing about where the store
+		// is. Naming it here is the difference between "context deadline
+		// exceeded" and knowing which address to go and look at.
+		err = fmt.Errorf("%w (%s)", err, c.storeLocation())
+
 		// Unwind on a context of its own: the failure may well be that
 		// startCtx expired, and the services already running still deserve a
 		// clean leave.
@@ -618,6 +624,21 @@ func (c *Cluster) Err() <-chan error {
 		return nil
 	}
 	return c.watcher.Chan()
+}
+
+// storeLocation describes where the key-value store is, for an error message.
+func (c *Cluster) storeLocation() string {
+	switch c.cfg.KvStore {
+	case storeEtcd:
+		return fmt.Sprintf("store %s at %v", storeEtcd, c.cfg.EtcdEndpoints)
+	case storeMemberlist:
+		if len(c.cfg.JoinMembers) > 0 {
+			return fmt.Sprintf("store %s, seeding off %v", storeMemberlist, c.cfg.JoinMembers)
+		}
+		return fmt.Sprintf("store %s, no seed members configured", storeMemberlist)
+	default:
+		return "store " + c.cfg.KvStore
+	}
 }
 
 // usable reports why the cluster cannot answer a query, if it cannot. Callers

@@ -55,7 +55,7 @@ type ClusterDefaultConfig struct {
 	LeaveTimeout                          *VariableOpts
 	BroadcastTimeoutOnShutdown            *VariableOpts
 	ObsoleteEntriesTimeout                *VariableOpts
-	LeftInstancesTimeout                  *VariableOpts
+	TombstoneTimeout                      *VariableOpts
 	MessageHistoryBufferBytes             *VariableOpts
 	JoinMembers                           *VariableOpts
 	JoinMinBackoff                        *VariableOpts
@@ -241,8 +241,12 @@ func newClusterDefaultConfig(hostname string) *ClusterDefaultConfig {
 			Key:     "INFRAPI_CLUSTER_OBSOLETE_ENTRIES_TIMEOUT",
 			Default: "30s",
 		},
-		LeftInstancesTimeout: &VariableOpts{
-			Key:     "INFRAPI_CLUSTER_LEFT_INSTANCES_TIMEOUT",
+		TombstoneTimeout: &VariableOpts{
+			Key: "INFRAPI_CLUSTER_TOMBSTONE_TIMEOUT",
+			// dskit calls this left-ingesters-timeout and describes it in ring
+			// terms, but it is the limit handed to RemoveTombstones on any
+			// gossiped value: how long a deleted entry is kept and propagated
+			// before it may be dropped for good.
 			Default: "5m",
 		},
 		MessageHistoryBufferBytes: &VariableOpts{
@@ -413,7 +417,7 @@ type ClusterConfig struct {
 	LeaveTimeout                          time.Duration
 	BroadcastTimeoutOnShutdown            time.Duration
 	ObsoleteEntriesTimeout                time.Duration
-	LeftInstancesTimeout                  time.Duration
+	TombstoneTimeout                      time.Duration
 	MessageHistoryBufferBytes             int
 	JoinMembers                           []string
 	JoinMinBackoff                        time.Duration
@@ -570,7 +574,7 @@ func (v *Variables) GetClusterConfig() (*ClusterConfig, error) {
 		LeaveTimeout:                          l.duration(d.LeaveTimeout),
 		BroadcastTimeoutOnShutdown:            l.duration(d.BroadcastTimeoutOnShutdown),
 		ObsoleteEntriesTimeout:                l.duration(d.ObsoleteEntriesTimeout),
-		LeftInstancesTimeout:                  l.duration(d.LeftInstancesTimeout),
+		TombstoneTimeout:                      l.duration(d.TombstoneTimeout),
 		MessageHistoryBufferBytes:             l.integer(d.MessageHistoryBufferBytes),
 		JoinMembers:                           l.slice(d.JoinMembers),
 		JoinMinBackoff:                        l.duration(d.JoinMinBackoff),

@@ -96,7 +96,9 @@ func newDskitConfig(app *config.AppConfig, cfg *config.ClusterConfig, codecs []c
 	mlCfg.LeaveTimeout = cfg.LeaveTimeout
 	mlCfg.BroadcastTimeoutForLocalUpdatesOnShutdown = cfg.BroadcastTimeoutOnShutdown
 	mlCfg.ObsoleteEntriesTimeout = cfg.ObsoleteEntriesTimeout
-	mlCfg.LeftIngestersTimeout = cfg.LeftInstancesTimeout
+	// dskit's name is ring-specific; the field is the limit it passes to
+	// RemoveTombstones on any gossiped value.
+	mlCfg.LeftIngestersTimeout = cfg.TombstoneTimeout
 	mlCfg.MessageHistoryBufferBytes = cfg.MessageHistoryBufferBytes
 	mlCfg.JoinMembers = flagext.StringSliceCSVMulti(cfg.JoinMembers)
 	mlCfg.MinJoinBackoff = cfg.JoinMinBackoff

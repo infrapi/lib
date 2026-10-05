@@ -124,8 +124,9 @@ func main() {
 
 	fmt.Println("The deleted owner is absent from every read above, because the")
 	fmt.Println("store calls RemoveTombstones with a zero limit before handing the")
-	fmt.Println("value over. It is still in the store, still being gossiped, until")
-	fmt.Println("INFRAPI_CLUSTER_OBSOLETE_ENTRIES_TIMEOUT has passed.")
+	fmt.Println("value over. It is still in the store and still being gossiped for")
+	fmt.Println("INFRAPI_CLUSTER_TOMBSTONE_TIMEOUT, so a replica that was down still")
+	fmt.Println("learns of the deletion when it comes back. Only then may it go.")
 	fmt.Println()
 
 	// The replica stays up from here, serving its own status pages, so that the

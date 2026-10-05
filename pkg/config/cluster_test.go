@@ -61,7 +61,7 @@ func TestGetClusterConfig_defaults(t *testing.T) {
 	assert.True(t, cfg.GossipCompressionEnabled)
 	assert.Equal(t, 20*time.Second, cfg.LeaveTimeout)
 	assert.Equal(t, 10*time.Second, cfg.BroadcastTimeoutOnShutdown)
-	assert.Equal(t, 5*time.Minute, cfg.LeftInstancesTimeout)
+	assert.Equal(t, 5*time.Minute, cfg.TombstoneTimeout)
 	assert.Empty(t, cfg.JoinMembers)
 	assert.Equal(t, 10, cfg.JoinMaxRetries)
 	assert.False(t, cfg.AbortIfJoinFails)
