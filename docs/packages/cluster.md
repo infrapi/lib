@@ -575,6 +575,21 @@ c, err := cluster.New(appConfig, clusterConfig, cluster.Options{
 client, err := c.KVClient("fleet-state")
 ```
 
+With the **gossip** store the value must also implement
+`memberlist.Mergeable`, and its `Merge` must be idempotent, commutative and
+associative — a CRDT. Gossip delivers updates out of order and more than once,
+and nothing reconciles afterwards, so a merge without those properties leaves
+replicas in different states permanently. A value that is not `Mergeable` fails
+loudly (`invalid type: …, expected Mergeable`), but a `Mergeable` whose merge is
+subtly wrong fails silently: test the three properties directly.
+
+The etcd and in-memory clients impose no such thing — they encode, decode and
+compare-and-swap — so a bare protobuf message works there, and will not move to
+the gossip store later.
+
+`examples/cluster/state-proto` carries a worked example: the proto, the
+hand-written type, and the property tests.
+
 !!! danger "The store is a membership store, not a cache"
 
     Every key costs a broadcast worker and a slot in the state each replica

@@ -9,6 +9,7 @@ require (
 	github.com/infrapi/lib v1.3.1
 	github.com/infrapi/lib/pkg/cluster v0.0.0
 	github.com/sirupsen/logrus v1.10.2
+	github.com/stretchr/testify v1.12.1
 )
 
 require (

@@ -18,6 +18,7 @@ start the cluster — everything specific to a case stays in its `main.go`.
 | [`roles/`](roles) | Several roles in one process, a ring each | nothing |
 | [`gated/`](gated) | `Role.Run`: a periodic action gated on the predicate | nothing |
 | [`state/`](state) | Sharing application state through the store | nothing |
+| [`state-proto/`](state-proto) | **A value of your own: protobuf plus a CRDT merge** | an ephemeral TCP port |
 | [`pages/`](pages) | The status pages on the server package engine | a free TCP port |
 | [`shutdown/`](shutdown) | What `Stop` does, and what queries say afterwards | nothing |
 | [`node/`](node) | **A real two-node cluster over gossip** | `127.0.0.1-2`, TCP 7946, 8080 |
@@ -143,6 +144,110 @@ One rule that is not optional: the store is a membership store, not a cache.
 Every key costs a broadcast worker and a slot in the state each replica gossips,
 on every push/pull. Keys must be few and long-lived. A key per request, per job
 or per challenge is how this becomes an out-of-memory incident.
+
+## state-proto: a value of your own
+
+```bash
+cd state-proto && go run .
+```
+
+`state/` shares data using a type dskit already provides. This one brings its
+own, which is what a real service does, and that means meeting the requirement
+the gossip store imposes: the value must implement `memberlist.Mergeable`.
+
+| File | What it is |
+|------|------------|
+| `fleet.proto` | The wire format. Reference only — copy it into your own repository and generate from it there. |
+| `fleet.go` | The type, hand-written with protobuf struct tags so the example needs no protoc, and wire compatible with generated code. |
+| `fleet_test.go` | **The part worth copying.** |
+
+The rule the type implements is last write wins per entry, decided by a
+timestamp the owner sets. Each replica only ever writes its own entry, which is
+what makes merging two copies well defined with nobody coordinating.
+
+### Why the tests are the point
+
+dskit requires `Merge` to be idempotent, commutative and associative — a CRDT.
+That is not a formality. Gossip delivers updates out of order, more than once,
+to every replica, and nothing reconciles afterwards: a merge that lacks those
+properties leaves replicas in different states **for good**, and nothing in
+dskit or in this library will tell you.
+
+`fleet_test.go` checks each property directly, so a change to the merge rule
+that breaks one fails the build rather than a production cluster:
+
+```go
+TestFleetState_Merge_is_idempotent      // re-applying is not news
+TestFleetState_Merge_is_commutative     // arrival order cannot matter
+TestFleetState_Merge_is_associative     // grouping cannot matter
+```
+
+### Tombstones, and the one place commutativity is broken on purpose
+
+Deleting an entry does not remove it. The compare-and-swap returns a state
+without it, `Merge` is called with `localCAS` true, and the entry becomes a
+tombstone — gossiped as gone, because a replica that has not heard about the
+deletion yet would otherwise hand the entry back and resurrect it.
+
+That `localCAS` branch is deliberately **not** commutative, which is why it only
+ever runs on a local write and never on a value arriving from a peer. The
+tombstone is stamped with the current time rather than the entry's old
+timestamp, or a message already in flight would outrank it and bring the entry
+back.
+
+Tombstones are hidden from the application: the store calls `RemoveTombstones`
+with a zero limit on every read. They are expired for good once
+`INFRAPI_CLUSTER_OBSOLETE_ENTRIES_TIMEOUT` has passed.
+
+### Looking at the key as the store holds it
+
+The replica stays up after the walkthrough, serving its own status pages and
+republishing every five seconds. The gossip page lists the key under the
+configured prefix:
+
+```text
+Key               Codec        Version  Size
+collectors/fleet  fleet-state  6        53 B
+```
+
+The size is the encoded payload — snappy over protobuf, 53 bytes for two
+entries. The version is **node-local**: it counts the updates this replica
+applied, its own writes included, which is why it climbs here with nobody else
+in the cluster. Two replicas disagreeing on it is normal and says nothing about
+whether they agree on the value.
+
+It climbs because each republication carries a fresh timestamp, so each one is a
+genuine change. That is not avoidable by writing the same thing: dskit calls
+`Merge` with whatever the compare-and-swap function returned, and **if the merge
+reports no change the whole CAS is treated as a failure** — slept on for a
+second, retried up to ten times, then returned as an error. So read and compare
+first, and call `CAS` only when there is something to write; calling it to find
+out costs ten seconds and an error.
+Three views of the same value:
+
+| Link | Shows |
+|------|-------|
+| `?viewKey=collectors%2Ffleet&format=json-pretty` | the decoded value, through this type's own json tags |
+| `?viewKey=collectors%2Ffleet&format=struct` | the same, as the Go value the codec produced |
+| `?downloadKey=collectors%2Ffleet` | the bytes on the wire |
+
+The instructive part is the deleted entry. The application never sees it — every
+`Get` above showed one owner — but the raw store still carries it:
+
+```json
+"replica-2": { "updated_at_ms": 1791185925845, "deleted": true }
+```
+
+That is the tombstone doing its job, and the gap between what the store holds
+and what the application reads is `RemoveTombstones` being called with a zero
+limit on the way out.
+
+### If you use etcd instead
+
+`Mergeable` is a gossip-store requirement. The etcd and in-memory clients only
+encode and decode with the codec and rely on a plain compare-and-swap, so a
+bare protobuf message is enough there — at the cost of code that will not move
+to the gossip store later.
 
 ## pages: the status pages
 

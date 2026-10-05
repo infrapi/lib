@@ -35,6 +35,7 @@ examples/cluster/pages/pages
 examples/cluster/shutdown/shutdown
 examples/cluster/node/node
 examples/cluster/zones/zones
+examples/cluster/state-proto/state-proto
 coverage*.html
 legacy/
 cover*.out

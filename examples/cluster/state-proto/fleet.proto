@@ -1,0 +1,37 @@
+// The wire format of the value this example stores in the cluster's key-value
+// store.
+//
+// This file is reference, not build input: the Go type next to it is written by
+// hand so that the example runs with no protoc in sight. Copy this into your own
+// repository, generate from it there, and the generated type will be wire
+// compatible with fleet.go.
+//
+//     protoc --gogofast_out=. fleet.proto
+syntax = "proto3";
+
+package fleet;
+
+// FleetState is what every replica publishes about itself, keyed by owner.
+//
+// One entry per replica, and a replica only ever writes its own: that is what
+// makes merging two copies of this message well defined without a coordinator.
+message FleetState {
+  map<string, Entry> entries = 1;
+}
+
+// Entry is one replica's contribution.
+message Entry {
+  // Payload is whatever the application wants to share. Kept as a string here
+  // to keep the example about merging rather than about schemas.
+  string payload = 1;
+
+  // UpdatedAtMs is when the owner last wrote this entry, in Unix
+  // milliseconds. It is the only thing that decides which of two copies wins,
+  // so it has to come from the owner and never be rewritten by a reader.
+  int64 updated_at_ms = 2;
+
+  // Deleted marks a tombstone: the entry is gone, but it has to be gossiped as
+  // gone rather than simply dropped, or a replica that has not heard yet would
+  // hand it back and resurrect it.
+  bool deleted = 3;
+}
