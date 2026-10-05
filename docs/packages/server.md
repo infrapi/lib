@@ -32,8 +32,8 @@ if err := engine.Run(cfg.AppListenAddress); err != nil {
 |----------|--------|
 | `GET /-/metadata` | The application identity. |
 | `GET /-/metrics` | Prometheus exposition format. |
-| `GET /-/openapi.json` | OpenAPI 3.1, generated from the route table. |
-| `GET /-/docs` | Swagger UI reading that specification. |
+| `GET /-/openapi.json` | OpenAPI 3.1, generated from the route table - unless the service passes its own documents with `WithOpenAPI`. |
+| `GET /-/docs` | Swagger UI reading that specification, or the documents passed with `WithOpenAPI`. |
 
 The paths are exported as `server.MetricsPath`, `server.OpenAPIPath` and
 `server.DocsPath`.
@@ -60,7 +60,32 @@ v1.GET("/widgets", listWidgets)
 ```
 
 
-## JSON logs
+## Your own OpenAPI documents
+
+The generated specification knows paths and parameters, not bodies or schemas. A
+service whose contract is written by hand passes it with `WithOpenAPI`, and `/-/docs`
+documents that instead:
+
+```go
+//go:embed api/orders/v1.yaml
+var ordersV1 []byte
+
+engine, err := server.NewServerGin(cfg, server.WithOpenAPI(
+	server.OpenAPISpec{Name: "orders v1", Path: "orders/v1.yaml", Content: ordersV1},
+))
+```
+
+- Each document is served as it is under `server.OpenAPIPrefix`, here
+  `/-/openapi/orders/v1.yaml`, as `application/yaml` (`.yaml`, `.yml`) or
+  `application/json` (`.json`).
+- With several documents — one file per major version, say — Swagger UI offers them in
+  a selector.
+- They replace the generated specification: `/-/openapi.json` is no longer served, so
+  the API has one description, not two.
+- `NewServerGin` refuses a document without a name or content, a path that is absolute,
+  not clean or not `.json`/`.yaml`/`.yml`, and two documents sharing a name or a path.
+
+
 
 With `INFRAPI_APP_LOG_FORMAT=json`, every request is one line:
 
@@ -165,8 +190,8 @@ the same way.
 !!! warning "The docs page loads Swagger UI from a CDN"
     `/-/docs` is a small HTML page pulling a pinned Swagger UI release from
     `cdn.jsdelivr.net`. A browser without internet access renders an empty page, while
-    `/-/openapi.json` keeps working: it is generated in process and depends on nothing
-    external.
+    the documents themselves - `/-/openapi.json`, or those under `/-/openapi/` - keep
+    working: they are served in process and depend on nothing external.
 
 ## Configuration in memory
 

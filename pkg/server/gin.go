@@ -23,7 +23,17 @@ import (
 //	GET /-/metrics       Prometheus exposition format
 //	GET /-/openapi.json  OpenAPI 3.1, generated from the route table
 //	GET /-/docs          Swagger UI reading that specification
-func NewServerGin(cfg *config.AppConfig) (*gin.Engine, error) {
+//
+// Options adjust it: WithOpenAPI documents the service with its own OpenAPI
+// documents rather than the generated specification.
+func NewServerGin(cfg *config.AppConfig, opts ...Option) (*gin.Engine, error) {
+	var o options
+	for _, opt := range opts {
+		if err := opt(&o); err != nil {
+			return nil, err
+		}
+	}
+
 	app := gin.New()
 	app.Use(logMiddlewares(cfg.AppLogFormat, gin.DefaultWriter)...)
 
@@ -57,7 +67,7 @@ func NewServerGin(cfg *config.AppConfig) (*gin.Engine, error) {
 
 	app.GET(MetricsPath, m.handler())
 
-	openAPIHandlers(app, cfg)
+	openAPIHandlers(app, cfg, o.specs)
 
 	return app, nil
 }
