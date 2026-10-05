@@ -25,6 +25,11 @@ func (v *Variables) GetAppLogLevel() (log.Level, error) {
 	return level, nil
 }
 
+// GetAppLogFormat returns INFRAPI_APP_LOG_FORMAT, either text or json.
+func (v *Variables) GetAppLogFormat() (string, error) {
+	return v.GetString(v.DefaultConfig.AppLogFormat)
+}
+
 // GetAppListenType returns INFRAPI_APP_LISTEN_TYPE, either tcp or systemd.
 func (v *Variables) GetAppListenType() (string, error) {
 	return v.GetString(v.DefaultConfig.AppListenType)
@@ -99,6 +104,7 @@ func (v *Variables) GetAppCorsMaxAge() (int64, error) {
 // AppConfig is the resolved INFRAPI_APP_* configuration of a service.
 type AppConfig struct {
 	AppLogLevel             log.Level
+	AppLogFormat            string
 	AppListenType           string
 	AppListenAddress        string
 	AppPlatform             string
@@ -164,6 +170,11 @@ func (v *Variables) GetAppConfig() (*AppConfig, error) {
 		return nil, err
 	}
 
+	appLogFormat, err := v.GetAppLogFormat()
+	if err != nil {
+		return nil, err
+	}
+
 	appListenType, err := v.GetAppListenType()
 	if err != nil {
 		return nil, err
@@ -217,6 +228,7 @@ func (v *Variables) GetAppConfig() (*AppConfig, error) {
 		AppLocation:             appLocation,
 		AppUrl:                  appUrl,
 		AppLogLevel:             appLogLevel,
+		AppLogFormat:            appLogFormat,
 		AppListenType:           appListenType,
 		AppListenAddress:        appListenAddress,
 		AppTrustedProxies:       appTrustedProxies,

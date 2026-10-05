@@ -15,12 +15,17 @@ import (
 // CORS, recovery, logging, request metrics, and four endpoints every InfraPI
 // service exposes without asking for them.
 //
+// Access logs and recovered panics go to gin.DefaultWriter, as gin's text
+// lines unless cfg.AppLogFormat is "json", which writes one JSON object per
+// line instead.
+//
 //	GET /-/metadata      the application identity
 //	GET /-/metrics       Prometheus exposition format
 //	GET /-/openapi.json  OpenAPI 3.1, generated from the route table
 //	GET /-/docs          Swagger UI reading that specification
 func NewServerGin(cfg *config.AppConfig) (*gin.Engine, error) {
-	app := gin.Default()
+	app := gin.New()
+	app.Use(logMiddlewares(cfg.AppLogFormat, gin.DefaultWriter)...)
 
 	if err := app.SetTrustedProxies(cfg.AppTrustedProxies); err != nil {
 		return nil, err

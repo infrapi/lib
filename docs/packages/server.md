@@ -22,7 +22,9 @@ if err := engine.Run(cfg.AppListenAddress); err != nil {
 - **Trusted proxies** from `AppTrustedProxies`. An invalid entry is returned as an error
   instead of being ignored, so a bad `INFRAPI_APP_TRUSTED_PROXIES` fails at startup.
 - **CORS** from the `AppCors*` fields. `AppCorsMaxAge` is read as hours.
-- **Recovery** and **logging** middleware, from `gin.Default()`.
+- **Recovery** and **access logging**, written to `gin.DefaultWriter`. Their format
+  follows `AppLogFormat` (`INFRAPI_APP_LOG_FORMAT`): gin's text lines by default, or
+  with `json` one JSON object per line, as below.
 - **Request metrics**, recorded for every route.
 - **Four endpoints**, with nothing to configure:
 
@@ -57,6 +59,56 @@ v1 := engine.Group("/api/v1")
 v1.GET("/widgets", listWidgets)
 ```
 
+
+## JSON logs
+
+With `INFRAPI_APP_LOG_FORMAT=json`, every request is one line:
+
+```json
+{"time":"2026-10-05T10:12:03.481Z","level":"info","msg":"request","method":"GET","path":"/users/42","route":"/users/:id","status":200,"latency_ms":1.204,"client_ip":"10.0.0.7","size":118,"user_agent":"curl/8.11.1","request_id":"5f0c…"}
+```
+
+- `time`, `level` and `msg` are the names logrus's `JSONFormatter` uses, so a
+  service that logs through logrus with that formatter writes lines a collector
+  parses the same way. `level` is `warning` for a 4xx and `error` for a 5xx.
+- `path` is the URL path without its query string; `route` is the route pattern,
+  empty when no route matched.
+- `request_id` is `X-Request-Id`, from the request or else from the response.
+- `errors` carries what handlers attached with `c.Error`, when they did.
+
+A recovered panic is one line too, its stack in a field, followed by the line of
+the request it ended with a 500:
+
+```json
+{"time":"…","level":"error","msg":"panic recovered","method":"GET","path":"/boom","panic":"kaboom","stack":"goroutine 7 [running]:\n…"}
+```
+
+### Fields of your own
+
+`server.LogField` adds a member to the line of the current request — what the
+service knows and the engine cannot:
+
+```go
+// in a gin handler
+server.LogField(c, "tenant", tenant)
+
+// in a net/http handler mounted with gin.WrapH, or its middleware
+server.LogField(r.Context(), "resource", map[string]string{"kind": "folder", "id": id})
+```
+
+```json
+{"time":"…","level":"info","msg":"request","method":"POST",…,"resource":{"id":"f1","kind":"folder"},"tenant":"acme"}
+```
+
+Your fields come after the engine's, in key order. The value is marshalled to
+JSON (one that cannot be is written as its `%v` text); setting a key again
+replaces it. The engine's own names (`time`, `level`, `msg`, `method`, `path`,
+`route`, `status`, `latency_ms`, `client_ip`, `size`, `user_agent`, `request_id`,
+`errors`) are refused, so nothing can hide what the engine saw. With text logs
+`LogField` does nothing.
+
+The engine leaves the global logrus logger alone: a service that wants its own
+lines in JSON sets `logrus.SetFormatter(&logrus.JSONFormatter{})` itself.
 ## Metrics
 
 Two collectors are recorded for every request, carrying the service FQDN in a `name`
