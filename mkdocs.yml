@@ -62,6 +62,7 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Packages:
+      - app: packages/app.md
       - cluster: packages/cluster.md
       - config: packages/config.md
       - errors: packages/errors.md
