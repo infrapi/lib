@@ -22,6 +22,7 @@ func engineLoggingTo(format string, out *bytes.Buffer) *gin.Engine {
 	app.Use(logMiddlewares(format, out)...)
 	app.GET("/users/:id", func(c *gin.Context) { c.String(http.StatusOK, "hello") })
 	app.GET("/boom", func(*gin.Context) { panic("kaboom") })
+	app.GET("/gone", func(*gin.Context) { panic(http.ErrAbortHandler) })
 	app.GET("/fields", func(c *gin.Context) {
 		LogField(c, "tenant", "acme")
 		LogField(c, "count", 3)
@@ -99,7 +100,18 @@ func TestJSONRecovery(t *testing.T) {
 	assert.Equal(t, "panic recovered", got[0]["msg"])
 	assert.Equal(t, "error", got[0]["level"])
 	assert.Equal(t, "kaboom", got[0]["panic"])
-	assert.Contains(t, got[0]["stack"], "logging_test.go")
+	// gin's format, starting where the panic was raised: the handler first,
+	// with its source line, and no frame of the recovery itself.
+	stack, _ := got[0]["stack"].(string)
+	first := strings.SplitN(stack, "\n", 3)
+	require.Len(t, first, 3)
+	assert.Regexp(t, `logging_test\.go:\d+ \(0x[0-9a-f]+\)$`, first[0])
+	assert.Equal(t, "\tengineLoggingTo.func2: app.GET(\"/boom\", func(*gin.Context) { panic(\"kaboom\") })", first[1])
+	// The recovery shows up only as a caller (its c.Next), never through its
+	// deferred function or panicStack.
+	assert.NotContains(t, stack, "panicStack")
+	assert.NotContains(t, stack, "gopanic")
+	assert.NotContains(t, stack, "runtime/debug")
 
 	assert.Equal(t, "request", got[1]["msg"])
 	assert.Equal(t, "error", got[1]["level"])
@@ -164,4 +176,33 @@ func TestLogFieldWithoutJSONLog(t *testing.T) {
 	var out bytes.Buffer
 	serve(engineLoggingTo("text", &out), "/fields", nil)
 	assert.NotContains(t, out.String(), "acme")
+}
+
+// A client that went away leaves a warning, no stack, and no 500 written to a
+// connection that is gone — as gin does.
+func TestJSONRecoveryBrokenConnection(t *testing.T) {
+	var out bytes.Buffer
+	serve(engineLoggingTo(LogFormatJSON, &out), "/gone", nil)
+
+	got := lines(t, &out)
+	require.Len(t, got, 2)
+	assert.Equal(t, "client connection broken", got[0]["msg"])
+	assert.Equal(t, "warning", got[0]["level"])
+	assert.Equal(t, http.ErrAbortHandler.Error(), got[0]["error"])
+	assert.NotContains(t, got[0], "stack")
+	assert.Contains(t, got[1]["errors"], http.ErrAbortHandler.Error())
+}
+
+// Without the source files, as in an image that ships only the binary, every
+// frame still names its function.
+func TestPanicStackWithoutSources(t *testing.T) {
+	stack := func() string { return panicStack(1) }()
+	assert.Contains(t, stack, "TestPanicStackWithoutSources")
+	for _, line := range strings.Split(strings.TrimSpace(stack), "\n") {
+		if strings.HasPrefix(line, "\t") {
+			assert.Regexp(t, `^\t\S+: `, line)
+		}
+	}
+	assert.Equal(t, "???", functionName(0))
+	assert.Nil(t, sourceLines("/nonexistent/file.go"))
 }

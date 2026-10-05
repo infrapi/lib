@@ -80,8 +80,21 @@ A recovered panic is one line too, its stack in a field, followed by the line of
 the request it ended with a 500:
 
 ```json
-{"time":"…","level":"error","msg":"panic recovered","method":"GET","path":"/boom","panic":"kaboom","stack":"goroutine 7 [running]:\n…"}
+{"time":"…","level":"error","msg":"panic recovered","method":"GET","path":"/boom","panic":"kaboom","stack":"/src/handler.go:42 (0x4f2a1c)\n\t(*Handler).Get: return h.store.Get(id)\n…"}
 ```
+
+The recovery is gin's, with JSON lines:
+
+- The stack has gin's text format and starts where the panic was raised: one
+  `file:line (0xpc)` line and one `<tab>function: source line` line per frame.
+  The source line is `???` when the file is not there, as in an image that ships
+  only the binary; gin drops the function line in that case, this keeps it.
+- A client that closed the connection (`EPIPE`, `ECONNRESET`,
+  `http.ErrAbortHandler`) is not a panic: one `warning` line,
+  `"msg":"client connection broken"` with the `error`, no stack, and nothing
+  written back to a connection that is gone.
+- gin's text recovery dumps the request in debug mode, every header but
+  `Authorization` — an `apikey` header included. The JSON lines never do.
 
 ### Fields of your own
 
@@ -104,7 +117,7 @@ Your fields come after the engine's, in key order. The value is marshalled to
 JSON (one that cannot be is written as its `%v` text); setting a key again
 replaces it. The engine's own names (`time`, `level`, `msg`, `method`, `path`,
 `route`, `status`, `latency_ms`, `client_ip`, `size`, `user_agent`, `request_id`,
-`errors`) are refused, so nothing can hide what the engine saw. With text logs
+`errors`, `error`, `panic`, `stack`) are refused, so nothing can hide what the engine saw. With text logs
 `LogField` does nothing.
 
 The engine leaves the global logrus logger alone: a service that wants its own

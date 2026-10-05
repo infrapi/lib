@@ -3,12 +3,16 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"runtime/debug"
+	"os"
+	"runtime"
 	"sort"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,6 +39,16 @@ type accessEntry struct {
 	UserAgent string  `json:"user_agent,omitempty"`
 	RequestID string  `json:"request_id,omitempty"`
 	Errors    string  `json:"errors,omitempty"`
+}
+
+// brokenEntry is the line a connection the client closed leaves.
+type brokenEntry struct {
+	Time   string `json:"time"`
+	Level  string `json:"level"`
+	Msg    string `json:"msg"`
+	Method string `json:"method"`
+	Path   string `json:"path"`
+	Error  string `json:"error"`
 }
 
 // panicEntry is the line a recovered panic leaves, its stack in one field
@@ -78,7 +92,7 @@ type logFields struct {
 var reservedFields = map[string]bool{
 	"time": true, "level": true, "msg": true, "method": true, "path": true, "route": true,
 	"status": true, "latency_ms": true, "client_ip": true, "size": true, "user_agent": true,
-	"request_id": true, "errors": true, "panic": true, "stack": true,
+	"request_id": true, "errors": true, "panic": true, "stack": true, "error": true,
 }
 
 // LogField adds key to the JSON access log line of the request ctx belongs to:
@@ -89,7 +103,7 @@ var reservedFields = map[string]bool{
 //
 // It does nothing when the request is not logged as JSON, and drops the names
 // the engine writes itself (time, level, msg, method, path, route, status,
-// latency_ms, client_ip, size, user_agent, request_id, errors).
+// latency_ms, client_ip, size, user_agent, request_id, errors, error, panic, stack).
 func LogField(ctx context.Context, key string, value any) {
 	if gc, ok := ctx.(*gin.Context); ok {
 		ctx = gc.Request.Context()
@@ -181,21 +195,117 @@ func jsonAccessLog(out io.Writer) gin.HandlerFunc {
 	}
 }
 
+// jsonRecovery is gin's recovery with its lines in JSON: the same broken
+// connection test, the same 500, the same stack. Only the request dump gin
+// adds in debug mode is left out — it prints every header but Authorization,
+// an apikey header included.
 func jsonRecovery(out io.Writer) gin.HandlerFunc {
-	// gin still tells a broken connection from a panic, and does not call the
-	// handler for the former: there is nobody left to answer.
-	return gin.CustomRecoveryWithWriter(io.Discard, func(c *gin.Context, recovered any) {
-		writeLine(out, panicEntry{
-			Time:   time.Now().Format(time.RFC3339Nano),
-			Level:  "error",
-			Msg:    "panic recovered",
-			Method: c.Request.Method,
-			Path:   c.Request.URL.Path,
-			Panic:  fmt.Sprint(recovered),
-			Stack:  string(debug.Stack()),
-		}, nil)
-		c.AbortWithStatus(http.StatusInternalServerError)
-	})
+	return func(c *gin.Context) {
+		defer func() {
+			recovered := recover()
+			if recovered == nil {
+				return
+			}
+
+			// A client that went away is not a bug: nobody is left to answer,
+			// and a stack would only be noise.
+			if err, ok := recovered.(error); ok && brokenConnection(err) {
+				writeLine(out, brokenEntry{
+					Time:   time.Now().Format(time.RFC3339Nano),
+					Level:  "warning",
+					Msg:    "client connection broken",
+					Method: c.Request.Method,
+					Path:   c.Request.URL.Path,
+					Error:  err.Error(),
+				}, nil)
+				_ = c.Error(err)
+				c.Abort()
+				return
+			}
+
+			writeLine(out, panicEntry{
+				Time:   time.Now().Format(time.RFC3339Nano),
+				Level:  "error",
+				Msg:    "panic recovered",
+				Method: c.Request.Method,
+				Path:   c.Request.URL.Path,
+				Panic:  fmt.Sprint(recovered),
+				Stack:  panicStack(stackSkip),
+			}, nil)
+			c.AbortWithStatus(http.StatusInternalServerError)
+		}()
+		c.Next()
+	}
+}
+
+// brokenConnection is gin's test for a connection the client closed.
+func brokenConnection(err error) bool {
+	return errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, http.ErrAbortHandler)
+}
+
+// stackSkip starts the stack where the panic was raised: past panicStack
+// itself, the deferred function calling it, and the runtime's panic.
+const stackSkip = 3
+
+// panicStack is the stack in gin's own text format, one frame per pair of
+// lines:
+//
+//	/src/handler.go:42 (0x4f2a1c)
+//		(*Handler).Get: return h.store.Get(id)
+//
+// The source line is read from the file when the file is there; when it is
+// not, as in an image that ships only the binary, it is "???". gin skips the
+// function line entirely in that case, which is where it would matter most.
+func panicStack(skip int) string {
+	var (
+		buf      strings.Builder
+		lastFile string
+		lines    []string
+	)
+	for i := skip; ; i++ {
+		pc, file, line, ok := runtime.Caller(i)
+		if !ok {
+			break
+		}
+		fmt.Fprintf(&buf, "%s:%d (0x%x)\n", file, line, pc)
+		if file != lastFile {
+			lines = sourceLines(file)
+			lastFile = file
+		}
+		src := "???"
+		if line > 0 && line <= len(lines) {
+			src = strings.TrimSpace(lines[line-1])
+		}
+		fmt.Fprintf(&buf, "\t%s: %s\n", functionName(pc), src)
+	}
+	return buf.String()
+}
+
+// sourceLines reads a source file for the stack, or nothing when it cannot.
+func sourceLines(file string) []string {
+	b, err := os.ReadFile(file) //nolint:gosec // a path from the binary's own debug information
+	if err != nil {
+		return nil
+	}
+	return strings.Split(string(b), "\n")
+}
+
+// functionName is gin's: the name without its package path, so that
+// github.com/x/y.(*T).M reads (*T).M — the file already says where it is.
+func functionName(pc uintptr) string {
+	fn := runtime.FuncForPC(pc)
+	if fn == nil {
+		return "???"
+	}
+	name := fn.Name()
+	if slash := strings.LastIndexByte(name, '/'); slash >= 0 {
+		name = name[slash+1:]
+	}
+	if period := strings.IndexByte(name, '.'); period >= 0 {
+		name = name[period+1:]
+	}
+	return strings.ReplaceAll(name, "·", ".")
 }
 
 func (f *logFields) snapshot() map[string]any {
