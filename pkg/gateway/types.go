@@ -29,6 +29,135 @@ type Upstream struct {
 	Retries int `json:"retries,omitempty"`
 	// Labels are key/value tags, used for filtering in the dashboard and plugins.
 	Labels map[string]string `json:"labels,omitempty"`
+	// RetryTimeout bounds, in seconds, how long retries may go on; 0 disables
+	// the bound. Nil leaves APISIX's default.
+	RetryTimeout *float64 `json:"retry_timeout,omitempty"`
+	// Timeout overrides the connect, send and read timeouts to the nodes.
+	Timeout *Timeout `json:"timeout,omitempty"`
+	// KeepalivePool sizes the pool of connections kept open to the nodes.
+	KeepalivePool *KeepalivePool `json:"keepalive_pool,omitempty"`
+	// Checks are the health checks that take a node out of rotation, and put
+	// it back, without waiting for its Upstream to be rewritten.
+	Checks *HealthChecks `json:"checks,omitempty"`
+}
+
+// Timeout is the time, in seconds, APISIX allows for each step of a request to
+// a node. APISIX requires all three, each greater than zero.
+type Timeout struct {
+	Connect float64 `json:"connect"`
+	Send    float64 `json:"send"`
+	Read    float64 `json:"read"`
+}
+
+// KeepalivePool sizes the connections kept open to an upstream's nodes. A zero
+// field leaves APISIX's default: 320 connections, 60 seconds idle, 1000
+// requests each.
+type KeepalivePool struct {
+	// Size is how many idle connections are kept.
+	Size int `json:"size,omitempty"`
+	// IdleTimeout, in seconds, closes a connection idle for that long; 0 keeps
+	// it open. Nil leaves APISIX's default.
+	IdleTimeout *float64 `json:"idle_timeout,omitempty"`
+	// Requests is how many requests a connection serves before it is closed.
+	Requests int `json:"requests,omitempty"`
+}
+
+// HealthChecks are an upstream's active and passive checks. APISIX requires an
+// active check whenever a passive one is set: a node a passive check took out
+// only comes back through the active one.
+type HealthChecks struct {
+	Active  *ActiveCheck  `json:"active,omitempty"`
+	Passive *PassiveCheck `json:"passive,omitempty"`
+}
+
+// ActiveCheck probes every node on its own schedule. A zero field leaves
+// APISIX's default.
+type ActiveCheck struct {
+	// Type is http (the default), https or tcp.
+	Type string `json:"type,omitempty"`
+	// Timeout, in seconds, of one probe. Default 1.
+	Timeout float64 `json:"timeout,omitempty"`
+	// Concurrency is how many nodes are probed at once. Default 10.
+	Concurrency int `json:"concurrency,omitempty"`
+	// Host is the Host header of an http or https probe.
+	Host string `json:"host,omitempty"`
+	// Port probes another port than the one traffic goes to.
+	Port int `json:"port,omitempty"`
+	// HTTPMethod of the probe. Default GET.
+	HTTPMethod string `json:"http_method,omitempty"`
+	// HTTPPath of the probe. Default /.
+	HTTPPath string `json:"http_path,omitempty"`
+	// HTTPReqBody is the body the probe sends.
+	HTTPReqBody string `json:"http_req_body,omitempty"`
+	// HTTPSVerifyCertificate, when false, accepts any certificate on an https
+	// probe. Nil leaves APISIX's default, true.
+	HTTPSVerifyCertificate *bool `json:"https_verify_certificate,omitempty"`
+	// ReqHeaders are extra probe headers, each "Name: value".
+	ReqHeaders []string `json:"req_headers,omitempty"`
+	// Healthy says when a node in rotation is probed and when one out of it
+	// comes back.
+	Healthy *ActiveHealthy `json:"healthy,omitempty"`
+	// Unhealthy says when a node out of rotation is probed and when one in it
+	// is taken out.
+	Unhealthy *ActiveUnhealthy `json:"unhealthy,omitempty"`
+}
+
+// ActiveHealthy is the active check's rule for a healthy node. A zero field
+// leaves APISIX's default.
+type ActiveHealthy struct {
+	// Interval, in seconds, between probes of a healthy node. Default 1.
+	Interval int `json:"interval,omitempty"`
+	// HTTPStatuses a probe counts as a success. Default 200 and 302.
+	HTTPStatuses []int `json:"http_statuses,omitempty"`
+	// Successes in a row that bring a node back. Default 2.
+	Successes int `json:"successes,omitempty"`
+}
+
+// ActiveUnhealthy is the active check's rule for an unhealthy node. A zero
+// field leaves APISIX's default.
+type ActiveUnhealthy struct {
+	// Interval, in seconds, between probes of an unhealthy node. Default 1.
+	Interval int `json:"interval,omitempty"`
+	// HTTPStatuses a probe counts as a failure. Default 429, 404, 500 to 505.
+	HTTPStatuses []int `json:"http_statuses,omitempty"`
+	// HTTPFailures in a row that take a node out. Default 5.
+	HTTPFailures int `json:"http_failures,omitempty"`
+	// TCPFailures in a row that take a node out. Default 2.
+	TCPFailures int `json:"tcp_failures,omitempty"`
+	// Timeouts in a row that take a node out. Default 3.
+	Timeouts int `json:"timeouts,omitempty"`
+}
+
+// PassiveCheck judges nodes by the traffic itself. Its counters accept 0,
+// which turns that criterion off, so they are pointers: nil leaves APISIX's
+// default.
+type PassiveCheck struct {
+	// Type is http (the default), https or tcp.
+	Type string `json:"type,omitempty"`
+	// Healthy says which answers count as a node doing well.
+	Healthy *PassiveHealthy `json:"healthy,omitempty"`
+	// Unhealthy says which answers count against a node.
+	Unhealthy *PassiveUnhealthy `json:"unhealthy,omitempty"`
+}
+
+// PassiveHealthy is the passive check's rule for a healthy node.
+type PassiveHealthy struct {
+	// HTTPStatuses counted as successes. Default every 2xx and 3xx.
+	HTTPStatuses []int `json:"http_statuses,omitempty"`
+	// Successes in a row that mark a node healthy. Default 5.
+	Successes *int `json:"successes,omitempty"`
+}
+
+// PassiveUnhealthy is the passive check's rule for an unhealthy node.
+type PassiveUnhealthy struct {
+	// HTTPStatuses counted as failures. Default 429, 500 and 503.
+	HTTPStatuses []int `json:"http_statuses,omitempty"`
+	// HTTPFailures in a row that take a node out. Default 5.
+	HTTPFailures *int `json:"http_failures,omitempty"`
+	// TCPFailures in a row that take a node out. Default 2.
+	TCPFailures *int `json:"tcp_failures,omitempty"`
+	// Timeouts in a row that take a node out. Default 7.
+	Timeouts *int `json:"timeouts,omitempty"`
 }
 
 // Route binds a request pattern to an Upstream or a Service, with plugins

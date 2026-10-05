@@ -284,7 +284,9 @@ func panicStack(skip int) string {
 
 // sourceLines reads a source file for the stack, or nothing when it cannot.
 func sourceLines(file string) []string {
-	b, err := os.ReadFile(file) //nolint:gosec // a path from the binary's own debug information
+	// The path comes from the binary's own debug information, never from a
+	// request, and the file is only read to quote one line of it.
+	b, err := os.ReadFile(file) // #nosec G304 -- path from runtime.Caller, not from input
 	if err != nil {
 		return nil
 	}

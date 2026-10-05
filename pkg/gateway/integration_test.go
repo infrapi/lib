@@ -73,15 +73,32 @@ func TestIntegration_RealAdminAPI(t *testing.T) {
 		_ = client.DeleteConsumer(ctx, id)
 	})
 
+	// Checks, timeouts and the keepalive pool too, so that APISIX's own schema
+	// validates the shapes this package sends.
+	zero := 0
 	upstream, err := client.NewUpstream(ctx, id, Upstream{
-		Type:  "roundrobin",
-		Nodes: []Node{{Host: "127.0.0.1", Port: 1980, Weight: 1}},
+		Type:          "roundrobin",
+		Nodes:         []Node{{Host: "127.0.0.1", Port: 1980, Weight: 1}},
+		Timeout:       &Timeout{Connect: 2, Send: 30, Read: 60},
+		KeepalivePool: &KeepalivePool{Size: 16},
+		Checks: &HealthChecks{
+			Active: &ActiveCheck{
+				HTTPPath:  "/status",
+				Healthy:   &ActiveHealthy{Interval: 2, Successes: 1},
+				Unhealthy: &ActiveUnhealthy{Interval: 1, HTTPFailures: 2},
+			},
+			Passive: &PassiveCheck{Unhealthy: &PassiveUnhealthy{HTTPStatuses: []int{502, 503}, Timeouts: &zero}},
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewUpstream: %v", err)
 	}
 	if upstream.Nodes[0].Host != "127.0.0.1" {
 		t.Fatalf("NewUpstream: unexpected nodes %+v", upstream.Nodes)
+	}
+	if upstream.Checks == nil || upstream.Checks.Active == nil || upstream.Checks.Active.HTTPPath != "/status" ||
+		upstream.Timeout == nil || upstream.Timeout.Read != 60 {
+		t.Fatalf("NewUpstream: checks or timeout lost: %+v", upstream)
 	}
 
 	service, err := client.NewService(ctx, id, Service{
