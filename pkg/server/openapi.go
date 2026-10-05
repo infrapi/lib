@@ -13,12 +13,17 @@ import (
 )
 
 const (
-	// OpenAPIPath is where the engine serves the generated specification.
+	// OpenAPIPath is where the engine serves the generated specification, when
+	// the service supplies no document of its own with WithOpenAPI.
 	OpenAPIPath = "/-/openapi.json"
 
 	// DocsPath is where the engine serves the Swagger UI reading that
-	// specification.
+	// specification, or the ones supplied with WithOpenAPI.
 	DocsPath = "/-/docs"
+
+	// OpenAPIPrefix is where the documents supplied with WithOpenAPI are
+	// served, each at its own path below it.
+	OpenAPIPrefix = "/-/openapi/"
 
 	// swaggerUI is the pinned Swagger UI release the docs page loads.
 	swaggerUI = "5.32.14"
@@ -138,7 +143,8 @@ func openAPISpec(app *gin.Engine, cfg *config.AppConfig) *openAPI {
 	return spec
 }
 
-// docsPage renders the Swagger UI page once, with the spec URL baked in.
+// docsPage renders the Swagger UI page once: on the generated specification,
+// or on the documents the service supplied, offered in a selector.
 var docsPage = template.Must(template.New("docs").Parse(
 	`<!doctype html>
 <html lang="en">
@@ -151,37 +157,68 @@ var docsPage = template.Must(template.New("docs").Parse(
 <body>
 <div id="swagger-ui"></div>
 <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@{{.SwaggerUI}}/swagger-ui-bundle.js" crossorigin></script>
+{{- if .URLs}}
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@{{.SwaggerUI}}/swagger-ui-standalone-preset.js" crossorigin></script>
+{{- end}}
 <script>
 window.onload = () => {
+{{- if .URLs}}
+  SwaggerUIBundle({urls: {{.URLs}}, dom_id: "#swagger-ui", deepLinking: true,
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset], layout: "StandaloneLayout"});
+{{- else}}
   SwaggerUIBundle({url: {{.SpecPath}}, dom_id: "#swagger-ui", deepLinking: true});
+{{- end}}
 };
 </script>
 </body>
 </html>
 `))
 
-// newDocsPage renders the documentation page served at DocsPath.
-func newDocsPage(cfg *config.AppConfig) []byte {
-	var page bytes.Buffer
+// docsURL is one entry of Swagger UI's selector.
+type docsURL struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
 
+// newDocsPage renders the documentation page served at DocsPath.
+func newDocsPage(cfg *config.AppConfig, specs []OpenAPISpec) []byte {
+	var urls []docsURL
+	for _, s := range specs {
+		urls = append(urls, docsURL{Name: s.Name, URL: OpenAPIPrefix + s.Path})
+	}
+
+	var page bytes.Buffer
 	// the template is a constant and its data has every key it names, so
 	// execution has nothing left to fail on
-	_ = docsPage.Execute(&page, map[string]string{
+	_ = docsPage.Execute(&page, map[string]any{
 		"Title":     cfg.AppName,
 		"SpecPath":  OpenAPIPath,
 		"SwaggerUI": swaggerUI,
+		"URLs":      urls,
 	})
 
 	return page.Bytes()
 }
 
-// openAPIHandlers registers the specification and the documentation page.
-func openAPIHandlers(app *gin.Engine, cfg *config.AppConfig) {
-	page := newDocsPage(cfg)
+// openAPIHandlers registers the specifications and the documentation page.
+func openAPIHandlers(app *gin.Engine, cfg *config.AppConfig, specs []OpenAPISpec) {
+	page := newDocsPage(cfg, specs)
 
-	app.GET(OpenAPIPath, func(c *gin.Context) {
-		c.JSON(http.StatusOK, openAPISpec(app, cfg))
-	})
+	// The generated specification only stands in for a contract the service
+	// does not have: next to one, it would be a second, poorer description of
+	// the same API.
+	if len(specs) == 0 {
+		app.GET(OpenAPIPath, func(c *gin.Context) {
+			c.JSON(http.StatusOK, openAPISpec(app, cfg))
+		})
+	}
+
+	for _, s := range specs {
+		content, contentType := s.Content, specContentType(s.Path)
+		app.GET(OpenAPIPrefix+s.Path, func(c *gin.Context) {
+			c.Data(http.StatusOK, contentType, content)
+		})
+	}
 
 	app.GET(DocsPath, func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", page)
