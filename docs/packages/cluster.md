@@ -161,6 +161,29 @@ dskit also implements a `consul` store and a mirroring `multi` store for
 migrating between two backends. Neither is wired up here; both would cost one
 widened validator and a key block.
 
+!!! danger "The gossip store is memory, and only memory"
+
+    There is no persistence in it at all — no snapshot, no file, nothing on
+    disk. The cluster's own memory *is* the storage, replicated across whichever
+    replicas happen to be alive.
+
+    A replica that restarts recovers by pulling the state from a live peer, so a
+    rolling restart is safe. **Stopping every replica at once loses everything**:
+    a bad rollout that restarts them together, a region-wide outage, a scale to
+    zero. Nothing warns you, and nothing brings it back.
+
+    So the gossip store holds coordination state that can be rebuilt — who is a
+    member, who leads, a view derived from somewhere else. It is not a system of
+    record. If the data has to survive the cluster, either use `etcd`, which
+    persists it, or treat the gossip store as a cache each replica repopulates
+    at startup from the real source of truth.
+
+| Store | Survives a full cluster stop? |
+|-------|-------------------------------|
+| `memberlist` | **No.** Memory only, replicated across live replicas. |
+| `etcd` | Yes, to etcd's disk. |
+| `inmemory` | No, and not even a process restart. |
+
 !!! info "The gossip transport is TCP only"
 
     dskit's memberlist transport uses TCP for both its packet and its stream

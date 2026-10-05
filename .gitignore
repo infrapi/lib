@@ -36,6 +36,7 @@ examples/cluster/shutdown/shutdown
 examples/cluster/node/node
 examples/cluster/zones/zones
 examples/cluster/state-proto/state-proto
+examples/cluster/kvapi/kvapi
 coverage*.html
 legacy/
 cover*.out

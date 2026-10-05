@@ -19,6 +19,7 @@ start the cluster — everything specific to a case stays in its `main.go`.
 | [`gated/`](gated) | `Role.Run`: a periodic action gated on the predicate | nothing |
 | [`state/`](state) | Sharing application state through the store | nothing |
 | [`state-proto/`](state-proto) | **A value of your own: protobuf plus a CRDT merge** | an ephemeral TCP port |
+| [`kvapi/`](kvapi) | **A CRUD API over the store, gossip or etcd** | `127.0.0.1-2`, TCP 8085; etcd needs podman |
 | [`pages/`](pages) | The status pages on the server package engine | a free TCP port |
 | [`shutdown/`](shutdown) | What `Stop` does, and what queries say afterwards | nothing |
 | [`node/`](node) | **A real two-node cluster over gossip** | `127.0.0.1-2`, TCP 7946, 8080 |
@@ -196,8 +197,10 @@ timestamp, or a message already in flight would outrank it and bring the entry
 back.
 
 Tombstones are hidden from the application: the store calls `RemoveTombstones`
-with a zero limit on every read. They are expired for good once
-`INFRAPI_CLUSTER_OBSOLETE_ENTRIES_TIMEOUT` has passed.
+with a zero limit on every read. They keep propagating for
+`INFRAPI_CLUSTER_TOMBSTONE_TIMEOUT` so that a replica which was down still
+learns of the deletion, and only then may be dropped — which makes that timeout
+the longest a replica can be absent and come back converged.
 
 ### Looking at the key as the store holds it
 
@@ -248,6 +251,143 @@ limit on the way out.
 encode and decode with the codec and rely on a plain compare-and-swap, so a
 bare protobuf message is enough there — at the cost of code that will not move
 to the gossip store later.
+
+## kvapi: a CRUD API, and the backend swapped under it
+
+```bash
+cd kvapi
+
+INFRAPI_CONFIG_DOTENV_FILE=memberlist-1.env  go run .
+INFRAPI_CONFIG_DOTENV_FILE=memberlist-2.env  go run .       # second terminal
+
+podman compose up -d                                        # etcd on :2379
+INFRAPI_CONFIG_DOTENV_FILE=etcd-1.env        go run .
+INFRAPI_CONFIG_DOTENV_FILE=etcd-2.env        go run .       # second terminal
+```
+
+Four routes over one key-value key, and the program never learns which store it
+is on:
+
+```bash
+curl -X PUT    :8085/api/v1/items/one -d '{"value":"hello"}'
+curl           :8085/api/v1/items
+curl           :8085/api/v1/items/one
+curl -X DELETE :8085/api/v1/items/one
+```
+
+The four dotenv files differ in exactly one block. That is the whole exercise:
+the code above is the same for both backends.
+
+| Dotenv | Store | How the replicas share |
+|--------|-------|------------------------|
+| `memberlist-1.env`, `memberlist-2.env` | gossip between the replicas | they talk to each other, no external store |
+| `etcd-1.env`, `etcd-2.env` | etcd on `:2379` | they never talk to each other, both talk to etcd |
+
+There is deliberately **no in-memory variant** here. That store is a map inside
+one process: a second replica gets its own, nothing is shared, and an API
+demonstrating a cluster over it would demonstrate nothing. It earns its place in
+tests and in the single-process examples above, not here.
+
+Verified with two gossip replicas: a write on `node-1` and a write on `node-2`
+both show up on both, and a delete issued on one disappears from the other.
+
+```text
+127.0.0.1:8085  node-1 memberlist [('from-one','node-1'), ('from-two','node-2')]
+127.0.0.2:8085  node-2 memberlist [('from-one','node-1'), ('from-two','node-2')]
+```
+
+### With gossip, this API has no durable storage
+
+Worth being blunt about, because the example makes it look like a database. The
+gossip store keeps everything in the replicas' memory and writes nothing to
+disk. Restart one replica and it pulls the collection back from a live peer;
+**stop them all at once and the collection is gone.**
+
+So an API like this one is honest only when the data is derived or disposable. If
+the items matter, either run it on `etcd-*.env`, where etcd persists them to its
+volume, or keep a real source of truth elsewhere and treat the gossip store as a
+shared cache each replica repopulates on startup. That second shape is often the
+right one: a database holds the records, the cluster holds the fast shared view
+of them.
+
+The two etcd dotenv files are in this directory for exactly that reason — it is
+the same four routes either way, which is what makes the choice a deployment
+decision rather than a rewrite.
+
+### Three things the API had to get right
+
+**One key, not one per item.** The whole collection lives under
+`collectors/items`. One key per item is perfectly possible — `collectors/items/one`,
+`collectors/items/two` — and it is the better layout for some shapes of data.
+It is the wrong one here, for two reasons.
+
+The first is cost. In the gossip store every key carries a broadcast worker and
+a slot in the state each replica propagates on every push/pull. A bounded set of
+keys is fine; an unbounded one, or one with short-lived keys, is how this becomes
+an out-of-memory incident.
+
+The second is how a watcher learns about a deletion, and it needs care.
+
+| | One key, map inside | One key per item |
+|---|---|---|
+| Gossip cost | one worker, one state slot | one of each **per item** |
+| Writes to different items | contend on the same key, and retry | never contend |
+| Listing | decode the map | `List("items/")` |
+| Watching one item | impossible, you get the whole collection | `WatchKey` on it |
+| Discovering a new item | `WatchKey` fires, the map grew | `WatchPrefix` fires |
+| Per-item size on the gossip page | no | yes |
+| `Delete` on one item | no, it is a `CAS` on the map | yes |
+
+### Deleting, and the one thing to get right
+
+`WatchPrefix` is the odd one out: dskit skips its callback when the value comes
+back nil, which is exactly what a key whose whole value was deleted gives. So a
+replica watching `items/` by prefix is told about every creation and every
+update, and **never** about a deletion.
+
+`WatchKey` has no such check — it calls back with a nil value, so a per-key
+watcher does learn. But you can only watch a key you already know about, and the
+only way to discover new ones is the prefix watch.
+
+The way out is not to delete at all: **make the deletion an update**, carrying a
+`deleted` flag in the value. The value is then never nil, so `WatchPrefix`
+notifies it like any other change, every replica converges on "this is gone",
+and reclaiming the space is a local decision each node makes later.
+
+That is what `items.go` does, and it is why the one-key layout works here too:
+a deletion is a tombstone inside the map rather than an entry removed from it.
+It is also what makes the per-key layout viable — with a soft delete there is no
+notification gap left, and the choice comes back to cost against contention.
+
+So the rule is in two parts. **Soft-delete either way**, because a hard delete is
+either unnotified or, on gossip, re-addable by a lagging peer. And then
+**dedicated keys when the cardinality is bounded and known** — one per role, one
+per data centre, one per tenant from a fixed list — against **one key holding a
+map when items are many, dynamic or short-lived**, which is what a CRUD API has.
+
+**The value is a CRDT**, because the gossip store merges concurrent copies with
+nobody arbitrating. `items.go` implements last-write-wins per item and
+`items_test.go` checks idempotence, commutativity and associativity directly.
+Two replicas writing the same id at once resolve by timestamp and one write is
+lost — the price of this merge rule, not a flaw in it. ../state-proto has the
+long explanation.
+
+**A delete is a tombstone**, not a removal, or a replica that has not heard yet
+would gossip the item back. The API never shows them: the store calls
+`RemoveTombstones` with a zero limit on every read. The deletion is real, but it
+becomes permanent in stages — hidden from the API at once, still gossiped for
+`INFRAPI_CLUSTER_TOMBSTONE_TIMEOUT` (`5m`) so an absent replica still learns of
+it, and only then droppable. That timeout is therefore also the longest a
+replica can be away and come back converged; the package page has the full
+lifecycle.
+
+### Deleting something that is already gone
+
+`DELETE` on a missing item answers `404`, and getting there was not obvious: a
+compare-and-swap that changes nothing can come back as success or as an error
+depending on the store. The handler tracks whether there was anything to delete
+and uses that rather than the error, which is the only answer that holds for all
+three backends.
 
 ## pages: the status pages
 
