@@ -13,11 +13,14 @@ import (
 	"sync"
 	"time"
 
-	infragateway "github.com/infrapi/lib/pkg/gateway"
 	infraerrors "github.com/infrapi/lib/pkg/errors"
+	infragateway "github.com/infrapi/lib/pkg/gateway"
 )
 
-const apiKey = "edd1c9f034335f136f87ad84b625c8f1"
+// apiKey is APISIX's documented default admin key, which is also what
+// conf/apisix.yaml hands to the local stack this example talks to. A published
+// default rather than a credential, hence the annotation.
+const apiKey = "edd1c9f034335f136f87ad84b625c8f1" // #nosec G101 -- APISIX public default, see conf/apisix.yaml
 
 func main() {
 	fmt.Println("=== InfraPi Gateway Package Examples ===")
@@ -62,10 +65,10 @@ func example1(ctx context.Context, client *infragateway.Client) {
 	}
 
 	route, err := client.NewRoute(ctx, "1", infragateway.Route{
-		Name:    "hello",
-		URI:     "/hello",
-		Methods: []string{"GET"},
-		Status:  1,
+		Name:     "hello",
+		URI:      "/hello",
+		Methods:  []string{"GET"},
+		Status:   1,
 		Upstream: upstream, // *Upstream, plugs straight in
 	})
 	if err != nil {
