@@ -81,6 +81,41 @@ Every operation returns the plain domain struct - `*Upstream`, `*Route`, `*Servi
 above. `CreateUpstream`/`CreateRoute`/`CreateService` additionally return the
 APISIX-generated id, since there is nowhere else to get it once you let APISIX choose.
 
+## Health checks and timeouts
+
+An `Upstream` carries APISIX's own health checks, timeouts and keepalive pool, typed after
+its schema (`apisix/schema_def.lua`):
+
+```go
+upstream, err := client.NewUpstream(ctx, "api", infragateway.Upstream{
+	Type:    "roundrobin",
+	Nodes:   nodes,
+	Timeout: &infragateway.Timeout{Connect: 2, Send: 30, Read: 120},
+	Checks: &infragateway.HealthChecks{
+		Active: &infragateway.ActiveCheck{
+			HTTPPath:  "/readyz",
+			Healthy:   &infragateway.ActiveHealthy{Interval: 2, Successes: 1},
+			Unhealthy: &infragateway.ActiveUnhealthy{Interval: 1, HTTPFailures: 2},
+		},
+	},
+})
+```
+
+| Field | APISIX member | Notes |
+|-------|---------------|-------|
+| `Checks` | `checks` | `Active` probes nodes on a schedule; `Passive` judges them by live traffic. APISIX requires `Active` whenever `Passive` is set. |
+| `Timeout` | `timeout` | `Connect`, `Send` and `Read` in seconds; APISIX requires all three. |
+| `KeepalivePool` | `keepalive_pool` | `Size`, `IdleTimeout`, `Requests`. |
+| `RetryTimeout` | `retry_timeout` | Seconds; `0` removes the bound. |
+
+A zero field is left out, so APISIX applies its default (each field's godoc gives it). Where
+APISIX gives `0` a meaning of its own - the passive counters, `0` turning that criterion
+off; `RetryTimeout`; `KeepalivePool.IdleTimeout` - the field is a pointer: nil leaves the
+default, a pointer to `0` sends `0`.
+
+`Retries` predates these and is a plain `int`: `0` is left out like any zero, so an upstream
+cannot ask for no retries through it.
+
 ## Errors
 
 Every error this package returns is an [`*errors.Error`](errors.md), the same RFC 9457

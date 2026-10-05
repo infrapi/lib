@@ -491,6 +491,70 @@ func TestClient_Upstreams_Consumers(t *testing.T) {
 	}
 }
 
+// The health checks, timeouts and keepalive pool go out under APISIX's own
+// names, a zero passive counter included, and come back as they went.
+func TestClient_Upstream_ChecksAndTimeouts(t *testing.T) {
+	addr, admin := startFakeAdmin(t, "secret")
+	client := newTestClient(t, addr, "secret")
+	ctx := context.Background()
+
+	zero, idle, retry := 0, 30.0, 0.0
+	want := Upstream{
+		Type:          "roundrobin",
+		Nodes:         []Node{{Host: "10.0.0.1", Port: 8080, Weight: 1}},
+		RetryTimeout:  &retry,
+		Timeout:       &Timeout{Connect: 2, Send: 30, Read: 120},
+		KeepalivePool: &KeepalivePool{Size: 64, IdleTimeout: &idle},
+		Checks: &HealthChecks{
+			Active: &ActiveCheck{
+				HTTPPath:  "/readyz",
+				Healthy:   &ActiveHealthy{Interval: 2, Successes: 1},
+				Unhealthy: &ActiveUnhealthy{Interval: 1, HTTPFailures: 2, HTTPStatuses: []int{503}},
+			},
+			Passive: &PassiveCheck{
+				Unhealthy: &PassiveUnhealthy{HTTPStatuses: []int{502}, Timeouts: &zero},
+			},
+		},
+	}
+
+	got, err := client.NewUpstream(ctx, "health", want)
+	if err != nil {
+		t.Fatalf("NewUpstream: %v", err)
+	}
+	gotJSON, _ := json.Marshal(got)
+	wantJSON, _ := json.Marshal(want)
+	if string(gotJSON) != string(wantJSON) {
+		t.Fatalf("round trip:\n got %s\nwant %s", gotJSON, wantJSON)
+	}
+
+	admin.mu.Lock()
+	stored := string(admin.store["upstreams"]["health"])
+	admin.mu.Unlock()
+	for _, member := range []string{
+		`"retry_timeout":0`,
+		`"timeout":{"connect":2,"send":30,"read":120}`,
+		`"keepalive_pool":{"size":64,"idle_timeout":30}`,
+		`"active":{"http_path":"/readyz","healthy":{"interval":2,"successes":1},` +
+			`"unhealthy":{"interval":1,"http_statuses":[503],"http_failures":2}}`,
+		`"passive":{"unhealthy":{"http_statuses":[502],"timeouts":0}}`,
+	} {
+		if !strings.Contains(stored, member) {
+			t.Errorf("sent %s\nmissing %s", stored, member)
+		}
+	}
+}
+
+// An upstream that sets none of them sends none of them: APISIX keeps its own
+// defaults.
+func TestClient_Upstream_NoChecks(t *testing.T) {
+	b, _ := json.Marshal(Upstream{Type: "roundrobin"})
+	for _, member := range []string{"checks", "timeout", "keepalive_pool", "retry_timeout"} {
+		if strings.Contains(string(b), member) {
+			t.Errorf("%s sent unasked: %s", member, b)
+		}
+	}
+}
+
 func TestClient_NotFound(t *testing.T) {
 	addr, _ := startFakeAdmin(t, "secret")
 	client := newTestClient(t, addr, "secret")
