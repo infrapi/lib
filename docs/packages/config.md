@@ -85,6 +85,7 @@ cfg, err := vars.GetAppConfig()
 type AppConfig struct {
 	AppName                 string
 	AppLogLevel             logrus.Level
+	AppLogFormat            string
 	AppListenType           string
 	AppListenAddress        string
 	AppPlatform             string
@@ -114,6 +115,7 @@ too when only one value is needed.
 |-----|---------|-----------|
 | `INFRAPI_APP_NAME` | - | `required` |
 | `INFRAPI_APP_LOG_LEVEL` | `info` | `oneof=trace debug info error` |
+| `INFRAPI_APP_LOG_FORMAT` | `text` | `oneof=text json` |
 | `INFRAPI_APP_LISTEN_TYPE` | `tcp` | `oneof=tcp systemd` |
 | `INFRAPI_APP_LISTEN_ADDRESS` | `127.0.0.1:8080` | `hostname_port` |
 | `INFRAPI_APP_FQDN` | `os.Hostname()` | `fqdn` |

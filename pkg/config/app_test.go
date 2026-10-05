@@ -39,6 +39,47 @@ func TestGetAppLogLevel_error(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// log format
+
+func TestGetAppLogFormat_assign(t *testing.T) {
+	c := &Variables{
+		Values: map[string]string{
+			"INFRAPI_APP_LOG_FORMAT": "json",
+		},
+		Path:          ".env",
+		DefaultConfig: NewDefaultConfig(),
+	}
+
+	v, err := c.GetAppLogFormat()
+	require.NoError(t, err)
+	assert.Equal(t, "json", v)
+}
+
+func TestGetAppLogFormat_default(t *testing.T) {
+	c := &Variables{
+		Values:        map[string]string{},
+		Path:          ".env",
+		DefaultConfig: NewDefaultConfig(),
+	}
+
+	v, err := c.GetAppLogFormat()
+	require.NoError(t, err)
+	assert.Equal(t, "text", v)
+}
+
+func TestGetAppLogFormat_error(t *testing.T) {
+	c := &Variables{
+		Values: map[string]string{
+			"INFRAPI_APP_LOG_FORMAT": "xml",
+		},
+		Path:          ".env",
+		DefaultConfig: NewDefaultConfig(),
+	}
+
+	_, err := c.GetAppLogFormat()
+	assert.Error(t, err)
+}
+
 // listen type
 
 func TestGetAppListenType_assign(t *testing.T) {

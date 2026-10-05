@@ -9,6 +9,7 @@ import (
 type DefaultConfig struct {
 	AppName                 *VariableOpts
 	AppLogLevel             *VariableOpts
+	AppLogFormat            *VariableOpts
 	AppListenType           *VariableOpts
 	AppListenAddress        *VariableOpts
 	AppPlatform             *VariableOpts
@@ -44,6 +45,11 @@ func NewDefaultConfig() *DefaultConfig {
 			Key:       "INFRAPI_APP_LOG_LEVEL",
 			Validator: "oneof=trace debug info error",
 			Default:   "info",
+		},
+		AppLogFormat: &VariableOpts{
+			Key:       "INFRAPI_APP_LOG_FORMAT",
+			Validator: "oneof=text json",
+			Default:   "text",
 		},
 		AppListenType: &VariableOpts{
 			Key:       "INFRAPI_APP_LISTEN_TYPE",
