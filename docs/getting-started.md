@@ -97,7 +97,7 @@ own, so that importing [cluster](packages/cluster.md) does not pull dskit into
 the root module, and there is one directory per use case rather than one program:
 
 ```bash
-cd examples/cluster/leader && go run .
+cd examples/cluster/roles && go run .
 ```
 
 `examples/cluster/README.md` lists them all. `examples/cluster/node` is the one

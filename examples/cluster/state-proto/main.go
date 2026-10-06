@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -152,7 +153,11 @@ func serve(ctx context.Context, c *cluster.Cluster, appConfig *config.AppConfig,
 		log.Fatalf("Listen: %v", err)
 	}
 	srv := &http.Server{Handler: engine, ReadHeaderTimeout: 5 * time.Second}
-	go func() { _ = srv.Serve(socket) }()
+	go func() {
+		if err := srv.Serve(socket); !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Serve: %v", err)
+		}
+	}()
 
 	// The key as the store holds it: the configured prefix, then ours.
 	escaped := url.QueryEscape(storedKey)
@@ -188,7 +193,9 @@ func serve(ctx context.Context, c *cluster.Cluster, appConfig *config.AppConfig,
 
 			shutCtx, shutCancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer shutCancel()
-			_ = srv.Shutdown(shutCtx)
+			if err := srv.Shutdown(shutCtx); err != nil {
+				log.Printf("Shutdown: %v", err)
+			}
 			return
 
 		case <-ctx.Done():

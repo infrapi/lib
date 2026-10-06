@@ -3,7 +3,7 @@
 One directory per use case, each runnable on its own:
 
 ```bash
-cd examples/cluster/leader && go run .
+cd examples/cluster/roles && go run .
 ```
 
 Every directory carries its own `app.env`, so reading one folder tells you
@@ -13,37 +13,22 @@ start the cluster — everything specific to a case stays in its `main.go`.
 
 | Directory | What it shows | Needs |
 |-----------|---------------|-------|
-| [`leader/`](leader) | Leader mode: of every replica that joined, exactly one acts | nothing |
-| [`broadcast/`](broadcast) | Broadcast mode: every healthy replica acts | nothing |
 | [`roles/`](roles) | Several roles in one process, a ring each | nothing |
 | [`gated/`](gated) | `Role.Run`: a periodic action gated on the predicate | nothing |
-| [`state/`](state) | Sharing application state through the store | nothing |
 | [`state-proto/`](state-proto) | **A value of your own: protobuf plus a CRDT merge** | an ephemeral TCP port |
 | [`kvapi/`](kvapi) | **A CRUD API over the store, gossip or etcd** | `127.0.0.1-2`, TCP 8085; etcd needs podman |
-| [`pages/`](pages) | The status pages on the server package engine | a free TCP port |
-| [`shutdown/`](shutdown) | What `Stop` does, and what queries say afterwards | nothing |
 | [`node/`](node) | **A real two-node cluster over gossip** | `127.0.0.1-2`, TCP 7946, 8080 |
 | [`zones/`](zones) | **Two data centres, with bridges between them** | `127.0.0.1-4`, TCP 7946, 8080 |
 
-The first seven use the in-memory key-value store: no socket, no peer, finish in
-under a second. They show the API. `node/` and `zones/` are the ones that show
+`roles/` and `gated/` use the in-memory key-value store: no socket, no peer,
+finish in under a second. They show the API. `node/` and `zones/` are the ones that show
 the behaviour, because a single replica is trivially its own leader and tells
 you nothing about an election.
 
-## Start here: leader and broadcast
+## The two modes
 
 The package gives a service one predicate, `Role.ShouldRun()`, and the
 coordination mode decides what it means.
-
-```bash
-cd leader && go run .
-```
-
-```text
-role       scheduler, mode leader, ring key "scheduler"
-should this replica act?  true
-leader                    replica-1 (127.0.0.1:7946)
-```
 
 A role is declared in Go, because the mode conditions the application code:
 
@@ -59,9 +44,6 @@ Mimir's `-target` flag does:
 ```bash
 INFRAPI_CLUSTER_ROLES=["scheduler"]
 ```
-
-`broadcast/` is the same shape with the other mode, and shows that asking a
-broadcast role for its leader is an error rather than an invented answer.
 
 | | `ModeLeader` | `ModeBroadcast` |
 |---|---|---|
@@ -118,43 +100,25 @@ can each believe they are the leader for up to
 action must be idempotent, or fenced by whatever it writes to** — a
 compare-and-swap, a conditional write, a unique constraint.
 
-## state: sharing data, not caching it
-
-```bash
-cd state && go run .
-```
-
-The store the rings use also carries application state, through a codec declared
-up front:
-
-```go
-stateCodec := codec.NewProtoCodec("fleet-state", func() proto.Message { return &FleetState{} })
-
-cluster.Options{Codecs: []codec.Codec{stateCodec}}
-...
-client, err := c.KVClient("fleet-state")
-```
-
-Codecs are a construction-time option rather than a setter because the gossip
-store only learns them when the replica joins.
-
-This example joins **no role at all**, which `cluster.New` accepts: a service may
-want the shared store and no coordination.
-
-One rule that is not optional: the store is a membership store, not a cache.
-Every key costs a broadcast worker and a slot in the state each replica gossips,
-on every push/pull. Keys must be few and long-lived. A key per request, per job
-or per challenge is how this becomes an out-of-memory incident.
-
 ## state-proto: a value of your own
 
 ```bash
 cd state-proto && go run .
 ```
 
-`state/` shares data using a type dskit already provides. This one brings its
-own, which is what a real service does, and that means meeting the requirement
-the gossip store imposes: the value must implement `memberlist.Mergeable`.
+The store the rings use also carries application state, through a codec
+declared up front in `cluster.Options.Codecs` — a construction-time option,
+because the gossip store only learns its codecs when the replica joins. A
+service may want the shared store and no role at all, which `cluster.New`
+accepts.
+
+The value is the service's own type, and that means meeting the requirement the
+gossip store imposes: it must implement `memberlist.Mergeable`.
+
+One rule that is not optional: the store is a membership store, not a cache.
+Every key costs a broadcast worker and a slot in the state each replica gossips,
+on every push/pull. Keys must be few and long-lived. A key per request, per job
+or per challenge is how this becomes an out-of-memory incident.
 
 | File | What it is |
 |------|------------|
@@ -389,51 +353,6 @@ depending on the store. The handler tracks whether there was anything to delete
 and uses that rather than the error, which is the only answer that holds for all
 three backends.
 
-## pages: the status pages
-
-```bash
-cd pages && go run .
-```
-
-```text
-/-/cluster                                               200  html        7672 bytes
-/-/cluster  (Accept: application/json)                   200  json         361 bytes
-/-/cluster/ring/scheduler                                200  html        7761 bytes
-/-/cluster/ring/scheduler  (Accept: application/json)    200  json         329 bytes
-/-/cluster/ring/nope                                     404  json          63 bytes
-/-/cluster/memberlist                                    404  json          42 bytes
-```
-
-Everything lives behind `/-/cluster`, next to the `/-/metadata` and `/-/metrics`
-the server package already serves. Each page renders HTML by default and returns
-its own model as JSON when the request asks for it.
-
-- `/-/cluster` — the index: identity, store, and a card per role with its mode,
-  members, leader and verdict.
-- `/-/cluster/ring/{role}` — that role's ring: every registered replica, with the
-  ones the mode excludes marked as such. That row is usually why someone opened
-  the page.
-- `/-/cluster/memberlist` — dskit's own gossip page. It is 404 here because this
-  example uses the in-memory store.
-
-The stylesheet is inlined rather than served as a file, so relocating the pages
-with `HandlerOptions.PathPrefix` cannot break their styling, and they render in
-an airgapped network. To look at them in a browser, replace the shutdown at the
-end of `pages/main.go` with the two-line block the comment there gives.
-
-## shutdown: the four answers
-
-```bash
-cd shutdown && go run .
-```
-
-A cluster is single use: dskit services cannot be restarted, so a failed or
-finished cluster means the process should exit rather than rebuild it. After
-`Stop`, every query reports `ErrStopped` rather than an empty ring, so
-application code can tell a torn-down cluster from one that simply has no leader
-right now. The four states worth distinguishing are `ErrDisabled`,
-`ErrNotStarted`, `ErrStopped` and `ErrRoleNotJoined`.
-
 ## node: the one that actually shows a cluster
 
 Two terminals, from `examples/cluster/node`:
@@ -490,13 +409,14 @@ pause before a planned failover. Set
 `INFRAPI_CLUSTER_KEEP_INSTANCE_IN_RING_ON_SHUTDOWN="false"` to make the handover
 immediate, at the cost of a leader change on every restart.
 
-The status pages are worth having open while you do this:
+The status pages are worth having open while you do this. Each renders HTML,
+or its own model as JSON when the request sends `Accept: application/json`:
 
 - <http://127.0.0.1:8081/-/cluster> and <http://127.0.0.1:8082/-/cluster>
 - `http://127.0.0.1:8081/-/cluster/ring/scheduler` — where the departing replica
   shows as `LEAVING` and `excluded`
-- `http://127.0.0.1:8081/-/cluster/memberlist` — dskit's gossip view, which works
-  here because this is the only example using the gossip store
+- `http://127.0.0.1:8081/-/cluster/memberlist` — dskit's gossip view, 404 unless
+  the store is memberlist
 
 The heartbeats in these files are shortened so an election and a failover happen
 while you watch. A real deployment leaves them alone.

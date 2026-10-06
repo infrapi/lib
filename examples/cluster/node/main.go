@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -58,7 +59,11 @@ func main() {
 		log.Fatalf("Listen: %v", err)
 	}
 	srv := &http.Server{Handler: engine, ReadHeaderTimeout: 5 * time.Second}
-	go func() { _ = srv.Serve(socket) }()
+	go func() {
+		if err := srv.Serve(socket); !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Serve: %v", err)
+		}
+	}()
 
 	fmt.Printf("%s status pages:\n", c.InstanceID())
 	for _, path := range []string{cluster.StatusPath, cluster.StatusPath + "/ring/scheduler", cluster.MemberlistPath} {
@@ -79,7 +84,9 @@ func main() {
 
 			shutCtx, shutCancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer shutCancel()
-			_ = srv.Shutdown(shutCtx)
+			if err := srv.Shutdown(shutCtx); err != nil {
+				log.Printf("Shutdown: %v", err)
+			}
 
 			// demo.Start's stop function applies the configured stop budget,
 			// which has to cover the gossip leave plus the broadcast drain.

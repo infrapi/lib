@@ -17,6 +17,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -68,7 +69,11 @@ func main() {
 		log.Fatalf("Listen: %v", err)
 	}
 	srv := &http.Server{Handler: engine, ReadHeaderTimeout: 5 * time.Second}
-	go func() { _ = srv.Serve(socket) }()
+	go func() {
+		if err := srv.Serve(socket); !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Serve: %v", err)
+		}
+	}()
 	fmt.Printf("%s status pages on http://%s%s\n\n", c.InstanceID(), socket.Addr(), cluster.StatusPath)
 
 	signals := make(chan os.Signal, 1)
@@ -84,7 +89,9 @@ func main() {
 
 			shutCtx, shutCancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer shutCancel()
-			_ = srv.Shutdown(shutCtx)
+			if err := srv.Shutdown(shutCtx); err != nil {
+				log.Printf("Shutdown: %v", err)
+			}
 
 			stop()
 			fmt.Printf("%s left cleanly\n", c.InstanceID())
