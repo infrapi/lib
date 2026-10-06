@@ -27,7 +27,11 @@ type indexView struct {
 // indexHandler is the landing page: which replica answered, who leads, and a
 // link to everything this binary serves besides the API itself.
 func indexHandler(name, zone string, cl *cluster.Cluster, specs []server.OpenAPISpec) gin.HandlerFunc {
-	hostname, _ := os.Hostname()
+	hostname, err := os.Hostname()
+	if err != nil {
+		slog.Warn("no host name for the landing page", "err", err)
+		hostname = "unknown"
+	}
 	return func(c *gin.Context) {
 		w, r := c.Writer, c.Request
 		v := indexView{Name: name, Instance: hostname, Zone: zone, Clustered: cl.Enabled()}

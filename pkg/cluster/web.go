@@ -3,6 +3,7 @@ package cluster
 import (
 	"bytes"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"net"
@@ -260,15 +261,21 @@ func wantsJSON(req *http.Request) bool {
 }
 
 // render writes a page, or reports the failure in the response rather than
-// leaving the caller with a blank one.
-func render(w http.ResponseWriter, tmpl *template.Template, data any) {
+// leaving the caller with a blank one. What it returns is for the log: the
+// response is already under way.
+func render(w http.ResponseWriter, tmpl *template.Template, data any) error {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
+	err := tmpl.ExecuteTemplate(w, "layout", data)
+	if err != nil {
 		// The status line is long gone by the time a template fails halfway,
 		// so the only honest thing left is to say so in the body.
-		_, _ = fmt.Fprintf(w, "\n<!-- cluster: rendering failed: %s -->\n", template.HTMLEscapeString(err.Error()))
+		if _, werr := fmt.Fprintf(w, "\n<!-- cluster: rendering failed: %s -->\n", template.HTMLEscapeString(err.Error())); werr != nil {
+			err = errors.Join(err, werr)
+		}
+		return fmt.Errorf("cluster: render page: %w", err)
 	}
+	return nil
 }
 
 // styleMarker is where the stylesheet is injected into a page this package did
@@ -284,10 +291,10 @@ const styleMarker = "</head>"
 // template of ours instead; this is for the ring page dskit builds from a
 // lifecycler, where buffering the response is safe because what it returns is
 // one ring, and anything that is not HTML passes through untouched.
-func dskitPage(target http.Handler, w gin.ResponseWriter, req *http.Request) {
+func dskitPage(target http.Handler, w gin.ResponseWriter, req *http.Request) error {
 	captured := &capturedResponse{header: http.Header{}, status: http.StatusOK}
 	target.ServeHTTP(captured, req)
-	captured.writeStyledTo(w)
+	return captured.writeStyledTo(w)
 }
 
 // capturedResponse buffers a response so that it can be rewritten before it
@@ -309,7 +316,7 @@ func (c *capturedResponse) WriteHeader(status int) { c.status = status }
 
 // writeStyledTo copies the captured response out, adding the stylesheet when
 // what came back is an HTML page with a head to put it in.
-func (c *capturedResponse) writeStyledTo(w gin.ResponseWriter) {
+func (c *capturedResponse) writeStyledTo(w gin.ResponseWriter) error {
 	body := c.body.String()
 
 	styled := strings.Contains(c.header.Get("Content-Type"), "text/html") &&
@@ -330,5 +337,8 @@ func (c *capturedResponse) writeStyledTo(w gin.ResponseWriter) {
 	}
 
 	w.WriteHeader(c.status)
-	_, _ = w.WriteString(body)
+	if _, err := w.WriteString(body); err != nil {
+		return fmt.Errorf("cluster: write page: %w", err)
+	}
+	return nil
 }

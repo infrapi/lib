@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"runtime"
@@ -126,6 +127,9 @@ func LogField(ctx context.Context, key string, value any) {
 func writeLine(out io.Writer, v any, extra map[string]any) {
 	b, err := json.Marshal(v)
 	if err != nil {
+		// The log is where a failure would go; the process's own log is
+		// what is left when that is the failure.
+		log.Printf("server: log line dropped: %v", err)
 		return
 	}
 	if len(extra) > 0 {
@@ -136,16 +140,25 @@ func writeLine(out io.Writer, v any, extra map[string]any) {
 		sort.Strings(keys)
 		b = b[:len(b)-1] // the closing brace
 		for _, k := range keys {
-			name, _ := json.Marshal(k)
+			name, err := json.Marshal(k)
+			if err != nil {
+				log.Printf("server: log field %q dropped: %v", k, err)
+				continue
+			}
 			value, err := json.Marshal(extra[k])
 			if err != nil {
-				value, _ = json.Marshal(fmt.Sprint(extra[k]))
+				if value, err = json.Marshal(fmt.Sprint(extra[k])); err != nil {
+					log.Printf("server: log field %q dropped: %v", k, err)
+					continue
+				}
 			}
 			b = append(append(append(append(b, ','), name...), ':'), value...)
 		}
 		b = append(b, '}')
 	}
-	_, _ = out.Write(append(b, '\n'))
+	if _, err := out.Write(append(b, '\n')); err != nil {
+		log.Printf("server: log line lost: %v", err)
+	}
 }
 
 func jsonAccessLog(out io.Writer) gin.HandlerFunc {
@@ -218,7 +231,8 @@ func jsonRecovery(out io.Writer) gin.HandlerFunc {
 					Path:   c.Request.URL.Path,
 					Error:  err.Error(),
 				}, nil)
-				_ = c.Error(err)
+				// On the request's errors, for its access line.
+				c.Errors = append(c.Errors, &gin.Error{Err: err, Type: gin.ErrorTypePrivate})
 				c.Abort()
 				return
 			}

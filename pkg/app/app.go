@@ -115,7 +115,11 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 		if err != nil {
 			return err
 		}
-		defer closeDB()
+		defer func() {
+			if err := closeDB(); err != nil {
+				slog.Warn("closing the idempotency store", "err", err)
+			}
+		}()
 		store = pg
 	} else {
 		slog.Warn("no database: Idempotency-Key is IGNORED, and a retried write runs twice")
@@ -152,8 +156,7 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 	// Joined once the API listens: the ring then advertises an address that
 	// answers. Until then a write is refused as retryable (no leader yet).
 	if err := cl.Start(ctx); err != nil {
-		_ = srv.Close()
-		return fmt.Errorf("app: cluster: %w", err)
+		return errors.Join(fmt.Errorf("app: cluster: %w", err), srv.Close())
 	}
 	ready.joined.Store(true)
 	if cl.Enabled() {
@@ -161,18 +164,15 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 	}
 
 	if err := startGatewaySync(ctx, cfg, cl, prefixes); err != nil {
-		_ = cl.Stop(context.Background())
-		_ = srv.Close()
-		return err
+		return errors.Join(err, cl.Stop(context.Background()), srv.Close())
 	}
 
 	select {
 	case err := <-errc:
-		_ = cl.Stop(context.Background())
 		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+			err = nil
 		}
-		return err
+		return errors.Join(err, cl.Stop(context.Background()))
 	case err := <-cl.Err():
 		slog.Error("cluster failed", "err", err)
 	case <-ctx.Done():

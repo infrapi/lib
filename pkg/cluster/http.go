@@ -111,7 +111,9 @@ func (c *Cluster) StatusHandler() gin.HandlerFunc {
 			ctx.JSON(http.StatusOK, view)
 			return
 		}
-		render(ctx.Writer, indexTemplate, view)
+		if err := render(ctx.Writer, indexTemplate, view); err != nil {
+			c.logger.WithError(err).Warn("cluster: status page")
+		}
 	}
 }
 
@@ -282,7 +284,9 @@ func (r *Role) serveRing(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, view)
 		return
 	}
-	render(ctx.Writer, ringTemplate, view)
+	if err := render(ctx.Writer, ringTemplate, view); err != nil {
+		r.cluster.logger.WithError(err).Warn("cluster: ring page")
+	}
 }
 
 // ringView collects everything a role's ring page shows.
@@ -343,6 +347,8 @@ func (r *Role) LifecyclerHandler() gin.HandlerFunc {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": ErrNotStarted.Error()})
 			return
 		}
-		dskitPage(lifecycler, ctx.Writer, ctx.Request)
+		if err := dskitPage(lifecycler, ctx.Writer, ctx.Request); err != nil {
+			r.cluster.logger.WithError(err).Warn("cluster: lifecycler page")
+		}
 	}
 }

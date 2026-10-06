@@ -115,7 +115,9 @@ func TestSyncWritesOnlyWhatChanged(t *testing.T) {
 	// A replica joins: the read upstream only.
 	ring.members = append(ring.members, "10.0.0.3:8080")
 	admin.writes = nil
-	_ = s.Sync(ctx)
+	if err := s.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(admin.writes, []string{"upstreams/orders-api-read"}) {
 		t.Fatalf("a join wrote %v", admin.writes)
 	}
@@ -123,13 +125,17 @@ func TestSyncWritesOnlyWhatChanged(t *testing.T) {
 	// Leadership moves: the write upstream only.
 	ring.leader = "10.0.0.1:8080"
 	admin.writes = nil
-	_ = s.Sync(ctx)
+	if err := s.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(admin.writes, []string{"upstreams/orders-api-write"}) {
 		t.Fatalf("a new leader wrote %v", admin.writes)
 	}
 
-	read, _ := admin.GetUpstream(ctx, "orders-api-read")
-	write, _ := admin.GetUpstream(ctx, "orders-api-write")
+	read, err := admin.GetUpstream(ctx, "orders-api-read")
+	must(t, err)
+	write, err := admin.GetUpstream(ctx, "orders-api-write")
+	must(t, err)
 	if got := []string{read.Nodes[0].Host, read.Nodes[1].Host, read.Nodes[2].Host}; !reflect.DeepEqual(got,
 		[]string{"10.0.0.1", "10.0.0.2", "10.0.0.3"}) {
 		t.Errorf("read nodes %v, want every replica, sorted", got)
@@ -152,10 +158,12 @@ func TestSyncRoutesAndPlugins(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc, _ := admin.GetService(ctx, "orders-api-api")
-	b, _ := json.Marshal(svc.Plugins)
+	svc, err := admin.GetService(ctx, "orders-api-api")
+	must(t, err)
+	b, err := json.Marshal(svc.Plugins)
+	must(t, err)
 	var plugins map[string]map[string]any
-	_ = json.Unmarshal(b, &plugins)
+	must(t, json.Unmarshal(b, &plugins))
 	if plugins["key-auth"]["header"] != "apikey" || plugins["key-auth"]["hide_credentials"] != true {
 		t.Errorf("key-auth %v", plugins["key-auth"])
 	}
@@ -167,9 +175,12 @@ func TestSyncRoutesAndPlugins(t *testing.T) {
 		t.Errorf("client-control %v", plugins["client-control"])
 	}
 
-	read, _ := admin.GetRoute(ctx, "orders-api-orders-v1-read")
-	write, _ := admin.GetRoute(ctx, "orders-api-orders-v1-write")
-	docs, _ := admin.GetRoute(ctx, "orders-api-docs")
+	read, err := admin.GetRoute(ctx, "orders-api-orders-v1-read")
+	must(t, err)
+	write, err := admin.GetRoute(ctx, "orders-api-orders-v1-write")
+	must(t, err)
+	docs, err := admin.GetRoute(ctx, "orders-api-docs")
+	must(t, err)
 	if read.UpstreamID != "orders-api-read" || !reflect.DeepEqual(read.Methods, []string{"GET", "HEAD"}) ||
 		!reflect.DeepEqual(read.URIs, []string{"/orders/v1/*"}) || read.ServiceID != "orders-api-api" {
 		t.Errorf("read route %+v", read)
@@ -202,5 +213,12 @@ func TestSyncRefuses(t *testing.T) {
 
 	if _, err := nodes([]string{"no-port"}); err == nil {
 		t.Error("an address without a port was accepted")
+	}
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -224,5 +224,7 @@ func TestNewServerGin_docs_escapesAppName(t *testing.T) {
 	cfg := testAppConfig(t)
 	cfg.AppName = "</title><script>alert(1)</script>"
 
-	assert.NotContains(t, string(newDocsPage(cfg, nil)), "<script>alert(1)</script>")
+	page, err := newDocsPage(cfg, nil)
+	require.NoError(t, err)
+	assert.NotContains(t, string(page), "<script>alert(1)</script>")
 }

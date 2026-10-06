@@ -36,7 +36,8 @@ func TestWithOpenAPI_servesTheServicesDocuments(t *testing.T) {
 	w = get(t, app, "/-/openapi/orders/v2.json")
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	page, _ := io.ReadAll(get(t, app, DocsPath).Body)
+	page, err := io.ReadAll(get(t, app, DocsPath).Body)
+	require.NoError(t, err)
 	body := string(page)
 	assert.Contains(t, body, `urls: [{"name":"orders v1","url":"/-/openapi/orders/v1.yaml"},`+
 		`{"name":"orders v2","url":"/-/openapi/orders/v2.json"}]`)

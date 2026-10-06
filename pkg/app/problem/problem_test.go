@@ -15,7 +15,9 @@ func render(err error) (int, map[string]any) {
 	r = r.WithContext(WithCorrelationID(r.Context(), "corr-1"))
 	Write(w, r, err)
 	var body map[string]any
-	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		panic(err) // Write always writes a document
+	}
 	return w.Code, body
 }
 
@@ -38,7 +40,11 @@ func TestAnUnexpectedErrorHidesItsText(t *testing.T) {
 	if code != http.StatusInternalServerError || body["code"] != "internal_error" {
 		t.Errorf("%d %v", code, body)
 	}
-	if b, _ := json.Marshal(body); strings.Contains(string(b), "secret detail") {
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "secret detail") {
 		t.Errorf("the cause reached the caller: %s", b)
 	}
 }

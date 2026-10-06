@@ -148,10 +148,14 @@ func Write(w http.ResponseWriter, r *http.Request, err error) {
 
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(p.Status)
-	_ = json.NewEncoder(w).Encode(body{
+	if err := json.NewEncoder(w).Encode(body{
 		Title: p.Title, Status: p.Status, Detail: p.Detail, Code: p.Code, Retryable: p.Retryable,
 		CorrelationID: CorrelationID(r.Context()), Current: p.Current,
-	})
+	}); err != nil {
+		// The status is sent: all that is left is to say so in the log.
+		slog.WarnContext(r.Context(), "writing a problem document", "err", err, "code", p.Code,
+			"correlation_id", CorrelationID(r.Context()))
+	}
 }
 
 // Abort renders err and stops the gin chain: what a middleware does when it

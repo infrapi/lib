@@ -53,7 +53,11 @@ ON CONFLICT (scope, key) DO NOTHING`, scope, key, hash)
 	if err != nil {
 		return 0, nil, unavailable(err)
 	}
-	if n, _ := res.RowsAffected(); n == 1 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil, unavailable(err)
+	}
+	if n == 1 {
 		return Proceed, nil, nil
 	}
 
@@ -94,7 +98,11 @@ WHERE scope = $1 AND key = $2 AND state = 'in_progress' AND created_at = $3`, sc
 	if err != nil {
 		return 0, nil, unavailable(err)
 	}
-	if n, _ := res.RowsAffected(); n == 1 {
+	taken, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil, unavailable(err)
+	}
+	if taken == 1 {
 		slog.WarnContext(ctx, "idempotency key taken over after its first attempt went silent", "key", key)
 		return Proceed, nil, nil
 	}

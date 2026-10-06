@@ -131,11 +131,14 @@ func (c httpCheck) Check(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_ = resp.Body.Close()
+	var status error
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("answered %d", resp.StatusCode)
+		status = fmt.Errorf("answered %d", resp.StatusCode)
 	}
-	return nil
+	if err := resp.Body.Close(); err != nil {
+		return errors.Join(status, fmt.Errorf("closing the response: %w", err))
+	}
+	return status
 }
 
 type execCheck struct {

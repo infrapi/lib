@@ -143,8 +143,10 @@ func TestLeaderChecks_from_the_configuration(t *testing.T) {
 
 	a := startTestCluster(t, withFlag, spec)
 	b := startTestCluster(t, nil, spec) // no checks: may always lead
-	ra, _ := a.Role(spec.Name)
-	rb, _ := b.Role(spec.Name)
+	ra, err := a.Role(spec.Name)
+	require.NoError(t, err)
+	rb, err := b.Role(spec.Name)
+	require.NoError(t, err)
 
 	// Without the flag, the leader is the owner of the smallest token.
 	leader := leaderSeenByAll(t, ra, rb)
