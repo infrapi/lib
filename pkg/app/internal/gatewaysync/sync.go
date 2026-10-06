@@ -66,8 +66,10 @@ type Config struct {
 	// RouteID names a contract's routes: {version} is its prefix as a slug
 	// ("orders-v1"), {kind} read or write.
 	RouteID string
-	// ReadMethods go to every replica, WriteMethods to the leader alone.
+	// ReadMethods go to every replica, WriteMethods to the leader alone when
+	// LeaderWrites, else to every replica too.
 	ReadMethods, WriteMethods []string
+	LeaderWrites              bool
 
 	// Upstream is the template of both upstreams: type, timeout, health
 	// checks, keepalive pool. Its name, nodes and labels are the sync's.
@@ -151,9 +153,11 @@ func (s *Syncer) Sync(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	writeNodes, err := nodes([]string{leaderAddr})
-	if err != nil {
-		return err
+	writeNodes := readNodes
+	if s.cfg.LeaderWrites {
+		if writeNodes, err = nodes([]string{leaderAddr}); err != nil {
+			return err
+		}
 	}
 
 	readID, writeID, serviceID := s.cfg.ReadUpstream, s.cfg.WriteUpstream, s.cfg.Service

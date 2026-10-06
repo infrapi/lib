@@ -80,7 +80,7 @@ func (r *fakeRing) Leader() (string, string, bool, error) {
 
 func testConfig() Config {
 	cfg := DefaultConfig("orders-api", "/readyz")
-	cfg.Prefixes = []string{"/orders/v1/"}
+	cfg.Prefixes, cfg.LeaderWrites = []string{"/orders/v1/"}, true
 	return cfg
 }
 
@@ -241,6 +241,31 @@ func TestSyncWritesWhatTheConfigurationSays(t *testing.T) {
 	// upstream does not change the default.
 	if DefaultConfig("x", "/r").Upstream.Checks.Active.HTTPPath != "/r" {
 		t.Error("the default changed")
+	}
+}
+
+// Without leader writes, every replica takes writes too: both upstreams hold
+// all of them, and a new leader changes nothing in APISIX.
+func TestSyncWithoutLeaderWrites(t *testing.T) {
+	admin := newFakeAdmin()
+	cfg := testConfig()
+	cfg.LeaderWrites = false
+	ring := &fakeRing{members: []string{"10.0.0.1:8080", "10.0.0.2:8080"}, leader: "10.0.0.1:8080"}
+	s := New(admin, ring, cfg)
+	ctx := context.Background()
+	must(t, s.Sync(ctx))
+
+	write, err := admin.GetUpstream(ctx, "orders-api-write")
+	must(t, err)
+	if len(write.Nodes) != 2 {
+		t.Errorf("write nodes %+v, want every replica", write.Nodes)
+	}
+
+	ring.leader = "10.0.0.2:8080"
+	admin.writes = nil
+	must(t, s.Sync(ctx))
+	if len(admin.writes) != 0 {
+		t.Errorf("a new leader rewrote %v", admin.writes)
 	}
 }
 

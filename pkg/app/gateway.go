@@ -47,7 +47,7 @@ func startGatewaySync(ctx context.Context, cfg *loaded, cl *cluster.Cluster, pre
 		return err
 	}
 
-	syncCfg, err := g.syncConfig(prefixes)
+	syncCfg, err := g.syncConfig(prefixes, cfg.cluster.LeaderWrites)
 	if err != nil {
 		return fmt.Errorf("app: gateway: %w", err)
 	}
