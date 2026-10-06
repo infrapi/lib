@@ -103,9 +103,9 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 		}
 		chain = append(chain, validator(docs[i]))
 		if store != nil {
-			chain = append(chain, idempotency.Middleware(store, spec.IdempotencyScope))
+			chain = append(chain, idempotency.Middleware(store, scopeOf(spec.IdempotencyScope)))
 		}
-		v.Routes(engine.Group("", chain...))
+		v.Routes(&router{group: engine.Group("", chain...), doc: docs[i]})
 	}
 
 	engine.GET(HealthPath, func(c *gin.Context) { c.Status(http.StatusOK) })

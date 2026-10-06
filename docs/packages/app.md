@@ -37,9 +37,9 @@ func main() {
 			h := newOrders(cfg)
 			return []app.Version{{
 				OpenAPI: server.OpenAPISpec{Name: "orders v1", Path: "orders/v1.yaml", Content: ordersV1},
-				Routes: func(r gin.IRouter) {
-					r.POST("/orders/v1/tenants/:tenant/orders", h.place)
-					r.GET("/orders/v1/tenants/:tenant/orders/:id", h.read)
+				Routes: func(r app.Router) {
+					r.POST("/orders/v1/tenants/{tenant}/orders", h.place)
+					r.GET("/orders/v1/tenants/{tenant}/orders/{id}", h.read)
 				},
 			}}, nil
 		},
@@ -54,13 +54,52 @@ func main() {
 | `Name` | Default of `INFRAPI_APP_NAME`; also names the ring's key prefix and gossip label, and the APISIX objects. |
 | `Service` | Pointer to the service's own configuration, decoded from the file's `service` section, unknown keys refused. |
 | `LeaderWrites` | The leader of the writer ring alone performs writes; the other replicas relay theirs to it. |
-| `IdempotencyScope` | Whose an `Idempotency-Key` is. Default: the consumer the gateway authenticated. |
+| `IdempotencyScope` | `func(*app.Context) string`: whose an `Idempotency-Key` is, e.g. `c.Param("tenant")`. Default: the consumer the gateway authenticated. |
 | `LeaderCheck` | One more condition for this replica to lead, next to `cluster.leader_checks`. |
 | `API` | Builds the service once the configuration is loaded; returns its versions. |
 
 A `Version` is one contract and its routes. Its `Prefix` — `/orders/v1/` — is
-derived from the contract's paths unless set. Handlers written with
-`oapi-codegen`'s gin server register in `Routes` like any others.
+derived from the contract's paths unless set.
+
+## Handlers
+
+A service sees no web framework: it writes against `app.Router` and
+`app.Context`, and paths are the contract's, `{name}` for a parameter.
+
+```go
+Routes: func(r app.Router) {
+	r.GET("/orders/v1/tenants/{tenant}/orders/{id}", func(c *app.Context) {
+		order, err := store.Get(c.Context(), c.Param("tenant"), c.Param("id"))
+		if err != nil {
+			c.Error(err) // a *problem.Error as it says; anything else a 500 that hides its text
+			return
+		}
+		c.JSON(http.StatusOK, order)
+	})
+},
+```
+
+| `app.Context` | |
+|---|---|
+| `Context()` | the request's context: cancelled when the caller leaves, carries the correlation id |
+| `Request()` | the `*http.Request` |
+| `Param`, `Query`, `Header` | a path parameter by its contract name, a query parameter, a request header |
+| `Bind(&v)` | decodes the JSON body; the contract already validated it |
+| `JSON(status, v)`, `NoContent()`, `SetHeader` | the answer |
+| `Error(err)` | a problem document, and the call stops |
+
+Handlers generated from the contract plug in whole: `Mount` takes the
+`http.Handler` that `oapi-codegen` builds for net/http (`std-http-server`, with
+`strict-server` if you like) and serves every operation of the contract with
+it. Each operation stays a route of its own for the middlewares, the metrics
+and the logs.
+
+```go
+Routes: func(r app.Router) {
+	r.Mount(ordersv1.HandlerWithOptions(ordersv1.NewStrictHandlerWithOptions(handlers, nil, opts),
+		ordersv1.StdHTTPServerOptions{ErrorHandlerFunc: badRequest}))
+},
+```
 
 ## What it wires
 

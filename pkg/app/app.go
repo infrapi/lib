@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/infrapi/lib/pkg/cluster"
 	"github.com/infrapi/lib/pkg/config"
 	"github.com/infrapi/lib/pkg/listener"
@@ -39,9 +38,11 @@ type Spec struct {
 	// replica is its own leader.
 	LeaderWrites bool
 
-	// IdempotencyScope says whose an Idempotency-Key is. Nil is
-	// [idempotency.DefaultScope], the caller the gateway authenticated.
-	IdempotencyScope idempotency.Scope
+	// IdempotencyScope says whose an Idempotency-Key is: the same key under
+	// two scopes names two different requests. Nil is the caller the gateway
+	// authenticated (X-Consumer-Username); a service whose keys belong to
+	// something narrower returns it, e.g. c.Param("tenant").
+	IdempotencyScope func(c *Context) string
 
 	// LeaderCheck is one more condition for this replica to lead the writer
 	// ring, next to cluster.leader_checks: nil when it may. It runs on the
@@ -64,9 +65,9 @@ type Version struct {
 	// paths.
 	Prefix string
 
-	// Routes registers the version's handlers. They run behind the API's
-	// middlewares; their paths are the contract's, in gin's syntax.
-	Routes func(r gin.IRouter)
+	// Routes registers the version's handlers, behind the API's middlewares,
+	// on paths written as in the contract.
+	Routes func(r Router)
 }
 
 // Runtime is what the service gets to build itself.

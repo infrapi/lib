@@ -16,6 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/infrapi/lib/pkg/server"
+
+	"github.com/infrapi/lib/pkg/app/problem"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -161,12 +163,23 @@ func TestRun(t *testing.T) {
 			assert.Equal(t, "orders-api", rt.App.AppName)
 			return []Version{{
 				OpenAPI: server.OpenAPISpec{Name: "orders v1", Path: "orders/v1.yaml", Content: ordersV1},
-				Routes: func(r gin.IRouter) {
-					r.POST("/orders/v1/tenants/:tenant/orders", func(c *gin.Context) {
-						c.JSON(http.StatusCreated, gin.H{"greeting": svc.Greeting})
+				Routes: func(r Router) {
+					r.POST("/orders/v1/tenants/{tenant}/orders", func(c *Context) {
+						var in struct {
+							Item string `json:"item"`
+						}
+						if err := c.Bind(&in); err != nil {
+							c.Error(err)
+							return
+						}
+						c.JSON(http.StatusCreated, map[string]string{"greeting": svc.Greeting, "item": in.Item})
 					})
-					r.GET("/orders/v1/tenants/:tenant/orders/:id", func(c *gin.Context) {
-						c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+					r.GET("/orders/v1/tenants/{tenant}/orders/{id}", func(c *Context) {
+						if c.Param("id") == "missing" {
+							c.Error(problem.NotFound("no order %q", c.Param("id")))
+							return
+						}
+						c.JSON(http.StatusOK, map[string]string{"id": c.Param("id"), "tenant": c.Param("tenant")})
 					})
 				},
 			}}, nil
@@ -202,7 +215,14 @@ func TestRun(t *testing.T) {
 
 	code, body, _ := do(http.MethodPost, "/orders/v1/tenants/acme/orders", `{"item":"book"}`)
 	assert.Equal(t, http.StatusCreated, code)
-	assert.JSONEq(t, `{"greeting":"hi"}`, body)
+	assert.JSONEq(t, `{"greeting":"hi","item":"book"}`, body)
+
+	code, body, _ = do(http.MethodGet, "/orders/v1/tenants/acme/orders/o-1", "")
+	assert.Equal(t, http.StatusOK, code)
+	assert.JSONEq(t, `{"id":"o-1","tenant":"acme"}`, body, "path parameters by their contract names")
+	code, body, _ = do(http.MethodGet, "/orders/v1/tenants/acme/orders/missing", "")
+	assert.Equal(t, http.StatusNotFound, code)
+	assert.Contains(t, body, `"code":"not_found"`)
 
 	code, body, hdr := do(http.MethodPost, "/orders/v1/tenants/acme/orders", `{"item":"book","colour":"red"}`)
 	assert.Equal(t, http.StatusBadRequest, code)

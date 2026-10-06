@@ -16,7 +16,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/gin-gonic/gin"
 	"github.com/infrapi/lib/pkg/app"
 	"github.com/infrapi/lib/pkg/app/problem"
 	"github.com/infrapi/lib/pkg/server"
@@ -40,9 +39,9 @@ func main() {
 			h := &orders{max: cfg.MaxQuantity, byID: map[string]order{}}
 			return []app.Version{{
 				OpenAPI: server.OpenAPISpec{Name: "orders v1", Path: "orders/v1.yaml", Content: ordersV1},
-				Routes: func(r gin.IRouter) {
-					r.POST("/orders/v1/tenants/:tenant/orders", h.place)
-					r.GET("/orders/v1/tenants/:tenant/orders/:id", h.read)
+				Routes: func(r app.Router) {
+					r.POST("/orders/v1/tenants/{tenant}/orders", h.place)
+					r.GET("/orders/v1/tenants/{tenant}/orders/{id}", h.read)
 				},
 			}}, nil
 		},
@@ -62,20 +61,20 @@ type orders struct {
 	byID map[string]order
 }
 
-func (o *orders) place(c *gin.Context) {
+func (o *orders) place(c *app.Context) {
 	var in struct {
 		Item     string `json:"item"`
 		Quantity int    `json:"quantity"`
 	}
-	if err := c.ShouldBindJSON(&in); err != nil {
-		problem.Abort(c, problem.Invalid("%v", err))
+	if err := c.Bind(&in); err != nil {
+		c.Error(err)
 		return
 	}
 	if in.Quantity == 0 {
 		in.Quantity = 1
 	}
 	if o.max > 0 && in.Quantity > o.max {
-		problem.Abort(c, problem.Invalid("at most %d of an item per order", o.max))
+		c.Error(problem.Invalid("at most %d of an item per order", o.max))
 		return
 	}
 	o.mu.Lock()
@@ -85,12 +84,12 @@ func (o *orders) place(c *gin.Context) {
 	c.JSON(http.StatusCreated, o.byID[id])
 }
 
-func (o *orders) read(c *gin.Context) {
+func (o *orders) read(c *app.Context) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	got, ok := o.byID[c.Param("id")]
 	if !ok {
-		problem.Abort(c, problem.NotFound("no order %q", c.Param("id")))
+		c.Error(problem.NotFound("no order %q", c.Param("id")))
 		return
 	}
 	c.JSON(http.StatusOK, got)
