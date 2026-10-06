@@ -4,14 +4,14 @@
 //	INFRAPI_CONFIG_DOTENV_FILE=node1.env go run .
 //	INFRAPI_CONFIG_DOTENV_FILE=node2.env go run .
 //
-// This is the only example that shows what the package is for: an election
-// between two replicas, the two modes parting company, and a failover when the
-// leader is interrupted. Everything else runs on the in-memory store, where a
-// single replica always wins.
+// This is the example that shows what the package is for: an election between
+// two replicas, the two modes parting company, a periodic job that runs on the
+// leader only, and a failover when the leader is interrupted.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -58,7 +58,22 @@ func main() {
 		log.Fatalf("Listen: %v", err)
 	}
 	srv := &http.Server{Handler: engine, ReadHeaderTimeout: 5 * time.Second}
-	go func() { _ = srv.Serve(socket) }()
+	go func() {
+		if err := srv.Serve(socket); !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Serve: %v", err)
+		}
+	}()
+
+	// A periodic job on the leader only: Role.Run checks the predicate on every
+	// tick, never overlaps two runs, and cancels the job's context the moment
+	// this replica stops leading. Interrupt the leader and the job moves.
+	scheduler, err := c.Role("scheduler")
+	if err != nil {
+		log.Fatalf("Role: %v", err)
+	}
+	jobCtx, stopJob := context.WithCancel(context.Background())
+	jobDone := make(chan error, 1)
+	go func() { jobDone <- scheduler.Run(jobCtx, 3*time.Second, job(c.InstanceID())) }()
 
 	fmt.Printf("%s status pages:\n", c.InstanceID())
 	for _, path := range []string{cluster.StatusPath, cluster.StatusPath + "/ring/scheduler", cluster.MemberlistPath} {
@@ -77,9 +92,16 @@ func main() {
 		case <-signals:
 			fmt.Printf("\n%s leaving the cluster...\n", c.InstanceID())
 
+			stopJob()
+			if err := <-jobDone; !errors.Is(err, context.Canceled) {
+				log.Printf("scheduler job: %v", err)
+			}
+
 			shutCtx, shutCancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer shutCancel()
-			_ = srv.Shutdown(shutCtx)
+			if err := srv.Shutdown(shutCtx); err != nil {
+				log.Printf("Shutdown: %v", err)
+			}
 
 			// demo.Start's stop function applies the configured stop budget,
 			// which has to cover the gossip leave plus the broadcast drain.
@@ -95,6 +117,24 @@ func main() {
 		case <-ticker.C:
 			fmt.Printf("%s | %s | %s\n", time.Now().Format("15:04:05"),
 				describe(c, "scheduler"), describe(c, "collector"))
+		}
+	}
+}
+
+// job is the scheduler's periodic work. It must honour its context, and be
+// idempotent or fenced by what it writes to: the ring has no quorum and no
+// lease, so during a partition two replicas can each believe they lead for up
+// to INFRAPI_CLUSTER_HEARTBEAT_TIMEOUT.
+func job(instance string) func(context.Context) error {
+	runs := 0
+	return func(ctx context.Context) error {
+		runs++
+		fmt.Printf("%s | scheduler job #%d runs here\n", instance, runs)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+			return nil
 		}
 	}
 }

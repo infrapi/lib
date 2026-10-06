@@ -750,21 +750,18 @@ thing.
 `examples/cluster` holds one directory per use case, each runnable on its own:
 
 ```bash
-cd examples/cluster/leader     && go run .   # leader mode
-cd examples/cluster/broadcast  && go run .   # broadcast mode
-cd examples/cluster/roles      && go run .   # several roles, a ring each
-cd examples/cluster/gated      && go run .   # Role.Run
-cd examples/cluster/state      && go run .   # sharing state through the store
-cd examples/cluster/pages      && go run .   # these status pages
-cd examples/cluster/shutdown   && go run .   # Stop, and what queries say after
+cd examples/cluster/roles        && go run .   # both modes, a ring each
+cd examples/cluster/state-proto  && go run .   # a value of your own in the store
 ```
 
 Each carries its own `app.env`, so one directory tells you exactly which keys
 that case needs. They are a Go module of their own, so they run from their own
 directory rather than with `go run ./examples/...`.
 
-All seven use the in-memory store: no socket, no peer, done in under a second.
-They show the API. The one that shows the behaviour is `node/`.
+`roles/` uses the in-memory store: no socket, no peer, done in under a second.
+It shows the API. The one that shows the behaviour — an election, a periodic
+job on the leader only, a failover, the status pages — is `node/`, run in two terminals; `zones/`,
+`kvapi/` and the rest are listed in `examples/cluster/README.md`.
 
 ### Two real replicas
 

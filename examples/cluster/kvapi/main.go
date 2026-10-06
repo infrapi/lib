@@ -85,7 +85,11 @@ func main() {
 		log.Fatalf("Listen: %v", err)
 	}
 	srv := &http.Server{Handler: engine, ReadHeaderTimeout: 5 * time.Second}
-	go func() { _ = srv.Serve(socket) }()
+	go func() {
+		if err := srv.Serve(socket); !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Serve: %v", err)
+		}
+	}()
 
 	api.banner(socket.Addr().String())
 
@@ -98,7 +102,9 @@ func main() {
 
 		shutCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		_ = srv.Shutdown(shutCtx)
+		if err := srv.Shutdown(shutCtx); err != nil {
+			log.Printf("Shutdown: %v", err)
+		}
 
 		stop()
 		fmt.Printf("%s left cleanly\n", c.InstanceID())

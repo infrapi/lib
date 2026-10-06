@@ -42,7 +42,7 @@ directories:
 
 ```bash
 cd pkg/cluster && go test ./...      # ~15s, real gossip clusters
-cd examples/cluster/leader && go run .   # one directory per use case, each
+cd examples/cluster/roles && go run .    # one directory per use case, each
                                          # with its own app.env; see that
                                          # module's README.md
 cd examples/cluster/node && \
