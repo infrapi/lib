@@ -12,7 +12,7 @@
 //				h := newHandlers(cfg)
 //				return []app.Version{{
 //					OpenAPI: server.OpenAPISpec{Name: "orders v1", Path: "orders/v1.yaml", Content: ordersV1},
-//					Routes:  func(r gin.IRouter) { r.POST("/orders/v1/orders", h.create) },
+//					Routes:  func(r app.Router) { r.POST("/orders/v1/orders", h.create) },
 //				}}, nil
 //			},
 //		})

@@ -3,7 +3,6 @@ module github.com/infrapi/lib/examples/app
 go 1.26.7
 
 require (
-	github.com/gin-gonic/gin v1.12.0
 	github.com/infrapi/lib v1.6.0
 	github.com/infrapi/lib/pkg/app v0.0.0
 )
@@ -24,6 +23,7 @@ require (
 	github.com/getkin/kin-openapi v0.149.0 // indirect
 	github.com/gin-contrib/cors v1.7.8 // indirect
 	github.com/gin-contrib/sse v1.1.1 // indirect
+	github.com/gin-gonic/gin v1.12.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
