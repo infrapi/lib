@@ -14,14 +14,13 @@ start the cluster — everything specific to a case stays in its `main.go`.
 | Directory | What it shows | Needs |
 |-----------|---------------|-------|
 | [`roles/`](roles) | Several roles in one process, a ring each | nothing |
-| [`gated/`](gated) | `Role.Run`: a periodic action gated on the predicate | nothing |
 | [`state-proto/`](state-proto) | **A value of your own: protobuf plus a CRDT merge** | an ephemeral TCP port |
 | [`kvapi/`](kvapi) | **A CRUD API over the store, gossip or etcd** | `127.0.0.1-2`, TCP 8085; etcd needs podman |
 | [`node/`](node) | **A real two-node cluster over gossip** | `127.0.0.1-2`, TCP 7946, 8080 |
 | [`zones/`](zones) | **Two data centres, with bridges between them** | `127.0.0.1-4`, TCP 7946, 8080 |
 
-`roles/` and `gated/` use the in-memory key-value store: no socket, no peer,
-finish in under a second. They show the API. `node/` and `zones/` are the ones that show
+`roles/` uses the in-memory key-value store: no socket, no peer, finishes in
+under a second. It shows the API. `node/` and `zones/` are the ones that show
 the behaviour, because a single replica is trivially its own leader and tells
 you nothing about an election.
 
@@ -83,22 +82,6 @@ Two mismatches, deliberately treated differently:
 - a role **selected but not declared** fails `cluster.New` outright. It is
   always a typo or a bad rollout, and accepting it would mean a scheduler that
   never schedules with nothing in the logs.
-
-## gated: running something, once, somewhere
-
-```bash
-cd gated && go run .
-```
-
-`Role.Run` re-checks the predicate on every tick, never overlaps two runs, and
-cancels the action's context the moment this replica stops being eligible.
-
-It is not a distributed lock, and the example says so at length because it
-matters: the ring has no quorum and no lease, so during a partition two replicas
-can each believe they are the leader for up to
-`INFRAPI_CLUSTER_HEARTBEAT_TIMEOUT`, and the cancellation is cooperative. **The
-action must be idempotent, or fenced by whatever it writes to** — a
-compare-and-swap, a conditional write, a unique constraint.
 
 ## state-proto: a value of your own
 
@@ -386,6 +369,24 @@ Each replica prints what it believes once a second:
 node-1 | scheduler(leader): members=2 leader=node-1 -> ACTING  | collector(broadcast): members=2 -> ACTING
 node-2 | scheduler(leader): members=2 leader=node-1 -> passive | collector(broadcast): members=2 -> ACTING
 ```
+
+The leader also runs the scheduler's periodic job, through `Role.Run`, every
+three seconds:
+
+```text
+node-2 | scheduler job #2 runs here
+```
+
+`Role.Run` re-checks the predicate on every tick, never overlaps two runs, and
+cancels the job's context the moment this replica stops leading: start `node-1`
+alone and its job runs, start `node-2` and, if it takes the token, the job moves
+there and stops on `node-1`.
+
+It is not a distributed lock. The ring has no quorum and no lease, so during a
+partition two replicas can each believe they are the leader for up to
+`INFRAPI_CLUSTER_HEARTBEAT_TIMEOUT`, and the cancellation is cooperative. **The
+job must be idempotent, or fenced by whatever it writes to** — a
+compare-and-swap, a conditional write, a unique constraint.
 
 Now interrupt the leader with `Ctrl+C` and watch the two modes part company:
 

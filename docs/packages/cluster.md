@@ -751,7 +751,6 @@ thing.
 
 ```bash
 cd examples/cluster/roles        && go run .   # both modes, a ring each
-cd examples/cluster/gated        && go run .   # Role.Run
 cd examples/cluster/state-proto  && go run .   # a value of your own in the store
 ```
 
@@ -759,9 +758,9 @@ Each carries its own `app.env`, so one directory tells you exactly which keys
 that case needs. They are a Go module of their own, so they run from their own
 directory rather than with `go run ./examples/...`.
 
-`roles/` and `gated/` use the in-memory store: no socket, no peer, done in under
-a second. They show the API. The one that shows the behaviour — an election, a
-failover, the status pages — is `node/`, run in two terminals; `zones/`,
+`roles/` uses the in-memory store: no socket, no peer, done in under a second.
+It shows the API. The one that shows the behaviour — an election, a periodic
+job on the leader only, a failover, the status pages — is `node/`, run in two terminals; `zones/`,
 `kvapi/` and the rest are listed in `examples/cluster/README.md`.
 
 ### Two real replicas
