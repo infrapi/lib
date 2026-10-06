@@ -206,13 +206,56 @@ relayed.
 With a `gateway` section, the leader keeps an APISIX in line with the ring through
 its Admin API ([`gateway`](gateway.md)), every `interval`:
 
-| object | id | holds |
+| object | id, by default | holds, by default |
 |---|---|---|
 | upstream | `<name>-read` | every replica, health-checked on `/-/readyz` |
 | upstream | `<name>-write` | the leader alone |
 | service | `<name>-api` | `key-auth` (header `apikey`), `limit-count` per consumer (429), `client-control` (413), `request-id` (`X-Correlation-ID`) |
-| routes | `<name>-<prefix>-read`, `-write` | per version: `GET`/`HEAD` to read, `POST`/`PUT`/`PATCH`/`DELETE` to write |
+| routes | `<name>-<version>-read`, `-write` | per version: `GET`/`HEAD` to read, `POST`/`PUT`/`PATCH`/`DELETE` to write |
 | route | `<name>-docs` | `/-/docs` and `/-/openapi/*`, no key |
+
+All of it is the `gateway` section's to change; what it leaves out keeps the
+default. `{name}` in an id is `gateway.name`.
+
+```yaml
+gateway:
+  admin_url: http://apisix:9180
+  admin_key: …                       # or INFRAPI_GATEWAY_ADMIN_KEY
+  interval: 15s
+  name: orders-api                   # default Spec.Name
+  labels: {managed-by: orders-api}   # on every object
+
+  read:  {upstream: "{name}-read",  methods: [GET, HEAD]}
+  write: {upstream: "{name}-write", methods: [POST, PUT, PATCH, DELETE]}
+  service: "{name}-api"
+  route_id: "{name}-{version}-{kind}"   # {version}: orders-v1; {kind}: read or write
+
+  upstream:
+    type: roundrobin
+    timeout: {connect: 2s, send: 30s, read: 120s}
+    keepalive_pool: {size: 320, idle_timeout: 60s, requests: 1000}   # default APISIX's
+    health_check:                    # enabled: false drops it
+      path: /-/readyz
+      timeout: 1s
+      healthy:   {interval: 2s, successes: 1, http_statuses: [200, 302]}
+      unhealthy: {interval: 1s, http_failures: 2, tcp_failures: 2, timeouts: 3,
+                  http_statuses: [429, 404, 500, 501, 502, 503, 504, 505]}
+
+  rate_limit: {count: 600, window_seconds: 60}   # tunes the default limit-count
+  max_body_bytes: 1048576                         # tunes the default client-control
+  plugins:                           # by name, over the defaults
+    request-id: null                 # null removes a default
+    limit-count: {count: 100, time_window: 10, key_type: var, key: consumer_name,
+                  rejected_code: 429, policy: redis, redis_host: redis}   # replaces it whole
+    cors: {allow_origins: "https://console.example.com"}                  # adds one
+
+  docs: {enabled: true, route: "{name}-docs", uris: [/-/docs, /-/openapi/*]}
+```
+
+Health check intervals are whole seconds, which is what APISIX counts in. The
+service refuses to start on what would route a call wrong: the same upstream
+for reads and writes, a method in both lists, a `route_id` without `{version}`
+and `{kind}`, an empty id or method list.
 
 An object is written only when it differs from what APISIX holds. Consumers —
 who may call, with which key — are an operator's.

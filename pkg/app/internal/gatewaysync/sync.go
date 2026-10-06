@@ -1,16 +1,18 @@
-// Package gateway keeps APISIX routing to the replicas that are actually up.
+// Package gatewaysync keeps APISIX routing to the replicas that are actually
+// up.
 //
 // The leader of the writer ring writes, through APISIX's Admin API:
 //
 //   - two upstreams: "read" holds every replica in the ring, "write" holds the
 //     leader alone, so a write reaches the replica that performs it without
 //     the relay hop between replicas;
-//   - one service carrying the plugins every API call goes through — key-auth,
-//     rate limiting per consumer, the body size limit, the request id;
-//   - per contract, a read route (GET, HEAD) and a write route (POST, PUT,
-//     PATCH, DELETE) on its prefix, attached to that service;
-//   - a route for the documentation — Swagger UI and the contracts — without
-//     authentication.
+//   - one service carrying the plugins every API call goes through;
+//   - per contract, a read route and a write route on its prefix, attached to
+//     that service;
+//   - optionally, a route for the documentation, without the service's plugins.
+//
+// What each carries — ids, methods, health check, timeouts, plugins — is the
+// Config; DefaultConfig is what it is when nothing is said.
 //
 // Each object has a fixed id and is written only when it differs from what
 // APISIX holds, so a sync that changes nothing writes nothing. A replica that
@@ -50,20 +52,75 @@ type Ring interface {
 	Leader() (id, addr string, self bool, err error)
 }
 
-// Config is what the routes carry.
+// Config is everything the sync writes, resolved: no default is applied
+// here — DefaultConfig gives them.
 type Config struct {
-	// Name prefixes every object id, so several services share one APISIX.
-	Name string
 	// Prefixes are the contracts' path prefixes, "/orders/v1/" and so on.
 	Prefixes []string
-	// ReadyPath is probed by APISIX's active health check.
-	ReadyPath string
-	// RateCount calls per RateWindow seconds, per consumer, across every route.
-	RateCount, RateWindow int
-	// MaxBodyBytes is the largest request body accepted.
-	MaxBodyBytes int
-	// Timeout to the replicas. A write with its permissions takes a few calls.
-	Timeout infragateway.Timeout
+	// Labels go on every object, so a listing can tell what the sync owns.
+	Labels map[string]string
+
+	// ReadUpstream and WriteUpstream are the two upstreams' ids, Service the
+	// service's.
+	ReadUpstream, WriteUpstream, Service string
+	// RouteID names a contract's routes: {version} is its prefix as a slug
+	// ("orders-v1"), {kind} read or write.
+	RouteID string
+	// ReadMethods go to every replica, WriteMethods to the leader alone.
+	ReadMethods, WriteMethods []string
+
+	// Upstream is the template of both upstreams: type, timeout, health
+	// checks, keepalive pool. Its name, nodes and labels are the sync's.
+	Upstream infragateway.Upstream
+	// Plugins are the service's, every API call's.
+	Plugins map[string]any
+
+	// DocsRoute is the documentation route's id; empty writes none.
+	DocsRoute string
+	DocsURIs  []string
+}
+
+// DefaultConfig is the configuration when nothing is said: ids under name,
+// the API's key, a rate limit per consumer, a body size limit, the request id,
+// and replicas health-checked on readyPath.
+func DefaultConfig(name, readyPath string) Config {
+	return Config{
+		Labels:        map[string]string{"managed-by": name},
+		ReadUpstream:  name + "-read",
+		WriteUpstream: name + "-write",
+		Service:       name + "-api",
+		RouteID:       name + "-{version}-{kind}",
+		ReadMethods:   []string{http.MethodGet, http.MethodHead},
+		WriteMethods:  []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete},
+		Upstream: infragateway.Upstream{
+			Type: "roundrobin",
+			// A write with its permissions takes a few calls to the backend.
+			Timeout: &infragateway.Timeout{Connect: 2, Send: 30, Read: 120},
+			// A replica draining or still joining answers 503 on its
+			// readiness path: out of rotation until it answers 200 again.
+			Checks: &infragateway.HealthChecks{Active: &infragateway.ActiveCheck{
+				HTTPPath:  readyPath,
+				Healthy:   &infragateway.ActiveHealthy{Interval: 2, Successes: 1},
+				Unhealthy: &infragateway.ActiveUnhealthy{Interval: 1, HTTPFailures: 2, TCPFailures: 2},
+			}},
+		},
+		Plugins: map[string]any{
+			// The contract's own header. The key does not reach the replicas,
+			// which trust what APISIX let through and are reachable only from it.
+			"key-auth": map[string]any{"header": "apikey", "hide_credentials": true},
+			// One counter per consumer for the whole API: the routes share
+			// this service's plugin configuration, hence its counter.
+			"limit-count": map[string]any{
+				"count": 600, "time_window": 60, "key_type": "var", "key": "consumer_name",
+				"rejected_code": http.StatusTooManyRequests, "policy": "local",
+			},
+			"client-control": map[string]any{"max_body_size": 1 << 20},
+			// The replicas take X-Correlation-ID as the call's id and echo it.
+			"request-id": map[string]any{"header_name": "X-Correlation-ID", "include_in_response": false},
+		},
+		DocsRoute: name + "-docs",
+		DocsURIs:  []string{"/-/docs", "/-/openapi/*"},
+	}
 }
 
 // Syncer writes Config and the ring's membership to APISIX.
@@ -76,11 +133,6 @@ type Syncer struct {
 // New builds a Syncer.
 func New(admin Admin, ring Ring, cfg Config) *Syncer {
 	return &Syncer{admin: admin, ring: ring, cfg: cfg}
-}
-
-// IDs of what the sync owns, under cfg.Name.
-func (s *Syncer) id(parts ...string) string {
-	return strings.Join(append([]string{s.cfg.Name}, parts...), "-")
 }
 
 // Sync makes APISIX match the ring once. It is meant to run on the leader, on
@@ -104,7 +156,7 @@ func (s *Syncer) Sync(ctx context.Context) error {
 		return err
 	}
 
-	readID, writeID, serviceID := s.id("read"), s.id("write"), s.id("api")
+	readID, writeID, serviceID := s.cfg.ReadUpstream, s.cfg.WriteUpstream, s.cfg.Service
 	if err := apply(ctx, s.admin.GetUpstream, s.admin.NewUpstream, readID, s.upstream(readID, readNodes)); err != nil {
 		return err
 	}
@@ -122,15 +174,15 @@ func (s *Syncer) Sync(ctx context.Context) error {
 			methods  []string
 			upstream string
 		}{
-			{"read", []string{http.MethodGet, http.MethodHead}, readID},
-			{"write", []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}, writeID},
+			{"read", s.cfg.ReadMethods, readID},
+			{"write", s.cfg.WriteMethods, writeID},
 		} {
-			id := s.id(slug, r.kind)
+			id := strings.NewReplacer("{version}", slug, "{kind}", r.kind).Replace(s.cfg.RouteID)
 			route := infragateway.Route{
 				Name: id, Desc: r.kind + " calls of " + prefix,
 				URIs: []string{prefix + "*"}, Methods: r.methods,
 				ServiceID: serviceID, UpstreamID: r.upstream,
-				Labels: map[string]string{"managed-by": s.cfg.Name},
+				Labels: s.cfg.Labels,
 			}
 			if err := apply(ctx, s.admin.GetRoute, s.admin.NewRoute, id, route); err != nil {
 				return err
@@ -138,49 +190,25 @@ func (s *Syncer) Sync(ctx context.Context) error {
 		}
 	}
 
-	docsID := s.id("docs")
-	docs := infragateway.Route{
-		Name: docsID, Desc: "the contracts and Swagger UI, unauthenticated",
-		URIs: []string{"/-/docs", "/-/openapi/*"}, Methods: []string{http.MethodGet, http.MethodHead},
-		UpstreamID: readID, Labels: map[string]string{"managed-by": s.cfg.Name},
+	if s.cfg.DocsRoute == "" {
+		return nil
 	}
-	return apply(ctx, s.admin.GetRoute, s.admin.NewRoute, docsID, docs)
+	docs := infragateway.Route{
+		Name: s.cfg.DocsRoute, Desc: "the contracts and Swagger UI, unauthenticated",
+		URIs: s.cfg.DocsURIs, Methods: []string{http.MethodGet, http.MethodHead},
+		UpstreamID: readID, Labels: s.cfg.Labels,
+	}
+	return apply(ctx, s.admin.GetRoute, s.admin.NewRoute, s.cfg.DocsRoute, docs)
 }
 
 func (s *Syncer) upstream(id string, nodes []infragateway.Node) infragateway.Upstream {
-	timeout := s.cfg.Timeout
-	return infragateway.Upstream{
-		Name: id, Type: "roundrobin", Nodes: nodes, Timeout: &timeout,
-		Labels: map[string]string{"managed-by": s.cfg.Name},
-		// A replica draining or still joining answers 503 on its readiness
-		// path: out of rotation until it answers 200 again.
-		Checks: &infragateway.HealthChecks{Active: &infragateway.ActiveCheck{
-			HTTPPath:  s.cfg.ReadyPath,
-			Healthy:   &infragateway.ActiveHealthy{Interval: 2, Successes: 1},
-			Unhealthy: &infragateway.ActiveUnhealthy{Interval: 1, HTTPFailures: 2, TCPFailures: 2},
-		}},
-	}
+	u := s.cfg.Upstream
+	u.Name, u.Nodes, u.Labels = id, nodes, s.cfg.Labels
+	return u
 }
 
 func (s *Syncer) service(id string) infragateway.Service {
-	return infragateway.Service{
-		Name: id, Labels: map[string]string{"managed-by": s.cfg.Name},
-		Plugins: map[string]any{
-			// The contract's own header. The key does not reach the replicas,
-			// which trust what APISIX let through and are reachable only from it.
-			"key-auth": map[string]any{"header": "apikey", "hide_credentials": true},
-			// One counter per consumer for the whole API: the routes share
-			// this service's plugin configuration, hence its counter.
-			"limit-count": map[string]any{
-				"count": s.cfg.RateCount, "time_window": s.cfg.RateWindow,
-				"key_type": "var", "key": "consumer_name",
-				"rejected_code": http.StatusTooManyRequests, "policy": "local",
-			},
-			"client-control": map[string]any{"max_body_size": s.cfg.MaxBodyBytes},
-			// The replicas take X-Correlation-ID as the call's id and echo it.
-			"request-id": map[string]any{"header_name": "X-Correlation-ID", "include_in_response": false},
-		},
-	}
+	return infragateway.Service{Name: id, Labels: s.cfg.Labels, Plugins: s.cfg.Plugins}
 }
 
 // nodes turns "host:port" addresses into upstream nodes, sorted so that the

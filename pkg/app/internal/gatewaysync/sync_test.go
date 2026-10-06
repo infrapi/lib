@@ -79,11 +79,9 @@ func (r *fakeRing) Leader() (string, string, bool, error) {
 }
 
 func testConfig() Config {
-	return Config{
-		Name: "orders-api", Prefixes: []string{"/orders/v1/"}, ReadyPath: "/readyz",
-		RateCount: 600, RateWindow: 60, MaxBodyBytes: 1 << 20,
-		Timeout: infragateway.Timeout{Connect: 2, Send: 30, Read: 120},
-	}
+	cfg := DefaultConfig("orders-api", "/readyz")
+	cfg.Prefixes = []string{"/orders/v1/"}
+	return cfg
 }
 
 func TestSyncWritesOnlyWhatChanged(t *testing.T) {
@@ -198,6 +196,54 @@ func TestSyncRoutesAndPlugins(t *testing.T) {
 }
 
 // No leader, or an Admin API that fails: nothing is written, the error says why.
+// Nothing is fixed: ids, methods, health check, plugins and the
+// documentation route are whatever the configuration says.
+func TestSyncWritesWhatTheConfigurationSays(t *testing.T) {
+	admin := newFakeAdmin()
+	cfg := testConfig()
+	cfg.ReadUpstream, cfg.WriteUpstream, cfg.Service = "orders-get", "orders-set", "orders-svc"
+	cfg.RouteID = "o-{kind}-{version}"
+	cfg.ReadMethods = []string{http.MethodGet}
+	cfg.Labels = map[string]string{"team": "orders"}
+	cfg.Upstream.Type = "least_conn"
+	cfg.Upstream.Checks.Active.HTTPPath = "/health"
+	cfg.Upstream.Checks.Active.Unhealthy.HTTPFailures = 5
+	cfg.Plugins = map[string]any{"key-auth": map[string]any{"header": "x-api-key"}}
+	cfg.DocsRoute = ""
+	ctx := context.Background()
+	if err := New(admin, &fakeRing{members: []string{"10.0.0.1:8080"}, leader: "10.0.0.1:8080"}, cfg).Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"upstreams/orders-get", "upstreams/orders-set", "services/orders-svc",
+		"routes/o-read-orders-v1", "routes/o-write-orders-v1"}
+	if !reflect.DeepEqual(admin.writes, want) {
+		t.Fatalf("wrote %v, want %v (and no documentation route)", admin.writes, want)
+	}
+	up, err := admin.GetUpstream(ctx, "orders-get")
+	must(t, err)
+	if up.Type != "least_conn" || up.Checks.Active.HTTPPath != "/health" ||
+		up.Checks.Active.Unhealthy.HTTPFailures != 5 || up.Labels["team"] != "orders" {
+		t.Errorf("upstream %+v", up)
+	}
+	read, err := admin.GetRoute(ctx, "o-read-orders-v1")
+	must(t, err)
+	if !reflect.DeepEqual(read.Methods, []string{"GET"}) || read.UpstreamID != "orders-get" || read.ServiceID != "orders-svc" {
+		t.Errorf("read route %+v", read)
+	}
+	svc, err := admin.GetService(ctx, "orders-svc")
+	must(t, err)
+	if len(svc.Plugins) != 1 {
+		t.Errorf("plugins %v, want only key-auth", svc.Plugins)
+	}
+
+	// The template is not shared between syncs: changing one config's
+	// upstream does not change the default.
+	if DefaultConfig("x", "/r").Upstream.Checks.Active.HTTPPath != "/r" {
+		t.Error("the default changed")
+	}
+}
+
 func TestSyncRefuses(t *testing.T) {
 	admin := newFakeAdmin()
 	if err := New(admin, &fakeRing{members: []string{"10.0.0.1:8080"}}, testConfig()).Sync(context.Background()); err == nil ||
