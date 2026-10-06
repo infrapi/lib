@@ -1,4 +1,5 @@
-// Zone-aware gossip across two data centres, with bridges.
+// Zone-aware gossip across two data centres, with bridges, a leader overall
+// and a leader per data centre, and maintenance flags that move them.
 //
 //	cd examples/cluster/zones
 //	INFRAPI_CONFIG_DOTENV_FILE=dc1-bridge.env go run .
@@ -39,7 +40,14 @@ func main() {
 
 	c, stop := demo.Start(appConfig, clusterConfig, cluster.Options{
 		Roles: []cluster.RoleSpec{
+			// One leader for the whole deployment, whichever zone it is in.
 			{Name: "scheduler", Mode: cluster.ModeLeader},
+
+			// And one per zone: a role is a ring, so a role named after the
+			// zone elects among that zone's replicas only. Every zone the
+			// binary may run in is declared; the dotenv joins its own.
+			{Name: "scheduler-dc1", Mode: cluster.ModeLeader},
+			{Name: "scheduler-dc2", Mode: cluster.ModeLeader},
 		},
 	})
 
@@ -101,15 +109,16 @@ func main() {
 			log.Fatalf("a cluster service failed: %v", err)
 
 		case <-ticker.C:
-			fmt.Printf("%s | %-11s %-7s | %s\n",
+			fmt.Printf("%s | %-4s %-7s | %s | %s\n",
 				time.Now().Format("15:04:05"),
 				clusterConfig.Zone, clusterConfig.GossipZoneRole,
-				describe(c, "scheduler"))
+				describe(c, "scheduler"),
+				describe(c, "scheduler-"+clusterConfig.Zone))
 		}
 	}
 }
 
-// describe renders what this replica believes about the role, which is the
+// describe renders what this replica believes about one role, which is the
 // whole point: four replicas that agree are one cluster, and four replicas that
 // disagree are two.
 func describe(c *cluster.Cluster, name string) string {
@@ -123,14 +132,11 @@ func describe(c *cluster.Cluster, name string) string {
 		return fmt.Sprintf("%s: %v", name, err)
 	}
 
-	should, err := role.ShouldRun()
-	if err != nil {
-		return fmt.Sprintf("members=%d acting=? (%v)", len(members), err)
-	}
-
-	verdict := "passive"
-	if should {
-		verdict = "ACTING"
+	// The zones this replica can currently see in the ring. A member that has
+	// lost its bridge sees only its own, which is the symptom to watch for.
+	zones := map[string]int{}
+	for _, member := range members {
+		zones[member.Zone]++
 	}
 
 	leader := "none"
@@ -138,12 +144,18 @@ func describe(c *cluster.Cluster, name string) string {
 		leader = l.ID
 	}
 
-	// The zones this replica can currently see. A member that has lost its
-	// bridge sees only its own, which is the symptom to watch for.
-	zones := map[string]int{}
-	for _, member := range members {
-		zones[member.Zone]++
+	verdict := "passive"
+	if should, err := role.ShouldRun(); err != nil {
+		verdict = "no leader"
+	} else if should {
+		verdict = "ACTING"
 	}
 
-	return fmt.Sprintf("members=%d %v leader=%-11s -> %s", len(members), zones, leader, verdict)
+	// Whether this replica may lead, per its leader checks: a maintenance flag
+	// here. It is published in the ring, and the others elect around it.
+	if mayLead, reason, _ := role.LeaderEligibility(); !mayLead {
+		verdict += " (may not lead: " + reason + ")"
+	}
+
+	return fmt.Sprintf("%-13s %v leader=%-10s -> %s", name, zones, leader, verdict)
 }

@@ -17,7 +17,7 @@ start the cluster — everything specific to a case stays in its `main.go`.
 | [`state-proto/`](state-proto) | **A value of your own: protobuf plus a CRDT merge** | an ephemeral TCP port |
 | [`kvapi/`](kvapi) | **A CRUD API over the store, gossip or etcd** | `127.0.0.1-2`, TCP 8085; etcd needs podman |
 | [`node/`](node) | **A real two-node cluster over gossip** | `127.0.0.1-2`, TCP 7946, 8080 |
-| [`zones/`](zones) | **Two data centres, with bridges between them** | `127.0.0.1-4`, TCP 7946, 8080 |
+| [`zones/`](zones) | **Two data centres: a leader overall, a leader per DC, maintenance flags** | `127.0.0.1-4`, TCP 7946, 8080 |
 
 `roles/` uses the in-memory key-value store: no socket, no peer, finishes in
 under a second. It shows the API. `node/` and `zones/` are the ones that show
@@ -436,17 +436,69 @@ INFRAPI_CONFIG_DOTENV_FILE=dc2-member.env go run .
 Two zones, one cluster, and gossip that stays inside a zone. A **member**
 gossips only with peers in its own zone; a **bridge** also reaches the bridges
 of other zones, so the two bridges are the only path state takes between dc1 and
-dc2. Each replica prints what it believes, and the map is the zones it can
-currently see:
+dc2.
+
+Two leader roles, side by side:
+
+- `scheduler` spans every zone: **one leader for the whole deployment**;
+- `scheduler-dc1` / `scheduler-dc2`: a role is a ring, so a role named after the
+  zone elects **one leader per data centre**. Both are declared in the code; each
+  dotenv joins its own (`INFRAPI_CLUSTER_ROLES=["scheduler","scheduler-dc1"]`).
+
+Each replica prints what it believes about both, and the map is the zones it
+sees in that ring:
 
 ```text
-dc1-bridge  | dc1  bridge  | members=4 map[dc1:2 dc2:2] leader=dc2-member  -> passive
-dc1-member  | dc1  member  | members=4 map[dc1:2 dc2:2] leader=dc2-member  -> passive
-dc2-bridge  | dc2  bridge  | members=4 map[dc1:2 dc2:2] leader=dc2-member  -> passive
-dc2-member  | dc2  member  | members=4 map[dc1:2 dc2:2] leader=dc2-member  -> ACTING
+dc1-bridge | dc1  bridge  | scheduler     map[dc1:2 dc2:2] leader=dc1-bridge -> ACTING  | scheduler-dc1 map[dc1:2] leader=dc1-member -> passive
+dc1-member | dc1  member  | scheduler     map[dc1:2 dc2:2] leader=dc1-bridge -> passive | scheduler-dc1 map[dc1:2] leader=dc1-member -> ACTING
+dc2-bridge | dc2  bridge  | scheduler     map[dc1:2 dc2:2] leader=dc1-bridge -> passive | scheduler-dc2 map[dc2:2] leader=dc2-bridge -> ACTING
+dc2-member | dc2  member  | scheduler     map[dc1:2 dc2:2] leader=dc1-bridge -> passive | scheduler-dc2 map[dc2:2] leader=dc2-bridge -> passive
 ```
 
 Four replicas that agree are one cluster. Four that disagree are two.
+
+### Put a replica in maintenance
+
+Every replica carries a leader check, a maintenance flag of its own:
+
+```bash
+INFRAPI_CLUSTER_LEADER_CHECKS=["!file:///tmp/dc1-bridge.maintenance"]
+```
+
+`!` negates: the replica may lead as long as the file does **not** exist. Each
+replica runs its checks every second, publishes the answer in the ring after two
+identical results, and the leader is elected among the replicas that may lead.
+
+```bash
+touch /tmp/dc1-bridge.maintenance
+```
+
+```text
+dc1-bridge | scheduler leader=dc2-member -> passive (may not lead: !file:///tmp/dc1-bridge.maintenance: holds) | scheduler-dc1 leader=dc1-member -> passive (may not lead: …)
+dc2-member | scheduler leader=dc2-member -> ACTING  | scheduler-dc2 leader=dc2-bridge -> passive
+```
+
+The global leadership left `dc1-bridge` within two seconds; it stays in the
+cluster and keeps serving, it just leads nothing. Now take the whole of dc2 out:
+
+```bash
+touch /tmp/dc2-bridge.maintenance /tmp/dc2-member.maintenance
+```
+
+```text
+dc2-member | scheduler leader=dc1-member -> passive (may not lead: …) | scheduler-dc2 leader=none -> no leader (may not lead: …)
+```
+
+The global role found a replica that may lead, in dc1. The dc2 role did not, and
+has **no leader**: nothing acts there until a replica may lead again — never a
+fallback to one that may not. `rm` the files and the replicas may lead again —
+and the leadership **moves back**: the leader is the eligible replica with the
+smallest token, so the one that owned it before takes it again. Expect two
+changes of leader per maintenance, not one.
+
+Any check works the same way — `tcp://db:5432`, `http://…/healthz`,
+`exec:/usr/local/bin/is-primary` — and all of them must pass. The package page
+has the full list.
 
 ### Now kill the dc2 bridge
 
