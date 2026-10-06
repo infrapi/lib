@@ -72,17 +72,92 @@ type DatabaseConfig struct {
 
 // GatewayConfig is the APISIX in front of the replicas. Empty admin_url: no
 // gateway. Needs the cluster, whose members are its upstream nodes.
+//
+// Everything the leader writes is here; what is left out keeps the default
+// gatewaysync.DefaultConfig gives. "{name}" in an id is gateway.name.
 type GatewayConfig struct {
 	AdminURL string        `yaml:"admin_url"`
 	AdminKey string        `yaml:"admin_key"`
 	Interval time.Duration `yaml:"interval"`
 	// Name prefixes every APISIX object the leader writes. Default Spec.Name.
-	Name      string `yaml:"name"`
+	Name string `yaml:"name"`
+	// Labels go on every object. Default managed-by: <name>.
+	Labels map[string]string `yaml:"labels"`
+
+	// Read and Write are the two upstreams and the methods routed to each:
+	// every replica reads, the leader alone writes.
+	Read  GatewayRoutes `yaml:"read"`
+	Write GatewayRoutes `yaml:"write"`
+	// Service is the id of the service carrying the plugins. Default {name}-api.
+	Service string `yaml:"service"`
+	// RouteID names a contract's routes from {version} ("orders-v1") and
+	// {kind} (read, write). Default {name}-{version}-{kind}.
+	RouteID string `yaml:"route_id"`
+
+	Upstream GatewayUpstream `yaml:"upstream"`
+
+	// Plugins are APISIX plugin configurations for the service, by plugin
+	// name, over the defaults (key-auth, limit-count, client-control,
+	// request-id): one named here replaces the default whole; one set to null
+	// is removed; any other APISIX plugin is added.
+	Plugins map[string]any `yaml:"plugins"`
+
+	// RateLimit and MaxBodyBytes tune the default limit-count and
+	// client-control without restating them.
 	RateLimit struct {
 		Count  int `yaml:"count"`
 		Window int `yaml:"window_seconds"`
 	} `yaml:"rate_limit"`
 	MaxBodyBytes int `yaml:"max_body_bytes"`
+
+	// Docs is the unauthenticated route to Swagger UI and the contracts.
+	Docs struct {
+		Enabled *bool    `yaml:"enabled"` // default true
+		Route   string   `yaml:"route"`   // default {name}-docs
+		URIs    []string `yaml:"uris"`    // default /-/docs and /-/openapi/*
+	} `yaml:"docs"`
+}
+
+// GatewayRoutes is one of the two upstreams and the methods it receives.
+type GatewayRoutes struct {
+	Upstream string   `yaml:"upstream"` // default {name}-read, {name}-write
+	Methods  []string `yaml:"methods"`  // default GET HEAD; POST PUT PATCH DELETE
+}
+
+// GatewayUpstream is what both upstreams share.
+type GatewayUpstream struct {
+	Type    string `yaml:"type"` // default roundrobin
+	Timeout *struct {
+		Connect time.Duration `yaml:"connect"`
+		Send    time.Duration `yaml:"send"`
+		Read    time.Duration `yaml:"read"`
+	} `yaml:"timeout"` // default 2s, 30s, 120s
+	KeepalivePool *struct {
+		Size        int            `yaml:"size"`
+		IdleTimeout *time.Duration `yaml:"idle_timeout"`
+		Requests    int            `yaml:"requests"`
+	} `yaml:"keepalive_pool"` // default APISIX's
+	HealthCheck GatewayHealthCheck `yaml:"health_check"`
+}
+
+// GatewayHealthCheck is APISIX's active check of every node. Intervals are
+// whole seconds: APISIX counts in them.
+type GatewayHealthCheck struct {
+	Enabled *bool         `yaml:"enabled"` // default true
+	Path    string        `yaml:"path"`    // default /-/readyz
+	Timeout time.Duration `yaml:"timeout"` // default APISIX's, 1s
+	Healthy struct {
+		Interval     time.Duration `yaml:"interval"`  // default 2s
+		Successes    int           `yaml:"successes"` // default 1
+		HTTPStatuses []int         `yaml:"http_statuses"`
+	} `yaml:"healthy"`
+	Unhealthy struct {
+		Interval     time.Duration `yaml:"interval"`      // default 1s
+		HTTPFailures int           `yaml:"http_failures"` // default 2
+		TCPFailures  int           `yaml:"tcp_failures"`  // default 2
+		Timeouts     int           `yaml:"timeouts"`
+		HTTPStatuses []int         `yaml:"http_statuses"`
+	} `yaml:"unhealthy"`
 }
 
 // loaded is the configuration once resolved.
@@ -184,11 +259,9 @@ func loadConfig(spec Spec, path string) (*loaded, error) {
 		if g.Name == "" {
 			g.Name = spec.Name
 		}
-		if g.RateLimit.Count == 0 {
-			g.RateLimit.Count, g.RateLimit.Window = 600, 60
-		}
-		if g.MaxBodyBytes == 0 {
-			g.MaxBodyBytes = 1 << 20
+		// Resolved now, so a mistake stops the service at start.
+		if _, err := g.syncConfig(nil); err != nil {
+			return nil, fmt.Errorf("app: %s: gateway: %w", path, err)
 		}
 	}
 	return l, nil

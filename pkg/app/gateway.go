@@ -47,11 +47,11 @@ func startGatewaySync(ctx context.Context, cfg *loaded, cl *cluster.Cluster, pre
 		return err
 	}
 
-	syncer := gatewaysync.New(admin, relay.Cluster{C: cl, Role: writerRole}, gatewaysync.Config{
-		Name: g.Name, Prefixes: prefixes, ReadyPath: ReadyPath,
-		RateCount: g.RateLimit.Count, RateWindow: g.RateLimit.Window, MaxBodyBytes: g.MaxBodyBytes,
-		Timeout: infragateway.Timeout{Connect: 2, Send: 30, Read: 120},
-	})
+	syncCfg, err := g.syncConfig(prefixes)
+	if err != nil {
+		return fmt.Errorf("app: gateway: %w", err)
+	}
+	syncer := gatewaysync.New(admin, relay.Cluster{C: cl, Role: writerRole}, syncCfg)
 	go func() {
 		// Run calls Sync on the leader only, and logs what fails.
 		if err := role.Run(ctx, g.Interval, syncer.Sync); err != nil && ctx.Err() == nil {
