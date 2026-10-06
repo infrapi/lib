@@ -185,6 +185,7 @@ func (c *Cluster) roleView(name, prefix string) roleView {
 	view.ShouldRun = should
 
 	if role.Mode() == ModeLeader {
+		view.MayLead, view.LeaderCheckFail, _ = role.LeaderEligibility()
 		if leader, err := role.Leader(); err == nil {
 			view.Leader = leader.ID
 			view.LeaderIsSelf = leader.ID == c.InstanceID()

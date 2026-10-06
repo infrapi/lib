@@ -55,6 +55,7 @@ func main() {
 | `Service` | Pointer to the service's own configuration, decoded from the file's `service` section, unknown keys refused. |
 | `LeaderWrites` | The leader of the writer ring alone performs writes; the other replicas relay theirs to it. |
 | `IdempotencyScope` | Whose an `Idempotency-Key` is. Default: the consumer the gateway authenticated. |
+| `LeaderCheck` | One more condition for this replica to lead, next to `cluster.leader_checks`. |
 | `API` | Builds the service once the configuration is loaded; returns its versions. |
 
 A `Version` is one contract and its routes. Its `Prefix` — `/orders/v1/` — is
@@ -109,6 +110,7 @@ app:
 cluster:
   enabled: true
   join_members: [orders-1:7946, orders-2:7946]
+  leader_checks: ["!file:///etc/infrapi/maintenance", "tcp://db:5432"]
 auth:
   apikey_sha256: …       # or INFRAPI_AUTH_APIKEY_SHA256
 database:
@@ -147,6 +149,11 @@ it performs writes. A write that reaches another replica is relayed to it
 unchanged (`X-Infrapi-Forwarded-By`); every write's answer names the replica that
 performed it (`X-Infrapi-Leader`). Reads are served where they arrive. No leader
 yet, or leadership moving mid-relay: `503`, `retryable: true`.
+
+Who may lead is the [leader checks'](cluster.md#choosing-who-may-lead) to say:
+`cluster.leader_checks` — `tcp://`, `http(s)://`, `exec:`, `file://`, `!` — and
+`Spec.LeaderCheck`. A replica in maintenance (`!file://…`) hands the writes, and
+APISIX's write upstream, to another.
 
 This is not a lock: during a partition each side can elect its own leader. Writes
 that converge on their body end where one leader would; others must be fenced in

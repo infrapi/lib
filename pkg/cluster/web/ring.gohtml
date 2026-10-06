@@ -24,7 +24,7 @@
     <table>
       <thead>
         <tr>
-          <th>Instance</th><th>State</th><th>Health</th><th>Address</th>
+          <th>Instance</th><th>State</th><th>Health</th>{{if eq $.Mode "leader"}}<th>May lead</th>{{end}}<th>Address</th>
           <th>Zone</th><th>Tokens</th><th>Last heartbeat</th><th>Registered</th>
         </tr>
       </thead>
@@ -34,6 +34,7 @@
           <td class="mono">{{.ID}}</td>
           <td><span class="badge badge-{{lower .State}}">{{.State}}</span></td>
           <td>{{if .Healthy}}<span class="badge badge-active">eligible</span>{{else}}<span class="badge badge-unhealthy">excluded</span>{{end}}</td>
+          {{if eq $.Mode "leader"}}<td>{{if .MayLead}}<span class="badge badge-active">yes</span>{{else}}<span class="badge badge-unhealthy">no</span>{{end}}</td>{{end}}
           <td class="mono">{{.Addr}}</td>
           <td class="mono">{{if .Zone}}{{.Zone}}{{else}}&mdash;{{end}}</td>
           <td class="mono">{{len .Tokens}}</td>

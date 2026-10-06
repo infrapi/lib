@@ -31,6 +31,10 @@ type Member struct {
 	// when the ring does not record it.
 	RegisteredAt time.Time `json:"registeredAt"`
 
+	// MayLead reports whether the member's leader checks pass, as it published
+	// in the ring. Always true on a role without leader checks.
+	MayLead bool `json:"mayLead"`
+
 	// Healthy reports whether the role's coordination mode accepts this member
 	// right now. Members always returns eligible members, so it is true there;
 	// AllMembers is where it earns its keep.
@@ -42,6 +46,7 @@ type Member struct {
 func newMember(desc ring.InstanceDesc, healthy bool) Member {
 	return Member{
 		Healthy:      healthy,
+		MayLead:      !desc.ReadOnly,
 		ID:           desc.Id,
 		Addr:         desc.Addr,
 		Zone:         desc.Zone,

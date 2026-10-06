@@ -219,6 +219,11 @@ type roleView struct {
 	LeaderAddr   string `json:"leaderAddr,omitempty"`
 	LeaderURL    string `json:"leaderUrl,omitempty"`
 	LeaderIsSelf bool   `json:"leaderIsSelf"`
+
+	// MayLead is this replica's own standing in a leader role: whether its
+	// leader checks pass, and if not, which one failed.
+	MayLead         bool   `json:"mayLead"`
+	LeaderCheckFail string `json:"leaderCheckFailure,omitempty"`
 }
 
 // ringView is the model of a role's ring page, and the shape of its JSON.

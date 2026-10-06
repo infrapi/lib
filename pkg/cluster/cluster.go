@@ -108,6 +108,12 @@ type Cluster struct {
 	codecs    map[string]codec.Codec
 	kvClients map[string]kv.Client
 
+	// leaderChecks are INFRAPI_CLUSTER_LEADER_CHECKS, parsed once: every
+	// leader-mode role runs them to decide whether this replica may lead.
+	leaderChecks    []Check
+	leaderEligible  *prometheus.GaugeVec
+	leaderCheckFail *prometheus.CounterVec
+
 	mlSvc *memberlist.KVInitService
 	mlKV  *memberlist.KV
 
@@ -224,6 +230,31 @@ func New(app *config.AppConfig, cfg *config.ClusterConfig, opts Options) (*Clust
 		return nil, err
 	}
 	c.dskit = dskitCfg
+
+	// A check that does not parse is refused here rather than skipped: a node
+	// whose condition is silently dropped is a node that leads when it should
+	// not.
+	if c.leaderChecks, err = ParseChecks(cfg.LeaderChecks); err != nil {
+		registerersInUse.Delete(baseReg)
+		return nil, err
+	}
+	c.leaderEligible = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "leader_eligible",
+		Help: "Whether this replica may lead the role: 1 when its leader checks pass, as published in the ring.",
+	}, []string{"name"})
+	c.leaderCheckFail = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "leader_check_failures_total",
+		Help: "Leader check evaluations that failed, by role and by the check that failed.",
+	}, []string{"name", "check"})
+	// A cluster stopped and built again on the same registerer finds them
+	// registered by its predecessor: it takes them over.
+	if c.leaderEligible, err = registerOrReuse(c.reg, c.leaderEligible); err == nil {
+		c.leaderCheckFail, err = registerOrReuse(c.reg, c.leaderCheckFail)
+	}
+	if err != nil {
+		registerersInUse.Delete(baseReg)
+		return nil, fmt.Errorf("cluster: register leader check metrics: %w", err)
+	}
 
 	for _, name := range order {
 		spec := declared[name]
@@ -678,4 +709,17 @@ func sortedNames(declared map[string]RoleSpec) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// registerOrReuse registers c, or returns the collector of the same kind
+// already registered under its name.
+func registerOrReuse[T prometheus.Collector](reg prometheus.Registerer, c T) (T, error) {
+	err := reg.Register(c)
+	var already prometheus.AlreadyRegisteredError
+	if errors.As(err, &already) {
+		if existing, ok := already.ExistingCollector.(T); ok {
+			return existing, nil
+		}
+	}
+	return c, err
 }

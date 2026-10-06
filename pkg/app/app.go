@@ -43,6 +43,11 @@ type Spec struct {
 	// [idempotency.DefaultScope], the caller the gateway authenticated.
 	IdempotencyScope idempotency.Scope
 
+	// LeaderCheck is one more condition for this replica to lead the writer
+	// ring, next to cluster.leader_checks: nil when it may. It runs on the
+	// same interval, timeout and threshold; see [cluster.RoleSpec].
+	LeaderCheck func(ctx context.Context) error
+
 	// API builds the service once the configuration is loaded, and returns
 	// its contract versions with their routes.
 	API func(ctx context.Context, rt *Runtime) ([]Version, error)
@@ -116,7 +121,7 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 		slog.Warn("no database: Idempotency-Key is IGNORED, and a retried write runs twice")
 	}
 
-	cl, err := newCluster(cfg)
+	cl, err := newCluster(spec, cfg)
 	if err != nil {
 		return fmt.Errorf("app: cluster: %w", err)
 	}

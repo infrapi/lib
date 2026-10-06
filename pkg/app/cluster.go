@@ -11,9 +11,9 @@ import (
 // unless cluster.enabled: one replica needs no election. Its metrics go to the
 // default registry, which the engine serves at /-/metrics; its zone, unless
 // set, is the application's location.
-func newCluster(cfg *loaded) (*cluster.Cluster, error) {
+func newCluster(spec Spec, cfg *loaded) (*cluster.Cluster, error) {
 	return cluster.New(cfg.app, cfg.cluster, cluster.Options{
-		Roles:  []cluster.RoleSpec{{Name: writerRole, Mode: cluster.ModeLeader}},
+		Roles:  []cluster.RoleSpec{{Name: writerRole, Mode: cluster.ModeLeader, LeaderCheck: spec.LeaderCheck}},
 		Logger: logrus.WithField("component", "cluster"),
 	})
 }

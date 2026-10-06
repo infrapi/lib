@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -39,6 +40,12 @@ type ClusterDefaultConfig struct {
 	Zone                 *VariableOpts
 	ZoneAwarenessEnabled *VariableOpts
 	ExcludedZones        *VariableOpts
+
+	// Leader eligibility
+	LeaderChecks         *VariableOpts
+	LeaderCheckInterval  *VariableOpts
+	LeaderCheckTimeout   *VariableOpts
+	LeaderCheckThreshold *VariableOpts
 
 	// Gossip, used only when KvStore is memberlist
 	GossipClusterLabel                    *VariableOpts
@@ -179,6 +186,23 @@ func newClusterDefaultConfig(hostname string) *ClusterDefaultConfig {
 		ExcludedZones: &VariableOpts{
 			Key:     "INFRAPI_CLUSTER_EXCLUDED_ZONES",
 			Default: "[]",
+		},
+
+		LeaderChecks: &VariableOpts{
+			Key:     "INFRAPI_CLUSTER_LEADER_CHECKS",
+			Default: "[]",
+		},
+		LeaderCheckInterval: &VariableOpts{
+			Key:     "INFRAPI_CLUSTER_LEADER_CHECK_INTERVAL",
+			Default: "10s",
+		},
+		LeaderCheckTimeout: &VariableOpts{
+			Key:     "INFRAPI_CLUSTER_LEADER_CHECK_TIMEOUT",
+			Default: "5s",
+		},
+		LeaderCheckThreshold: &VariableOpts{
+			Key:     "INFRAPI_CLUSTER_LEADER_CHECK_THRESHOLD",
+			Default: "2",
 		},
 
 		GossipClusterLabel: &VariableOpts{
@@ -402,6 +426,12 @@ type ClusterConfig struct {
 	ZoneAwarenessEnabled bool
 	ExcludedZones        []string
 
+	// Leader eligibility
+	LeaderChecks         []string
+	LeaderCheckInterval  time.Duration
+	LeaderCheckTimeout   time.Duration
+	LeaderCheckThreshold int
+
 	// Gossip
 	GossipClusterLabel                    string
 	GossipClusterLabelVerificationDisable bool
@@ -560,6 +590,11 @@ func (v *Variables) GetClusterConfig() (*ClusterConfig, error) {
 		ZoneAwarenessEnabled: l.boolean(d.ZoneAwarenessEnabled),
 		ExcludedZones:        l.slice(d.ExcludedZones),
 
+		LeaderChecks:         l.slice(d.LeaderChecks),
+		LeaderCheckInterval:  l.duration(d.LeaderCheckInterval),
+		LeaderCheckTimeout:   l.duration(d.LeaderCheckTimeout),
+		LeaderCheckThreshold: l.integer(d.LeaderCheckThreshold),
+
 		GossipClusterLabel:                    l.str(d.GossipClusterLabel),
 		GossipClusterLabelVerificationDisable: l.boolean(d.GossipClusterLabelVerificationDisable),
 		GossipBindAddrs:                       l.slice(d.GossipBindAddrs),
@@ -693,6 +728,23 @@ func (c *ClusterConfig) validateTimings() error {
 	}
 	if c.AutoForgetUnhealthyPeriods < 0 {
 		return c.errorf("INFRAPI_CLUSTER_AUTO_FORGET_UNHEALTHY_PERIODS is %d, expected 0 or more", c.AutoForgetUnhealthyPeriods)
+	}
+
+	// A leader check that runs constantly, never times out or flips on no
+	// result at all is not a check.
+	if c.LeaderCheckInterval <= 0 {
+		return c.errorf("INFRAPI_CLUSTER_LEADER_CHECK_INTERVAL is %s, expected more than 0", c.LeaderCheckInterval)
+	}
+	if c.LeaderCheckTimeout <= 0 {
+		return c.errorf("INFRAPI_CLUSTER_LEADER_CHECK_TIMEOUT is %s, expected more than 0", c.LeaderCheckTimeout)
+	}
+	if c.LeaderCheckThreshold < 1 {
+		return c.errorf("INFRAPI_CLUSTER_LEADER_CHECK_THRESHOLD is %d, expected 1 or more", c.LeaderCheckThreshold)
+	}
+	for _, check := range c.LeaderChecks {
+		if strings.TrimSpace(check) == "" {
+			return c.errorf("INFRAPI_CLUSTER_LEADER_CHECKS contains an empty check")
+		}
 	}
 
 	if c.JoinMaxBackoff < c.JoinMinBackoff {
