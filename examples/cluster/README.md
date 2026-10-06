@@ -46,7 +46,7 @@ INFRAPI_CLUSTER_ROLES=["scheduler"]
 
 | | `ModeLeader` | `ModeBroadcast` |
 |---|---|---|
-| `ShouldRun` is true on | the owner of the leader token | every healthy member |
+| `ShouldRun` is true on | the leader: the member that may lead with the smallest token | every healthy member |
 | Ring states accepted | `ACTIVE`, `LEAVING` | `ACTIVE` |
 | `Leader`, `IsLeader` | the elected replica | `ErrWrongMode` |
 

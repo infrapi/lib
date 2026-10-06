@@ -181,7 +181,7 @@ func (r *Role) Lifecycler() *ring.BasicLifecycler { return r.lifecycler }
 
 // ShouldRun reports whether this replica must act right now.
 //
-// In ModeLeader that means owning the leader token; in ModeBroadcast it means
+// In ModeLeader that means being the leader; in ModeBroadcast it means
 // being a healthy member of the role ring. A non-nil error must be read as "do
 // not act": it means the ring view is unusable, not that this replica was
 // excluded.
@@ -214,7 +214,7 @@ func (r *Role) ShouldRunKey(_ string) (bool, error) {
 	return r.ShouldRun()
 }
 
-// IsLeader reports whether this replica owns the leader token. It reports
+// IsLeader reports whether this replica is the leader. It reports
 // ErrWrongMode unless the role is in ModeLeader.
 func (r *Role) IsLeader() (bool, error) {
 	leader, err := r.Leader()
@@ -225,11 +225,11 @@ func (r *Role) IsLeader() (bool, error) {
 }
 
 // Leader returns the member that leads: of the healthy members that may lead,
-// the one owning the smallest token, which is the owner of token 0 — "the
-// leader token" — once the members whose leader checks fail are set aside. It reports ErrWrongMode
-// unless the role is in ModeLeader, and ErrNoLeader when no healthy member may
-// lead, which is the normal state of an empty or partitioned ring, or of one
-// whose every member fails its checks.
+// the one with the smallest token. Each member has its own token; one that
+// may not lead is skipped, not removed, and leads again once it may. It
+// reports ErrWrongMode unless the role is in ModeLeader, and ErrNoLeader when
+// no healthy member may lead, which is the normal state of an empty or
+// partitioned ring, or of one whose every member fails its checks.
 //
 // The filter is here because dskit's token lookup does not skip read-only
 // instances: it would hand the leadership to a replica that published it must

@@ -45,9 +45,9 @@ var (
 	// store, such as GossipPort when the store is etcd.
 	ErrWrongStore = errors.New("cluster: operation does not apply to this key-value store")
 
-	// ErrNoLeader is returned when the role ring has no single healthy owner of
-	// the leader token, which is the normal state of an empty or partitioned
-	// ring rather than a failure of this replica.
+	// ErrNoLeader is returned when the role ring has no healthy member that may
+	// lead, which is the normal state of an empty or partitioned ring rather
+	// than a failure of this replica.
 	ErrNoLeader = errors.New("cluster: no leader")
 
 	// ErrCodecUnknown is returned by KVClient for a codec that was not passed

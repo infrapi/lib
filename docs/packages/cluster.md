@@ -74,16 +74,50 @@ returning an error.
 
 ```go
 const (
-	cluster.ModeLeader    // only the owner of the leader token acts
+	cluster.ModeLeader    // only the leader acts
 	cluster.ModeBroadcast // every healthy member acts
 )
 ```
 
 | | `ModeLeader` | `ModeBroadcast` |
 |---|---|---|
-| `ShouldRun` is true on | the owner of the leader token, among the members [that may lead](#choosing-who-may-lead) | every healthy member |
+| `ShouldRun` is true on | the leader: the member [that may lead](#choosing-who-may-lead) with the smallest token | every healthy member |
 | Ring states accepted | `ACTIVE`, `LEAVING` | `ACTIVE` |
 | `Leader`, `IsLeader` | the elected replica | `ErrWrongMode` |
+
+### How the leader is chosen
+
+There is no leadership token handed from one replica to the next. Each member
+draws **its own** ring token, at random, when it joins — one per member in both
+modes — and keeps it. The leader is the healthy member that may lead with the
+smallest token: the first one met walking the ring from 0.
+
+```text
+0 ───────────────────────────────────────────────────────────── 2³²
+   ▲ dc1-bridge     ▲ dc2-member      ▲ dc1-member     ▲ dc2-bridge
+   token 120M       token 900M        token 2.1G       token 3.8G
+   may lead: no     may lead: yes     may lead: yes    may lead: yes
+                    └─ leader
+```
+
+Every replica computes this on its own from the ring it gossips, and they agree
+without talking to each other: no vote, no stored "current leader". Three
+consequences:
+
+- **A member that may not lead is skipped, not removed.** It keeps its token and
+  its place; `ShouldRun` is false on it, `Leader` names the next one.
+- **The leadership goes back.** When that member may lead again, it is again the
+  first met from 0, and leads again. A maintenance is two changes of leader, the
+  way in and the way out.
+- **Leaving the ring is a lottery.** A member that keeps its entry — a
+  maintenance, a restart with `INFRAPI_CLUSTER_KEEP_INSTANCE_IN_RING_ON_SHUTDOWN`
+  on — keeps its token and its rank. One that leaves it — the key off, forgotten
+  after `INFRAPI_CLUSTER_AUTO_FORGET_UNHEALTHY_PERIODS`, or evicted from the ring
+  page — draws a new token when it comes back, and leads again only if that one
+  happens to be the smallest.
+
+Nothing chooses *who* leads, only who **may not**: to prefer a data centre or a
+node, make the others fail a [leader check](#choosing-who-may-lead).
 
 `ModeLeader` counts a `LEAVING` replica as eligible, which is what keeps a
 rolling restart from changing leader at every step. `ModeBroadcast` does not: a
@@ -94,8 +128,8 @@ unusable, not that this replica was excluded.
 
 ## Choosing who may lead
 
-By default every member of a leader role may lead, and the leader is the owner of
-the leader token: chance. Leader checks decide it from the outside world — the
+By default every member of a leader role may lead, and the leader is the one
+with the [smallest token](#how-the-leader-is-chosen): chance. Leader checks decide it from the outside world — the
 active data centre, the node holding a VIP, a maintenance flag, a dependency this
 node can reach. Each member runs them on a timer and publishes the answer in the
 ring; the leader is elected **among the members that may lead**.
@@ -731,7 +765,7 @@ ceiling, so a shutdown with nothing left to say still returns at once.
 
     With `INFRAPI_CLUSTER_KEEP_INSTANCE_IN_RING_ON_SHUTDOWN=true`, the default,
     a stopping replica sits in `LEAVING` — which a leader role counts as
-    eligible. **A dying leader therefore keeps the leader token until its
+    eligible. **A dying leader therefore stays the leader until its
     heartbeat goes stale, up to `INFRAPI_CLUSTER_HEARTBEAT_TIMEOUT`.**
 
     That is the trade: far fewer leader changes across a rolling restart, at the
