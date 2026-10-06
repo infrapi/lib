@@ -81,7 +81,7 @@ const (
 
 | | `ModeLeader` | `ModeBroadcast` |
 |---|---|---|
-| `ShouldRun` is true on | the owner of the leader token | every healthy member |
+| `ShouldRun` is true on | the owner of the leader token, among the members [that may lead](#choosing-who-may-lead) | every healthy member |
 | Ring states accepted | `ACTIVE`, `LEAVING` | `ACTIVE` |
 | `Leader`, `IsLeader` | the elected replica | `ErrWrongMode` |
 
@@ -91,6 +91,53 @@ replica that is draining must stop working.
 
 A non-nil error from `ShouldRun` means **do not act**. It says the ring view is
 unusable, not that this replica was excluded.
+
+## Choosing who may lead
+
+By default every member of a leader role may lead, and the leader is the owner of
+the leader token: chance. Leader checks decide it from the outside world — the
+active data centre, the node holding a VIP, a maintenance flag, a dependency this
+node can reach. Each member runs them on a timer and publishes the answer in the
+ring; the leader is elected **among the members that may lead**.
+
+```text
+INFRAPI_CLUSTER_LEADER_CHECKS=["!file:///etc/infrapi/maintenance", "tcp://db.dc1:5432", "exec:/usr/local/bin/is-primary dc1"]
+```
+
+| check | passes when |
+|---|---|
+| `tcp://host:port`, `telnet://host:port` | a TCP connection opens |
+| `http://…`, `https://…` | a GET answers 2xx — redirects are not followed |
+| `exec:/path/to/cmd arg …` | the command exits 0; no shell, arguments split on spaces; its output explains a failure |
+| `file:///path` | the file exists |
+| `!<check>` | the check fails — `!file:///etc/infrapi/maintenance` is "no maintenance flag" |
+
+- **Every check must pass.** The first that fails is the reason shown.
+- **No member may lead: no leader.** `Leader` reports `ErrNoLeader`, `ShouldRun`
+  an error, and nothing acts until a member may lead again — never a fallback
+  to one that may not.
+- A check that times out fails, negated or not: an unknown condition is not a pass.
+- A check that does not parse is refused by `New`: a condition silently dropped is
+  a node that leads when it should not.
+- Code can add its own: `RoleSpec.LeaderCheck`, a `func(ctx) error` run with the
+  configured ones.
+
+| Key | Default | Notes |
+|-----|---------|-------|
+| `INFRAPI_CLUSTER_LEADER_CHECKS` | `[]` | The checks, all of which must pass. Empty: every member may lead. |
+| `INFRAPI_CLUSTER_LEADER_CHECK_INTERVAL` | `10s` | How often they run. |
+| `INFRAPI_CLUSTER_LEADER_CHECK_TIMEOUT` | `5s` | Each check's budget. |
+| `INFRAPI_CLUSTER_LEADER_CHECK_THRESHOLD` | `2` | Identical results in a row before the published answer changes: one blip does not move the leadership. The first answer, at start, is published at once. |
+
+The answer travels as the instance's read-only flag, dskit's own: a read-only
+instance takes no writes, which is exactly a member that must not lead. dskit's
+token lookup does not skip read-only instances, so `Leader` picks among the
+others itself — the smallest token, as before. A failover therefore takes about
+`threshold × interval` plus the gossip round that carries the flag.
+
+The status page shows, for this replica, whether it may lead and which check
+said no; the ring page has a "May lead" column; `Member.MayLead` and
+`Role.LeaderEligibility` say the same to code.
 
 ### A gated periodic action
 
@@ -570,6 +617,8 @@ infrapi_cluster_ring_members{name="scheduler",state="ACTIVE"}
 infrapi_cluster_ring_member_heartbeats_total{name="scheduler"}
 infrapi_cluster_kv_request_duration_seconds{kv_name="scheduler-ring"}
 infrapi_cluster_memberlist_client_cluster_members_count
+infrapi_cluster_leader_eligible{name="scheduler"}                       # 1 when this replica may lead
+infrapi_cluster_leader_check_failures_total{name="scheduler",check="tcp://db.dc1:5432"}
 ```
 
 The prefix is not decoration: dskit names its collectors `ring_members`,

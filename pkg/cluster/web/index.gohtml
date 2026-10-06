@@ -45,6 +45,11 @@
               {{else if .LeaderURL}}<a href="{{.LeaderURL}}">open</a>{{end}}
             {{else}}none{{end}}
           </dd>
+          <dt class="label">May lead</dt>
+          <dd>
+            {{if .MayLead}}<span class="badge badge-active">yes</span>
+            {{else}}<span class="badge badge-unhealthy">no</span> <span class="mono">{{.LeaderCheckFail}}</span>{{end}}
+          </dd>
         {{end}}
         <dt class="label">Members</dt><dd>{{.MemberCount}}</dd>
         <dt class="label">Ring key</dt><dd>{{.Key}}</dd>

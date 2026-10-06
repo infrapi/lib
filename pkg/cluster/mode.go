@@ -27,11 +27,6 @@ func (m Mode) String() string {
 	}
 }
 
-// leaderToken is the ring token whose owner is the leader. Any fixed token
-// would do; zero is the one acme-manager already uses, so a ring written by
-// this package is readable by the same reasoning.
-const leaderToken = 0
-
 // modeSpec is the per-mode behaviour, kept in one place so that the ring
 // parameters and the eligibility rule of a mode cannot drift apart. Adding a
 // sharded mode is a constant and a row here.

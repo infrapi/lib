@@ -15,10 +15,16 @@ import (
 func handler(runs *atomic.Int32, status int) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		runs.Add(1)
-		b, _ := io.ReadAll(r.Body)
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
-		_, _ = w.Write(b)
+		if _, err := w.Write(b); err != nil {
+			panic(err) // a test handler: the test fails loudly
+		}
 	})
 }
 

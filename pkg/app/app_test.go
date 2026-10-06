@@ -183,18 +183,20 @@ func TestRun(t *testing.T) {
 		if err != nil {
 			return false
 		}
-		_ = resp.Body.Close()
+		require.NoError(t, resp.Body.Close())
 		return resp.StatusCode == http.StatusOK
 	}, 10*time.Second, 50*time.Millisecond)
 
 	do := func(method, p, body string) (int, string, http.Header) {
-		req, _ := http.NewRequest(method, base+p, strings.NewReader(body))
+		req, err := http.NewRequest(method, base+p, strings.NewReader(body))
+		require.NoError(t, err)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Correlation-ID", "corr-1")
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		b, _ := io.ReadAll(resp.Body)
+		b, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
 		return resp.StatusCode, string(b), resp.Header
 	}
 
@@ -250,4 +252,33 @@ func TestRunRefusesAnIncompleteSpec(t *testing.T) {
 		return nil, nil
 	}}, ""), "Name")
 	assert.ErrorContains(t, Run(context.Background(), Spec{Name: "x"}, ""), "API")
+}
+
+// cluster.leader_checks is a key like any other: it reaches the cluster, and a
+// check that does not parse stops the service before it serves.
+func TestLeaderChecksFromTheFile(t *testing.T) {
+	path := writeFile(t, required+`
+cluster:
+  enabled: true
+  kv_store: inmemory
+  instance_addr: 127.0.0.1
+  leader_checks: ["!file:///etc/infrapi/maintenance", "tcp://db:5432"]
+  leader_check_interval: 3s
+`)
+	cfg, err := loadConfig(Spec{Name: "orders-api"}, path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"!file:///etc/infrapi/maintenance", "tcp://db:5432"}, cfg.cluster.LeaderChecks)
+	assert.Equal(t, 3*time.Second, cfg.cluster.LeaderCheckInterval)
+
+	bad := writeFile(t, required+`
+cluster:
+  enabled: true
+  kv_store: inmemory
+  instance_addr: 127.0.0.1
+  leader_checks: ["ping://db"]
+`)
+	cfg, err = loadConfig(Spec{Name: "orders-api"}, bad)
+	require.NoError(t, err)
+	_, err = newCluster(Spec{Name: "orders-api"}, cfg)
+	assert.ErrorContains(t, err, "ping://db")
 }

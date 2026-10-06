@@ -46,3 +46,6 @@ site/
 # AGENT.md on why the submodules use replace directives instead.
 go.work
 go.work.sum
+
+# the example built in place by `go build ./...`
+/examples/app/app

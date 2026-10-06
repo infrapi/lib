@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"net/http"
 	"runtime/debug"
@@ -181,28 +182,30 @@ type docsURL struct {
 }
 
 // newDocsPage renders the documentation page served at DocsPath.
-func newDocsPage(cfg *config.AppConfig, specs []OpenAPISpec) []byte {
+func newDocsPage(cfg *config.AppConfig, specs []OpenAPISpec) ([]byte, error) {
 	var urls []docsURL
 	for _, s := range specs {
 		urls = append(urls, docsURL{Name: s.Name, URL: OpenAPIPrefix + s.Path})
 	}
 
 	var page bytes.Buffer
-	// the template is a constant and its data has every key it names, so
-	// execution has nothing left to fail on
-	_ = docsPage.Execute(&page, map[string]any{
+	if err := docsPage.Execute(&page, map[string]any{
 		"Title":     cfg.AppName,
 		"SpecPath":  OpenAPIPath,
 		"SwaggerUI": swaggerUI,
 		"URLs":      urls,
-	})
-
-	return page.Bytes()
+	}); err != nil {
+		return nil, fmt.Errorf("server: render the docs page: %w", err)
+	}
+	return page.Bytes(), nil
 }
 
 // openAPIHandlers registers the specifications and the documentation page.
-func openAPIHandlers(app *gin.Engine, cfg *config.AppConfig, specs []OpenAPISpec) {
-	page := newDocsPage(cfg, specs)
+func openAPIHandlers(app *gin.Engine, cfg *config.AppConfig, specs []OpenAPISpec) error {
+	page, err := newDocsPage(cfg, specs)
+	if err != nil {
+		return err
+	}
 
 	// The generated specification only stands in for a contract the service
 	// does not have: next to one, it would be a second, poorer description of
@@ -223,4 +226,5 @@ func openAPIHandlers(app *gin.Engine, cfg *config.AppConfig, specs []OpenAPISpec
 	app.GET(DocsPath, func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", page)
 	})
+	return nil
 }

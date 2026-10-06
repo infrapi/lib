@@ -43,6 +43,11 @@ type Spec struct {
 	// [idempotency.DefaultScope], the caller the gateway authenticated.
 	IdempotencyScope idempotency.Scope
 
+	// LeaderCheck is one more condition for this replica to lead the writer
+	// ring, next to cluster.leader_checks: nil when it may. It runs on the
+	// same interval, timeout and threshold; see [cluster.RoleSpec].
+	LeaderCheck func(ctx context.Context) error
+
 	// API builds the service once the configuration is loaded, and returns
 	// its contract versions with their routes.
 	API func(ctx context.Context, rt *Runtime) ([]Version, error)
@@ -110,13 +115,17 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 		if err != nil {
 			return err
 		}
-		defer closeDB()
+		defer func() {
+			if err := closeDB(); err != nil {
+				slog.Warn("closing the idempotency store", "err", err)
+			}
+		}()
 		store = pg
 	} else {
 		slog.Warn("no database: Idempotency-Key is IGNORED, and a retried write runs twice")
 	}
 
-	cl, err := newCluster(cfg)
+	cl, err := newCluster(spec, cfg)
 	if err != nil {
 		return fmt.Errorf("app: cluster: %w", err)
 	}
@@ -147,8 +156,7 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 	// Joined once the API listens: the ring then advertises an address that
 	// answers. Until then a write is refused as retryable (no leader yet).
 	if err := cl.Start(ctx); err != nil {
-		_ = srv.Close()
-		return fmt.Errorf("app: cluster: %w", err)
+		return errors.Join(fmt.Errorf("app: cluster: %w", err), srv.Close())
 	}
 	ready.joined.Store(true)
 	if cl.Enabled() {
@@ -156,18 +164,15 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 	}
 
 	if err := startGatewaySync(ctx, cfg, cl, prefixes); err != nil {
-		_ = cl.Stop(context.Background())
-		_ = srv.Close()
-		return err
+		return errors.Join(err, cl.Stop(context.Background()), srv.Close())
 	}
 
 	select {
 	case err := <-errc:
-		_ = cl.Stop(context.Background())
 		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+			err = nil
 		}
-		return err
+		return errors.Join(err, cl.Stop(context.Background()))
 	case err := <-cl.Err():
 		slog.Error("cluster failed", "err", err)
 	case <-ctx.Done():

@@ -202,9 +202,8 @@ func correlate(c *gin.Context) {
 		id = c.GetHeader("X-Request-ID")
 	}
 	if id == "" {
-		b := make([]byte, 8)
-		_, _ = rand.Read(b)
-		id = hex.EncodeToString(b)
+		// crypto/rand.Text cannot fail: no error to drop.
+		id = rand.Text()
 	}
 	c.Header("X-Correlation-ID", id)
 	c.Request = c.Request.WithContext(problem.WithCorrelationID(c.Request.Context(), id))

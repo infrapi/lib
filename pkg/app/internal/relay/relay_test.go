@@ -31,7 +31,10 @@ func startReplica(t *testing.T, id string, start bool) *replica {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	defaults := config.NewDefaultConfig()
 	cfg, err := (&config.Variables{Path: "test", DefaultConfig: defaults, Values: map[string]string{
@@ -69,20 +72,31 @@ func startReplica(t *testing.T, id string, start bool) *replica {
 			t.Fatal(err)
 		}
 	}
-	t.Cleanup(func() { _ = cl.Stop(context.Background()) })
+	t.Cleanup(func() {
+		if err := cl.Stop(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
 	return &replica{id: id, cl: cl, srv: srv}
 }
 
 func call(t *testing.T, method string, r *replica) (int, map[string]string, http.Header) {
 	t.Helper()
-	req, _ := http.NewRequest(method, r.srv.URL+"/orders/1", strings.NewReader(`{}`))
+	req, err := http.NewRequest(method, r.srv.URL+"/orders/1", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = resp.Body.Close() }()
 	var body map[string]string
-	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil && resp.StatusCode == http.StatusOK {
+		t.Fatal(err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
 	return resp.StatusCode, body, resp.Header
 }
 

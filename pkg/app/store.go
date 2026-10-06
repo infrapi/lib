@@ -14,18 +14,18 @@ import (
 )
 
 // openStore opens the idempotency store and prunes it hourly until ctx ends.
-func openStore(ctx context.Context, dsn string) (*idempotency.Postgres, func(), error) {
+// The function it returns closes it.
+func openStore(ctx context.Context, dsn string) (*idempotency.Postgres, func() error, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, nil, fmt.Errorf("app: database: %w", err)
 	}
 	pg, err := idempotency.NewPostgres(ctx, db)
 	if err != nil {
-		_ = db.Close()
-		return nil, nil, fmt.Errorf("app: idempotency store: %w", err)
+		return nil, nil, errors.Join(fmt.Errorf("app: idempotency store: %w", err), db.Close())
 	}
 	go prune(ctx, pg)
-	return pg, func() { _ = db.Close() }, nil
+	return pg, db.Close, nil
 }
 
 func prune(ctx context.Context, pg *idempotency.Postgres) {

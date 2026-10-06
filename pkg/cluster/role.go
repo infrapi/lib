@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -35,6 +36,11 @@ type RoleSpec struct {
 	// takes the mode's own count, which is what a leader or broadcast role
 	// wants.
 	NumTokens int
+
+	// LeaderCheck, on a leader-mode role, is one more condition for this
+	// replica to lead, next to INFRAPI_CLUSTER_LEADER_CHECKS: nil when it may.
+	// It runs on the same timer, timeout and threshold.
+	LeaderCheck func(ctx context.Context) error
 }
 
 // ringKey returns the key this role's ring is stored under.
@@ -54,6 +60,9 @@ type Role struct {
 	cluster    *Cluster
 	ring       *ring.Ring
 	lifecycler *ring.BasicLifecycler
+
+	// eligibility is set on a leader-mode role with leader checks.
+	eligibility *eligibility
 }
 
 // start builds and starts this role's lifecycler and ring, then waits until
@@ -109,6 +118,11 @@ func (r *Role) start(ctx context.Context) error {
 	}
 	c.started = append(c.started, lifecycler)
 	c.watcher.WatchService(lifecycler)
+	r.lifecycler = lifecycler
+
+	if err := r.startEligibility(ctx); err != nil {
+		return err
+	}
 
 	if err := c.startService(ctx, ringSvc); err != nil {
 		return fmt.Errorf("start ring: %w", err)
@@ -116,7 +130,6 @@ func (r *Role) start(ctx context.Context) error {
 	c.started = append(c.started, ringSvc)
 	c.watcher.WatchService(ringSvc)
 
-	r.lifecycler = lifecycler
 	r.ring = ringSvc
 
 	// Turns "Start returned" into a readiness guarantee. This retries
@@ -211,9 +224,16 @@ func (r *Role) IsLeader() (bool, error) {
 	return leader.ID == r.cluster.cfg.InstanceID, nil
 }
 
-// Leader returns the member that owns the leader token. It reports ErrWrongMode
-// unless the role is in ModeLeader, and ErrNoLeader when the ring has no single
-// healthy owner, which is the normal state of an empty or partitioned ring.
+// Leader returns the member that leads: of the healthy members that may lead,
+// the one owning the smallest token, which is the owner of token 0 — "the
+// leader token" — once the members whose leader checks fail are set aside. It reports ErrWrongMode
+// unless the role is in ModeLeader, and ErrNoLeader when no healthy member may
+// lead, which is the normal state of an empty or partitioned ring, or of one
+// whose every member fails its checks.
+//
+// The filter is here because dskit's token lookup does not skip read-only
+// instances: it would hand the leadership to a replica that published it must
+// not have it.
 func (r *Role) Leader() (Member, error) {
 	if r.spec.Mode != ModeLeader {
 		return Member{}, fmt.Errorf("%w: role %q is in %s mode, there is no leader", ErrWrongMode, r.spec.Name, r.spec.Mode)
@@ -222,16 +242,82 @@ func (r *Role) Leader() (Member, error) {
 		return Member{}, err
 	}
 
-	set, err := r.ring.Get(leaderToken, r.mode.op, nil, nil, nil)
+	set, err := r.ring.GetAllHealthy(r.mode.op)
 	if err != nil {
-		return Member{}, fmt.Errorf("%w: no healthy owner for token %d in role %q: %w", ErrNoLeader, leaderToken, r.spec.Name, err)
-	}
-	if len(set.Instances) != 1 {
-		return Member{}, fmt.Errorf("%w: %d owners for token %d in role %q, expected exactly one",
-			ErrNoLeader, len(set.Instances), leaderToken, r.spec.Name)
+		return Member{}, fmt.Errorf("%w: no healthy member in role %q: %w", ErrNoLeader, r.spec.Name, err)
 	}
 
-	return newMember(set.Instances[0], true), nil
+	var (
+		best      *ring.InstanceDesc
+		bestToken uint32
+	)
+	for i := range set.Instances {
+		instance := &set.Instances[i]
+		if instance.ReadOnly || len(instance.Tokens) == 0 {
+			continue
+		}
+		token := slices.Min(instance.Tokens)
+		if best == nil || token < bestToken || (token == bestToken && instance.Id < best.Id) {
+			best, bestToken = instance, token
+		}
+	}
+	if best == nil {
+		return Member{}, fmt.Errorf("%w: none of the %d healthy members of role %q may lead", ErrNoLeader,
+			len(set.Instances), r.spec.Name)
+	}
+
+	return newMember(*best, true), nil
+}
+
+// LeaderEligibility is this replica's own standing in a leader-mode role: may
+// it lead, and if not, which check said no. Always eligible on a role without
+// leader checks; checkedAt is then zero.
+func (r *Role) LeaderEligibility() (mayLead bool, reason string, checkedAt time.Time) {
+	if r.eligibility == nil {
+		return true, "", time.Time{}
+	}
+	return r.eligibility.state()
+}
+
+// startEligibility starts the leader checks of a leader-mode role. Without
+// any, it clears a read-only flag an earlier run may have left in the ring —
+// a replica kept in the ring over a restart keeps the flag it had.
+func (r *Role) startEligibility(ctx context.Context) error {
+	if r.spec.Mode != ModeLeader {
+		return nil
+	}
+	c := r.cluster
+	checks := r.leaderChecks()
+	if len(checks) == 0 {
+		if readOnly, _ := r.lifecycler.GetReadOnlyState(); readOnly {
+			return r.lifecycler.ChangeReadOnlyState(ctx, false)
+		}
+		return nil
+	}
+
+	interval, timeout, threshold := c.cfg.LeaderCheckInterval, c.cfg.LeaderCheckTimeout, c.cfg.LeaderCheckThreshold
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	if threshold < 1 {
+		threshold = 1
+	}
+	r.eligibility = &eligibility{
+		role: r, checks: checks, timeout: timeout, threshold: threshold,
+		logger:   c.logger.WithField("role", r.spec.Name),
+		gauge:    c.leaderEligible.WithLabelValues(r.spec.Name),
+		failures: c.leaderCheckFail,
+	}
+	svc := r.eligibility.service(interval)
+	if err := c.startService(ctx, svc); err != nil {
+		return fmt.Errorf("start leader checks: %w", err)
+	}
+	c.started = append(c.started, svc)
+	c.watcher.WatchService(svc)
+	return nil
 }
 
 // Members returns the replicas the role's coordination mode considers eligible

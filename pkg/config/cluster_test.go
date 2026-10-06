@@ -49,6 +49,10 @@ func TestGetClusterConfig_defaults(t *testing.T) {
 	assert.Empty(t, cfg.Zone)
 	assert.False(t, cfg.ZoneAwarenessEnabled)
 	assert.Empty(t, cfg.ExcludedZones)
+	assert.Empty(t, cfg.LeaderChecks)
+	assert.Equal(t, 10*time.Second, cfg.LeaderCheckInterval)
+	assert.Equal(t, 5*time.Second, cfg.LeaderCheckTimeout)
+	assert.Equal(t, 2, cfg.LeaderCheckThreshold)
 	assert.False(t, cfg.GossipZoneAwareRoutingEnabled)
 	assert.Equal(t, "member", cfg.GossipZoneRole)
 
@@ -102,6 +106,10 @@ func TestGetClusterConfig_dotenv_overrides(t *testing.T) {
 		"INFRAPI_CLUSTER_ETCD_USERNAME":                 "infrapi",
 		"INFRAPI_CLUSTER_ETCD_PASSWORD":                 "s3cret",
 		"INFRAPI_CLUSTER_MESSAGE_HISTORY_BUFFER_BYTES":  "1048576",
+		"INFRAPI_CLUSTER_LEADER_CHECKS":                 `["tcp://db:5432","!file:///etc/maintenance"]`,
+		"INFRAPI_CLUSTER_LEADER_CHECK_INTERVAL":         "3s",
+		"INFRAPI_CLUSTER_LEADER_CHECK_TIMEOUT":          "1s",
+		"INFRAPI_CLUSTER_LEADER_CHECK_THRESHOLD":        "3",
 	}).GetClusterConfig()
 	require.NoError(t, err)
 
@@ -122,6 +130,10 @@ func TestGetClusterConfig_dotenv_overrides(t *testing.T) {
 	assert.True(t, cfg.ZoneAwarenessEnabled)
 	assert.Equal(t, []string{"dc3"}, cfg.ExcludedZones)
 	assert.Equal(t, "bridge", cfg.GossipZoneRole)
+	assert.Equal(t, []string{"tcp://db:5432", "!file:///etc/maintenance"}, cfg.LeaderChecks)
+	assert.Equal(t, 3*time.Second, cfg.LeaderCheckInterval)
+	assert.Equal(t, time.Second, cfg.LeaderCheckTimeout)
+	assert.Equal(t, 3, cfg.LeaderCheckThreshold)
 }
 
 func TestGetClusterConfig_nil_variables(t *testing.T) {
@@ -226,6 +238,9 @@ func validClusterConfig() *ClusterConfig {
 		LeaveTimeout:               20 * time.Second,
 		BroadcastTimeoutOnShutdown: 10 * time.Second,
 		StopTimeout:                45 * time.Second,
+		LeaderCheckInterval:        10 * time.Second,
+		LeaderCheckTimeout:         5 * time.Second,
+		LeaderCheckThreshold:       2,
 	}
 }
 
@@ -257,6 +272,22 @@ func TestClusterConfig_Validate(t *testing.T) {
 		"gossip nodes zero": {
 			mutate:  func(c *ClusterConfig) { c.GossipNodes = 0 },
 			wantMsg: "INFRAPI_CLUSTER_GOSSIP_NODES is 0",
+		},
+		"leader check interval zero": {
+			mutate:  func(c *ClusterConfig) { c.LeaderCheckInterval = 0 },
+			wantMsg: "INFRAPI_CLUSTER_LEADER_CHECK_INTERVAL is 0s",
+		},
+		"leader check timeout zero": {
+			mutate:  func(c *ClusterConfig) { c.LeaderCheckTimeout = 0 },
+			wantMsg: "INFRAPI_CLUSTER_LEADER_CHECK_TIMEOUT is 0s",
+		},
+		"leader check threshold zero": {
+			mutate:  func(c *ClusterConfig) { c.LeaderCheckThreshold = 0 },
+			wantMsg: "INFRAPI_CLUSTER_LEADER_CHECK_THRESHOLD is 0",
+		},
+		"leader check empty": {
+			mutate:  func(c *ClusterConfig) { c.LeaderChecks = []string{"tcp://a:1", " "} },
+			wantMsg: "INFRAPI_CLUSTER_LEADER_CHECKS contains an empty check",
 		},
 		"join max retries negative": {
 			mutate:  func(c *ClusterConfig) { c.JoinMaxRetries = -1 },
