@@ -49,6 +49,7 @@ func TestGetClusterConfig_defaults(t *testing.T) {
 	assert.Empty(t, cfg.Zone)
 	assert.False(t, cfg.ZoneAwarenessEnabled)
 	assert.Empty(t, cfg.ExcludedZones)
+	assert.False(t, cfg.LeaderWrites)
 	assert.Empty(t, cfg.LeaderChecks)
 	assert.Equal(t, 10*time.Second, cfg.LeaderCheckInterval)
 	assert.Equal(t, 5*time.Second, cfg.LeaderCheckTimeout)
@@ -110,6 +111,7 @@ func TestGetClusterConfig_dotenv_overrides(t *testing.T) {
 		"INFRAPI_CLUSTER_LEADER_CHECK_INTERVAL":         "3s",
 		"INFRAPI_CLUSTER_LEADER_CHECK_TIMEOUT":          "1s",
 		"INFRAPI_CLUSTER_LEADER_CHECK_THRESHOLD":        "3",
+		"INFRAPI_CLUSTER_LEADER_WRITES":                 "true",
 	}).GetClusterConfig()
 	require.NoError(t, err)
 
@@ -134,6 +136,7 @@ func TestGetClusterConfig_dotenv_overrides(t *testing.T) {
 	assert.Equal(t, 3*time.Second, cfg.LeaderCheckInterval)
 	assert.Equal(t, time.Second, cfg.LeaderCheckTimeout)
 	assert.Equal(t, 3, cfg.LeaderCheckThreshold)
+	assert.True(t, cfg.LeaderWrites)
 }
 
 func TestGetClusterConfig_nil_variables(t *testing.T) {

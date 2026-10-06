@@ -260,7 +260,7 @@ func loadConfig(spec Spec, path string) (*loaded, error) {
 			g.Name = spec.Name
 		}
 		// Resolved now, so a mistake stops the service at start.
-		if _, err := g.syncConfig(nil); err != nil {
+		if _, err := g.syncConfig(nil, cl.LeaderWrites); err != nil {
 			return nil, fmt.Errorf("app: %s: gateway: %w", path, err)
 		}
 	}

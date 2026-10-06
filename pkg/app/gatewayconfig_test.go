@@ -12,7 +12,7 @@ import (
 func TestGatewayDefaults(t *testing.T) {
 	cfg, err := loadConfig(Spec{Name: "orders-api"}, writeFile(t, required+"gateway: {admin_url: http://apisix:9180}\n"))
 	require.NoError(t, err)
-	sync, err := cfg.Gateway.syncConfig([]string{"/orders/v1/"})
+	sync, err := cfg.Gateway.syncConfig([]string{"/orders/v1/"}, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, "orders-api-read", sync.ReadUpstream)
@@ -53,7 +53,7 @@ gateway:
   docs: {route: "{name}-swagger", uris: [/-/docs]}
 `))
 	require.NoError(t, err)
-	sync, err := cfg.Gateway.syncConfig([]string{"/orders/v1/"})
+	sync, err := cfg.Gateway.syncConfig([]string{"/orders/v1/"}, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]string{"team": "orders"}, sync.Labels)
@@ -84,7 +84,7 @@ gateway:
 	assert.Equal(t, []string{"/-/docs"}, sync.DocsURIs)
 
 	// The default is untouched by a configured one.
-	again, err := (&GatewayConfig{Name: "x"}).syncConfig(nil)
+	again, err := (&GatewayConfig{Name: "x"}).syncConfig(nil, false)
 	require.NoError(t, err)
 	assert.Equal(t, ReadyPath, again.Upstream.Checks.Active.HTTPPath)
 }
@@ -97,7 +97,7 @@ gateway:
   docs: {enabled: false}
 `))
 	require.NoError(t, err)
-	sync, err := cfg.Gateway.syncConfig(nil)
+	sync, err := cfg.Gateway.syncConfig(nil, false)
 	require.NoError(t, err)
 	assert.Nil(t, sync.Upstream.Checks)
 	assert.Empty(t, sync.DocsRoute)

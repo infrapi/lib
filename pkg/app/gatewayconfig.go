@@ -16,9 +16,9 @@ import (
 
 // syncConfig is the gateway section resolved over gatewaysync.DefaultConfig,
 // for the contracts' prefixes.
-func (g *GatewayConfig) syncConfig(prefixes []string) (gatewaysync.Config, error) {
+func (g *GatewayConfig) syncConfig(prefixes []string, leaderWrites bool) (gatewaysync.Config, error) {
 	cfg := gatewaysync.DefaultConfig(g.Name, ReadyPath)
-	cfg.Prefixes = prefixes
+	cfg.Prefixes, cfg.LeaderWrites = prefixes, leaderWrites
 	named := func(s string) string { return strings.ReplaceAll(s, "{name}", g.Name) }
 
 	if g.Labels != nil {

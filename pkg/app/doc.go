@@ -5,9 +5,8 @@
 //	func main() {
 //		var cfg Config // the service's own section of the file
 //		app.Main(app.Spec{
-//			Name:         "orders-api",
-//			Service:      &cfg,
-//			LeaderWrites: true,
+//			Name:    "orders-api",
+//			Service: &cfg,
 //			API: func(ctx context.Context, rt *app.Runtime) ([]app.Version, error) {
 //				h := newHandlers(cfg)
 //				return []app.Version{{

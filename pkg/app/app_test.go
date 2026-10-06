@@ -158,7 +158,7 @@ func TestRun(t *testing.T) {
 
 	var svc serviceConfig
 	spec := Spec{
-		Name: "orders-api", Service: &svc, LeaderWrites: true,
+		Name: "orders-api", Service: &svc,
 		API: func(_ context.Context, rt *Runtime) ([]Version, error) {
 			assert.Equal(t, "orders-api", rt.App.AppName)
 			return []Version{{
@@ -284,9 +284,11 @@ cluster:
   instance_addr: 127.0.0.1
   leader_checks: ["!file:///etc/infrapi/maintenance", "tcp://db:5432"]
   leader_check_interval: 3s
+  leader_writes: true
 `)
 	cfg, err := loadConfig(Spec{Name: "orders-api"}, path)
 	require.NoError(t, err)
+	assert.True(t, cfg.cluster.LeaderWrites, "the operator's choice, from the file")
 	assert.Equal(t, []string{"!file:///etc/infrapi/maintenance", "tcp://db:5432"}, cfg.cluster.LeaderChecks)
 	assert.Equal(t, 3*time.Second, cfg.cluster.LeaderCheckInterval)
 
@@ -299,6 +301,6 @@ cluster:
 `)
 	cfg, err = loadConfig(Spec{Name: "orders-api"}, bad)
 	require.NoError(t, err)
-	_, err = newCluster(Spec{Name: "orders-api"}, cfg)
+	_, err = newCluster(cfg)
 	assert.ErrorContains(t, err, "ping://db")
 }

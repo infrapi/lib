@@ -32,9 +32,8 @@ type Config struct {
 func main() {
 	var cfg Config
 	app.Main(app.Spec{
-		Name:         "orders-api",
-		Service:      &cfg,
-		LeaderWrites: true,
+		Name:    "orders-api",
+		Service: &cfg,
 		API: func(_ context.Context, _ *app.Runtime) ([]app.Version, error) {
 			h := &orders{max: cfg.MaxQuantity, byID: map[string]order{}}
 			return []app.Version{{

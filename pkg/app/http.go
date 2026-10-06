@@ -85,12 +85,12 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 	engine.Use(correlate)
 	engine.NoRoute(notFound)
 
+	// Writes go through the leader when the operator says so
+	// (cluster.leader_writes): a backend that takes concurrent writes needs
+	// no single writer. Without a cluster, the one replica is its own leader.
 	var forward gin.HandlerFunc
-	if spec.LeaderWrites {
+	if rt.Cluster.Enabled() && cfg.cluster.LeaderWrites {
 		forward = relay.Forward(relay.Cluster{C: rt.Cluster, Role: writerRole}, peerScheme(cfg))
-		if !rt.Cluster.Enabled() {
-			forward = nil // one replica: its own leader
-		}
 	}
 	auth := authenticate(cfg.Auth.APIKeySHA256)
 

@@ -42,6 +42,7 @@ type ClusterDefaultConfig struct {
 	ExcludedZones        *VariableOpts
 
 	// Leader eligibility
+	LeaderWrites         *VariableOpts
 	LeaderChecks         *VariableOpts
 	LeaderCheckInterval  *VariableOpts
 	LeaderCheckTimeout   *VariableOpts
@@ -188,6 +189,14 @@ func newClusterDefaultConfig(hostname string) *ClusterDefaultConfig {
 			Default: "[]",
 		},
 
+		// Read by pkg/app: whether a service's writes go through the leader
+		// of its writer ring. An operator's choice, not the code's: a backend
+		// that takes concurrent writes needs no single writer.
+		LeaderWrites: &VariableOpts{
+			Key:       "INFRAPI_CLUSTER_LEADER_WRITES",
+			Validator: "oneof=true false",
+			Default:   "false",
+		},
 		LeaderChecks: &VariableOpts{
 			Key:     "INFRAPI_CLUSTER_LEADER_CHECKS",
 			Default: "[]",
@@ -427,6 +436,7 @@ type ClusterConfig struct {
 	ExcludedZones        []string
 
 	// Leader eligibility
+	LeaderWrites         bool
 	LeaderChecks         []string
 	LeaderCheckInterval  time.Duration
 	LeaderCheckTimeout   time.Duration
@@ -590,6 +600,7 @@ func (v *Variables) GetClusterConfig() (*ClusterConfig, error) {
 		ZoneAwarenessEnabled: l.boolean(d.ZoneAwarenessEnabled),
 		ExcludedZones:        l.slice(d.ExcludedZones),
 
+		LeaderWrites:         l.boolean(d.LeaderWrites),
 		LeaderChecks:         l.slice(d.LeaderChecks),
 		LeaderCheckInterval:  l.duration(d.LeaderCheckInterval),
 		LeaderCheckTimeout:   l.duration(d.LeaderCheckTimeout),

@@ -33,21 +33,11 @@ type Spec struct {
 	// it has none.
 	Service any
 
-	// LeaderWrites makes the leader of the writer ring the only replica that
-	// performs writes: the others relay them to it. Without a cluster, the one
-	// replica is its own leader.
-	LeaderWrites bool
-
 	// IdempotencyScope says whose an Idempotency-Key is: the same key under
 	// two scopes names two different requests. Nil is the caller the gateway
 	// authenticated (X-Consumer-Username); a service whose keys belong to
 	// something narrower returns it, e.g. c.Param("tenant").
 	IdempotencyScope func(c *Context) string
-
-	// LeaderCheck is one more condition for this replica to lead the writer
-	// ring, next to cluster.leader_checks: nil when it may. It runs on the
-	// same interval, timeout and threshold; see [cluster.RoleSpec].
-	LeaderCheck func(ctx context.Context) error
 
 	// API builds the service once the configuration is loaded, and returns
 	// its contract versions with their routes.
@@ -126,7 +116,7 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 		slog.Warn("no database: Idempotency-Key is IGNORED, and a retried write runs twice")
 	}
 
-	cl, err := newCluster(spec, cfg)
+	cl, err := newCluster(cfg)
 	if err != nil {
 		return fmt.Errorf("app: cluster: %w", err)
 	}

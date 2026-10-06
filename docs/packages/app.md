@@ -30,9 +30,8 @@ type Config struct {
 func main() {
 	var cfg Config
 	app.Main(app.Spec{
-		Name:         "orders-api",
-		Service:      &cfg,
-		LeaderWrites: true,
+		Name:    "orders-api",
+		Service: &cfg,
 		API: func(ctx context.Context, rt *app.Runtime) ([]app.Version, error) {
 			h := newOrders(cfg)
 			return []app.Version{{
@@ -53,9 +52,7 @@ func main() {
 |---|---|
 | `Name` | Default of `INFRAPI_APP_NAME`; also names the ring's key prefix and gossip label, and the APISIX objects. |
 | `Service` | Pointer to the service's own configuration, decoded from the file's `service` section, unknown keys refused. |
-| `LeaderWrites` | The leader of the writer ring alone performs writes; the other replicas relay theirs to it. |
 | `IdempotencyScope` | `func(*app.Context) string`: whose an `Idempotency-Key` is, e.g. `c.Param("tenant")`. Default: the consumer the gateway authenticated. |
-| `LeaderCheck` | One more condition for this replica to lead, next to `cluster.leader_checks`. |
 | `API` | Builds the service once the configuration is loaded; returns its versions. |
 
 A `Version` is one contract and its routes. Its `Prefix` — `/orders/v1/` — is
@@ -107,7 +104,7 @@ On every version's routes, in this order:
 
 1. the route's path parameters into the access log line (`tenant`, `id`…);
 2. the API key (`apikey` header), when one is configured;
-3. the relay of writes to the leader, with `LeaderWrites` and a cluster;
+3. the relay of writes to the leader, with `cluster.leader_writes`;
 4. validation against that version's contract;
 5. `Idempotency-Key`, when a database is configured.
 
@@ -149,6 +146,7 @@ app:
 cluster:
   enabled: true
   join_members: [orders-1:7946, orders-2:7946]
+  leader_writes: true    # writes performed by the leader alone; default false
   leader_checks: ["!file:///etc/infrapi/maintenance", "tcp://db:5432"]
 auth:
   apikey_sha256: …       # or INFRAPI_AUTH_APIKEY_SHA256
@@ -183,16 +181,24 @@ variable, and the three secrets above, which are better kept out of it.
 
 ## The writer ring
 
-With `cluster.enabled` and `LeaderWrites`, the replicas elect a leader and only
-it performs writes. A write that reaches another replica is relayed to it
+Whether a service's writes go through one replica is the operator's choice, not
+the code's: a backend that takes concurrent writes needs no single writer, and
+the same service can run either way. `Spec` says nothing about it.
+
+With `cluster.enabled` and `cluster.leader_writes`, the replicas elect a leader
+and only it performs writes. A write that reaches another replica is relayed to it
 unchanged (`X-Infrapi-Forwarded-By`); every write's answer names the replica that
 performed it (`X-Infrapi-Leader`). Reads are served where they arrive. No leader
 yet, or leadership moving mid-relay: `503`, `retryable: true`.
 
 Who may lead is the [leader checks'](cluster.md#choosing-who-may-lead) to say:
-`cluster.leader_checks` — `tcp://`, `http(s)://`, `exec:`, `file://`, `!` — and
-`Spec.LeaderCheck`. A replica in maintenance (`!file://…`) hands the writes, and
-APISIX's write upstream, to another.
+`cluster.leader_checks` — `tcp://`, `http(s)://`, `exec:`, `file://`, `!`. A
+replica in maintenance (`!file://…`) hands the writes, and APISIX's write
+upstream, to another.
+
+Without `leader_writes`, every replica performs the writes it receives, and
+APISIX's write upstream holds every replica like the read one. A cluster is
+still useful then: its leader alone keeps APISIX in line with the ring.
 
 This is not a lock: during a partition each side can elect its own leader. Writes
 that converge on their body end where one leader would; others must be fenced in
