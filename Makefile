@@ -4,9 +4,10 @@ GO_CMD ?= go
 SHELL := /bin/bash
 
 # go test, golangci-lint and gosec all stop at a module boundary, so every
-# target below has to walk the modules itself. pkg/cluster and examples/cluster
-# are modules of their own to keep dskit out of the root dependency tree.
-MODULES ?= . pkg/cluster examples/cluster
+# target below has to walk the modules itself. pkg/cluster, pkg/app and their
+# examples are modules of their own to keep dskit out of the root dependency
+# tree.
+MODULES ?= . pkg/cluster pkg/app examples/cluster examples/app
 
 .PHONY: setup clean tidy fmt lint security test verify-submodules docs
 all: setup clean tidy fmt lint security test
@@ -53,6 +54,10 @@ test:
 		$(GO_CMD) test -v -timeout 120s -coverprofile=cover.out -cover ./... && \
 		$(GO_CMD) tool cover -func=cover.out && \
 		$(GO_CMD) tool cover -html=cover.out -o ../../coverage-cluster.html
+	cd pkg/app && \
+		$(GO_CMD) test -v -timeout 120s -coverprofile=cover.out -cover ./... && \
+		$(GO_CMD) tool cover -func=cover.out && \
+		$(GO_CMD) tool cover -html=cover.out -o ../../coverage-app.html
 
 # A replace directive keeps the submodules building against this working tree,
 # which also means a broken require line would never be noticed. This builds
@@ -63,7 +68,7 @@ test:
 # a tag of the parent carries the INFRAPI_CLUSTER_* keys. Wire it into both once
 # that tag exists, and the require line can never silently rot again.
 verify-submodules:
-	@for module in pkg/cluster examples/cluster; do \
+	@for module in pkg/cluster pkg/app examples/cluster examples/app; do \
 		echo "==> verify $$module against the published parent"; \
 		rm -rf /tmp/infrapi-verify && mkdir -p /tmp/infrapi-verify; \
 		cp -r $$module/. /tmp/infrapi-verify/; \

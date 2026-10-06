@@ -72,7 +72,7 @@ jobs:
       - name: Tag the submodules in lockstep
         if: steps.semrel.outputs.version != ''
         run: |
-          for module in pkg/cluster examples/cluster; do
+          for module in pkg/cluster pkg/app examples/cluster examples/app; do
             tag="$module/v${{ steps.semrel.outputs.version }}"
             git tag "$tag"
             git push origin "$tag"

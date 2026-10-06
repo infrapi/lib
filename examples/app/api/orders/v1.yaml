@@ -1,0 +1,57 @@
+openapi: 3.0.3
+info:
+  title: Orders
+  version: "1"
+  description: The example service of infrapi/lib's pkg/app.
+security:
+  - apikey: []
+paths:
+  /orders/v1/tenants/{tenant}/orders:
+    post:
+      summary: Place an order
+      parameters:
+        - {name: tenant, in: path, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/OrderSpec"}
+      responses:
+        "201":
+          description: Placed
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Order"}
+  /orders/v1/tenants/{tenant}/orders/{id}:
+    get:
+      summary: Read an order
+      parameters:
+        - {name: tenant, in: path, required: true, schema: {type: string}}
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: The order
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Order"}
+        "404":
+          description: No such order
+components:
+  securitySchemes:
+    apikey: {type: apiKey, in: header, name: apikey}
+  schemas:
+    OrderSpec:
+      type: object
+      additionalProperties: false
+      required: [item]
+      properties:
+        item: {type: string, minLength: 1}
+        quantity: {type: integer, minimum: 1, default: 1}
+    Order:
+      type: object
+      required: [id, item, quantity]
+      properties:
+        id: {type: string}
+        item: {type: string}
+        quantity: {type: integer}
