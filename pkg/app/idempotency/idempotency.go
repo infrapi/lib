@@ -69,12 +69,23 @@ type Scope func(*gin.Context) string
 // keys belong to something narrower — a tenant — passes its own Scope.
 func DefaultScope(c *gin.Context) string { return c.GetHeader("X-Consumer-Username") }
 
+// DefaultMaxBody is the largest body Middleware reads when given none: the
+// gateway's own default.
+const DefaultMaxBody = 1 << 20
+
 // Middleware applies idempotency to writes that carry a key. Reads, and writes
 // without one, pass through untouched. The key and whether the answer was a
 // replay go into the request's access log line.
-func Middleware(store Store, scopeOf Scope) gin.HandlerFunc {
+//
+// The body is read whole to be hashed, up to maxBody bytes (DefaultMaxBody
+// when not positive). A larger one is refused with 413 rather than cut: a
+// truncated body would reach the handler as if it were the request.
+func Middleware(store Store, scopeOf Scope, maxBody int64) gin.HandlerFunc {
 	if scopeOf == nil {
 		scopeOf = DefaultScope
+	}
+	if maxBody <= 0 {
+		maxBody = DefaultMaxBody
 	}
 	return func(c *gin.Context) {
 		r := c.Request
@@ -85,9 +96,13 @@ func Middleware(store Store, scopeOf Scope) gin.HandlerFunc {
 		}
 		server.LogField(c, "idempotency_key", key)
 
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		body, err := io.ReadAll(io.LimitReader(r.Body, maxBody+1))
 		if err != nil {
 			problem.Abort(c, problem.Invalid("the body could not be read: %v", err))
+			return
+		}
+		if int64(len(body)) > maxBody {
+			problem.Abort(c, problem.TooLarge("the body is over %d bytes", maxBody))
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
