@@ -294,3 +294,7 @@ the same key with the same request replays the first answer
 (`idempotency_key_reused`); while the first is still running, `in_progress`,
 retryable. A 5xx is not remembered. Records go to Postgres (`database.dsn`), in a
 table the service creates on start and prunes hourly.
+
+The body is hashed whole, so it is read up to `gateway.max_body_bytes` (1 MiB by
+default, the same limit APISIX applies); a larger one is refused with `413
+too_large`, never cut.

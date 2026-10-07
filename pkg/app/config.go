@@ -103,7 +103,9 @@ type GatewayConfig struct {
 	Plugins map[string]any `yaml:"plugins"`
 
 	// RateLimit and MaxBodyBytes tune the default limit-count and
-	// client-control without restating them.
+	// client-control without restating them. MaxBodyBytes (default 1 MiB) is
+	// also the largest body the idempotency middleware reads: the same limit
+	// whether the gateway is in front or not.
 	RateLimit struct {
 		Count  int `yaml:"count"`
 		Window int `yaml:"window_seconds"`

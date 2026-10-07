@@ -31,9 +31,13 @@ func handler(runs *atomic.Int32, status int) http.Handler {
 // chain puts the middleware in front of h the way the server does: a gin
 // route, with h a plain handler behind it.
 func chain(store Store, h http.Handler) http.Handler {
+	return chainLimited(store, h, 0)
+}
+
+func chainLimited(store Store, h http.Handler, maxBody int64) http.Handler {
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.Any("/tenants/:tenant/*path", Middleware(store, func(c *gin.Context) string { return c.Param("tenant") }),
+	e.Any("/tenants/:tenant/*path", Middleware(store, func(c *gin.Context) string { return c.Param("tenant") }, maxBody),
 		gin.WrapH(h))
 	return e
 }
@@ -122,5 +126,38 @@ func TestNoKeyPassesThrough(t *testing.T) {
 	send(t, h, http.MethodPost, path, "", `{"name":"a"}`)
 	if runs.Load() != 2 {
 		t.Errorf("the handler ran %d times, want 2", runs.Load())
+	}
+}
+
+// A body over the limit is refused, never cut: the handler would otherwise get
+// its first bytes as if they were the request.
+func TestABodyOverTheLimitIsRefusedNotCut(t *testing.T) {
+	var got string
+	h := chainLimited(NewMemory(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			panic(err) // a test handler: the test fails loudly
+		}
+		got = string(b)
+		w.WriteHeader(http.StatusCreated)
+	}), 8)
+
+	w := send(t, h, http.MethodPost, path, "k-1", "12345678")
+	if w.Code != http.StatusCreated || got != "12345678" {
+		t.Errorf("at the limit: %d, handler got %q; want 201 and the whole body", w.Code, got)
+	}
+
+	got = ""
+	w = send(t, h, http.MethodPost, path, "k-2", "123456789")
+	if w.Code != http.StatusRequestEntityTooLarge || !strings.Contains(w.Body.String(), `"code":"too_large"`) {
+		t.Errorf("over the limit: %d %q, want 413 too_large", w.Code, w.Body)
+	}
+	if got != "" {
+		t.Errorf("the handler ran with %q", got)
+	}
+
+	w = send(t, h, http.MethodPost, path, "k-2", "1234")
+	if w.Code != http.StatusCreated {
+		t.Errorf("the refused key was claimed: %d", w.Code)
 	}
 }

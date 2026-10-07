@@ -87,6 +87,11 @@ func KeyReused(format string, args ...any) *Error {
 	return newf(http.StatusUnprocessableEntity, "idempotency_key_reused", "Idempotency key reused", false, format, args...)
 }
 
+// TooLarge is a body over the size the API accepts.
+func TooLarge(format string, args ...any) *Error {
+	return newf(http.StatusRequestEntityTooLarge, "too_large", "Request too large", false, format, args...)
+}
+
 // InProgress is an idempotency key whose first call has not finished. Worth
 // retrying: it will have, soon.
 func InProgress(format string, args ...any) *Error {

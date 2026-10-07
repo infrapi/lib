@@ -103,7 +103,7 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 		}
 		chain = append(chain, validator(docs[i]))
 		if store != nil {
-			chain = append(chain, idempotency.Middleware(store, scopeOf(spec.IdempotencyScope)))
+			chain = append(chain, idempotency.Middleware(store, scopeOf(spec.IdempotencyScope), int64(cfg.Gateway.MaxBodyBytes)))
 		}
 		v.Routes(&router{group: engine.Group("", chain...), doc: docs[i]})
 	}
