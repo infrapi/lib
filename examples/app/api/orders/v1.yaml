@@ -2,44 +2,103 @@ openapi: 3.0.3
 info:
   title: Orders
   version: "1"
-  description: The example service of infrapi/lib's pkg/app.
+  description: |
+    The example service of infrapi/lib's pkg/app. This file is the contract:
+    the server code is generated from it (`go generate`), requests are
+    validated against it, and /-/docs shows it.
 security:
   - apikey: []
 paths:
   /orders/v1/tenants/{tenant}/orders:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+    get:
+      operationId: listOrders
+      summary: List a tenant's orders
+      parameters:
+        - {name: item, in: query, description: Only the orders of this item., schema: {type: string}}
+      responses:
+        "200":
+          description: The orders, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Order"}
+        default: {$ref: "#/components/responses/Problem"}
     post:
+      operationId: placeOrder
       summary: Place an order
       parameters:
-        - {name: tenant, in: path, required: true, schema: {type: string}}
-        - {name: Idempotency-Key, in: header, schema: {type: string}}
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
           application/json:
             schema: {$ref: "#/components/schemas/OrderSpec"}
+            example: {item: book, quantity: 2}
       responses:
         "201":
-          description: Placed
+          description: Placed. A replay of the same Idempotency-Key returns this same response.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Order"}
+        default: {$ref: "#/components/responses/Problem"}
   /orders/v1/tenants/{tenant}/orders/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Tenant"
+      - {name: id, in: path, required: true, schema: {type: string}}
     get:
+      operationId: getOrder
       summary: Read an order
-      parameters:
-        - {name: tenant, in: path, required: true, schema: {type: string}}
-        - {name: id, in: path, required: true, schema: {type: string}}
       responses:
         "200":
           description: The order
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Order"}
-        "404":
-          description: No such order
+        default: {$ref: "#/components/responses/Problem"}
+    put:
+      operationId: replaceOrder
+      summary: Replace an order
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/OrderSpec"}
+      responses:
+        "200":
+          description: The order, as it is after the change
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Order"}
+        default: {$ref: "#/components/responses/Problem"}
+    delete:
+      operationId: cancelOrder
+      summary: Cancel an order
+      description: An order already gone is a success, so a retry is harmless.
+      responses:
+        "204":
+          description: Cancelled, or already gone
+        default: {$ref: "#/components/responses/Problem"}
 components:
   securitySchemes:
     apikey: {type: apiKey, in: header, name: apikey}
+  parameters:
+    Tenant: {name: tenant, in: path, required: true, schema: {type: string}}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: The same key with the same request replays the first answer and does nothing.
+      schema: {type: string}
+  responses:
+    Problem:
+      description: An error, as an RFC 9457 problem document
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
   schemas:
     OrderSpec:
       type: object
@@ -55,3 +114,13 @@ components:
         id: {type: string}
         item: {type: string}
         quantity: {type: integer}
+    Problem:
+      type: object
+      required: [status, code, title]
+      properties:
+        status: {type: integer}
+        code: {type: string, description: "Stable and machine readable: not_found, invalid_request…"}
+        title: {type: string}
+        detail: {type: string}
+        retryable: {type: boolean}
+        correlation_id: {type: string}
