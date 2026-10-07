@@ -19,6 +19,19 @@ from one configuration file and the environment.
 
 ## A service
 
+Contract first: the OpenAPI file is written by hand, and everything else follows
+from it. Nothing generates the contract from the code.
+
+```text
+api/orders/v1.yaml        the contract: paths, schemas, examples
+oapi-codegen.yaml         what to generate from it
+generate.go               //go:generate go tool oapi-codegen -config oapi-codegen.yaml api/orders/v1.yaml
+internal/ordersv1/gen.go  generated: models, router, the interface to implement
+handlers.go               that interface, one method per operation
+main.go                   app.Main
+config.yaml               the configuration
+```
+
 ```go
 //go:embed api/orders/v1.yaml
 var ordersV1 []byte
@@ -33,20 +46,35 @@ func main() {
 		Name:    "orders-api",
 		Service: &cfg,
 		API: func(ctx context.Context, rt *app.Runtime) ([]app.Version, error) {
-			h := newOrders(cfg)
 			return []app.Version{{
 				OpenAPI: server.OpenAPISpec{Name: "orders v1", Path: "orders/v1.yaml", Content: ordersV1},
-				Routes: func(r app.Router) {
-					r.POST("/orders/v1/tenants/{tenant}/orders", h.place)
-					r.GET("/orders/v1/tenants/{tenant}/orders/{id}", h.read)
-				},
+				Routes:  func(r app.Router) { r.Mount(handlerV1(newOrders(cfg.MaxQuantity))) },
 			}}, nil
 		},
 	})
 }
 ```
 
-`examples/app` is this service, complete: copy it to start a new one.
+The handlers implement the generated `StrictServerInterface`, typed request in,
+typed response out:
+
+```go
+func (o *orders) GetOrder(ctx context.Context, req api.GetOrderRequestObject) (api.GetOrderResponseObject, error) {
+	order, err := o.store.Get(ctx, req.Tenant, req.Id)
+	if err != nil {
+		return nil, err // a *problem.Error as it says; anything else a 500 that hides its text
+	}
+	return api.GetOrder200JSONResponse(order), nil
+}
+```
+
+To change the API, edit the contract and run `go generate`: the compiler lists
+what the handlers must now do, and the contract and the code cannot drift apart.
+A version 2 is a second contract and a second generated package, next to the
+first.
+
+`examples/app` is this service, complete — a full CRUD, its test and the
+generated code: copy it to start a new one.
 
 | `Spec` field | |
 |---|---|
@@ -60,8 +88,23 @@ derived from the contract's paths unless set.
 
 ## Handlers
 
-A service sees no web framework: it writes against `app.Router` and
-`app.Context`, and paths are the contract's, `{name}` for a parameter.
+Handlers generated from the contract plug in whole: `Mount` takes the
+`http.Handler` that `oapi-codegen` builds for net/http (`std-http-server`, with
+`strict-server` if you like) and serves every operation of the contract with
+it. Each operation stays a route of its own for the middlewares, the metrics
+and the logs.
+
+```go
+Routes: func(r app.Router) {
+	r.Mount(ordersv1.HandlerWithOptions(ordersv1.NewStrictHandlerWithOptions(handlers, nil, opts),
+		ordersv1.StdHTTPServerOptions{ErrorHandlerFunc: badRequest}))
+},
+```
+
+For a route or two, handlers can also be written by hand. A service still sees
+no web framework: it writes against `app.Router` and `app.Context`, and paths
+are the contract's, `{name}` for a parameter. Nothing then checks that they
+match the contract, until a request does.
 
 ```go
 Routes: func(r app.Router) {
@@ -84,19 +127,6 @@ Routes: func(r app.Router) {
 | `Bind(&v)` | decodes the JSON body; the contract already validated it |
 | `JSON(status, v)`, `NoContent()`, `SetHeader` | the answer |
 | `Error(err)` | a problem document, and the call stops |
-
-Handlers generated from the contract plug in whole: `Mount` takes the
-`http.Handler` that `oapi-codegen` builds for net/http (`std-http-server`, with
-`strict-server` if you like) and serves every operation of the contract with
-it. Each operation stays a route of its own for the middlewares, the metrics
-and the logs.
-
-```go
-Routes: func(r app.Router) {
-	r.Mount(ordersv1.HandlerWithOptions(ordersv1.NewStrictHandlerWithOptions(handlers, nil, opts),
-		ordersv1.StdHTTPServerOptions{ErrorHandlerFunc: badRequest}))
-},
-```
 
 ## What it wires
 
