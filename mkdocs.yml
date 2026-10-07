@@ -69,6 +69,7 @@ nav:
       - gateway: packages/gateway.md
       - http: packages/http.md
       - listener: packages/listener.md
+      - logger: packages/logger.md
       - server: packages/server.md
       - tofu: packages/tofu.md
   - Development: development.md
