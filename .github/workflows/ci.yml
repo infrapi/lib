@@ -62,7 +62,7 @@ jobs:
         id: semrel
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          allow-initial-development-versions: false
+          allow-initial-development-versions: true
 
       # The module proxy resolves github.com/infrapi/lib/pkg/cluster@vX.Y.Z from
       # a tag literally named pkg/cluster/vX.Y.Z, which go-semantic-release does
