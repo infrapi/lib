@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/grafana/dskit/kv/codec"
 	"net/url"
 
 	"github.com/infrapi/lib/pkg/cluster"
@@ -18,7 +19,9 @@ func newCluster(cfg *loaded) (*cluster.Cluster, error) {
 // clusterOptions declares the rings this replica may join: the service's, and
 // writer when a leader is needed; none when it joins none.
 func clusterOptions(cfg *loaded) cluster.Options {
-	return cluster.Options{Roles: cfg.roles, Logger: logrus.WithField("component", "cluster")}
+	return cluster.Options{Roles: cfg.roles, Logger: logrus.WithField("component", "cluster"),
+		// The broadcast writes' outcomes, in one key of the store.
+		Codecs: []codec.Codec{statusCodec{}}}
 }
 
 // peerScheme is how replicas reach each other's API: the scheme of the URL

@@ -325,6 +325,212 @@ then refused at start, since there is nobody to choose.
 - `infrapi_cluster_leader_eligible{name="writer"}`: 1 when this replica may lead.
 - Access log fields: `relayed` and `leader` on every write.
 
+## Which ring runs each write
+
+`leader_writes` sends every write to one leader. The contract can say more, **per
+operation**: which ring a write runs on. The ring's mode, declared in
+`Spec.Roles`, says how:
+
+| The write's ring | It runs |
+|---|---|
+| a leader role | on that role's leader; relayed there from any other replica |
+| a broadcast role | here, then replayed on every member of that role |
+| `local` | on the replica that received it |
+
+Two extensions, written in the contract next to what they govern:
+
+```yaml
+openapi: 3.0.3
+info: {title: Bookmarks, version: "1"}
+x-infrapi-writes: everybody          # every write not marked otherwise
+
+paths:
+  /bookmarks/v1/tenants/{tenant}/bookmarks/{id}:
+    delete:
+      operationId: deleteBookmark
+      x-infrapi-ring: cache          # this one: on the leader of cache
+    put:
+      operationId: replaceBookmark
+      x-infrapi-ring: local          # this one: where it arrives
+```
+
+```go
+Roles: []cluster.RoleSpec{
+	{Name: "everybody", Mode: cluster.ModeBroadcast},
+	{Name: "cache", Mode: cluster.ModeLeader},
+},
+```
+
+```yaml
+cluster:
+  roles: [everybody, cache]   # the configuration only says which rings this replica joins
+```
+
+- A write's ring is its `x-infrapi-ring`, else the contract's `x-infrapi-writes`,
+  else the writer ring's leader with `cluster.leader_writes`, else `local`.
+- **A read** runs where it arrives, unless its own `x-infrapi-ring` names a
+  leader role: it is then relayed to that leader, like a write — for what only
+  the leader holds. `x-infrapi-writes` never applies to reads, and a broadcast
+  ring on a read is refused: a read has one answer.
+- A ring must be one of `Spec.Roles`, and one this replica joins: its writes
+  would otherwise have nowhere to go. A broadcast ring on a read, or
+  `x-infrapi-writes` together with `cluster.leader_writes`, is refused at start.
+- Without a cluster, every write is local.
+- Every write gets its `WriteID` and `WriteTime`, whatever its ring.
+- The extensions are the contract's own: they show in `/-/docs`, and OpenAPI
+  tools ignore them.
+- With the gateway, the write upstream holds the writer's leader alone with
+  `leader_writes`, every replica otherwise; the relay takes a leader write to
+  its leader wherever it lands.
+
+## Writes on every replica
+
+A write given to a **broadcast** ring is performed **by every replica**, each on
+what it keeps for itself — a local disk, a local cache, a process on its host.
+The replica that receives it runs it, then replays it on the other members of
+the ring, through the same handler.
+
+```text
+POST …/bookmarks ──► node-1: handler runs, 201
+                       ├─ replay ─► node-2: same request, same handler ─► 201
+                       └─ replay ─► node-3: same request, same handler ─► 201
+                     ◄── 201 to the caller, once every replica has answered
+```
+
+### The handlers must give the same answer everywhere
+
+Each replica runs the handler on its own. What a handler would otherwise draw on
+its own — a random id, the current time — must come from the write instead, or
+every replica creates something different:
+
+```go
+b.ID = "bm-" + app.WriteID(ctx)[:10]   // not rand.Text()
+b.CreatedAt = app.WriteTime(ctx)        // not time.Now()
+```
+
+- `app.WriteID(ctx)` is the write's identity, the same on every replica: 26
+  lower-case letters and digits. With an `Idempotency-Key`, it is derived from
+  the key and the path, so a retry creates the same thing again instead of a
+  second one.
+- `app.WriteTime(ctx)` is when the first replica received the write.
+- Both are set on **every** write, whatever its ring: a handler written this way
+  runs unchanged on any ring. Both are empty on a read.
+
+### What is replayed, and how
+
+- Only a write that **succeeded** on the first replica (status below 400) is
+  replayed: a refused or failed one never reaches the others.
+- The replay is the same request — method, path, query, headers, body — plus
+  `X-Infrapi-Forwarded-By`, `X-Infrapi-Write-ID`, `X-Infrapi-Write-Time` and the
+  call's `X-Correlation-ID`. Without its `Idempotency-Key`: the write's identity
+  does that job, and a shared idempotency store would otherwise answer the
+  replay instead of running it.
+- The replicas are called at the same time, directly, on their API port.
+- A replay is accepted from the host of a member of the role only
+  (`403 not_a_member` otherwise), and is not replayed again.
+
+### What the caller is answered: `x-infrapi-broadcast`
+
+At the root of the contract, or on one operation:
+
+```yaml
+x-infrapi-broadcast: strict        # the default
+paths:
+  /bookmarks/v1/tenants/{tenant}/bookmarks:
+    post:
+      operationId: createBookmark
+      x-infrapi-broadcast: async   # this one answers at once
+```
+
+| Value | The caller waits | When a replica did not take the write |
+|---|---|---|
+| `strict` | for every replica | `502 broadcast_incomplete`, `retryable: true`, naming the replicas that missed it |
+| `tolerant` | for every replica | the first replica's answer; the failure is in the logs and the metrics |
+| `async` | for nobody: answered at once, replayed in the background | the first replica's answer; the failure is in the logs, the metrics and the status |
+
+- `strict` holds the first replica's answer until the others have answered, and
+  sends it only when all took the write: a success means every replica has it.
+- After a `502`, **retry with the same `Idempotency-Key`**: the write's identity
+  comes from the key, so every replica does the same write again, the same, and
+  the one that missed it catches up. The write was done on the others already.
+- `async` is the fastest, and the loosest: a replica that stops before its
+  replays are sent leaves the others without the write.
+- On a write that is not broadcast, or on a read, `x-infrapi-broadcast` is
+  refused at start.
+
+### Did every replica take it: the write id and its status
+
+Every write is answered with `X-Infrapi-Write-ID`. Any replica tells how a
+broadcast write went, replica by replica:
+
+```bash
+curl http://any-replica:8080/-/broadcast/im3vmkqm3xncm2i4t4zw2e53wd
+```
+```json
+{"write_id":"2wz5qmemf3emfd6heriefwhnsq","status":"partial","by":"node1","method":"POST",
+ "path":"/bookmarks/v1/tenants/demo/bookmarks",
+ "replicas":{"node1":{"state":"done","status":201},
+             "node2":{"state":"failed","error":"unreachable: … connect: connection refused"}}}
+```
+
+- `status` sums the write up: `pending` while a replica has not answered,
+  `complete` when every replica took it, `partial` when one did not, `error`
+  when it could not be sent to the others at all (no ring, no members; `error`
+  says why) and only the first replica has it.
+- Each replica's `state` is `pending` until it answered, then `done` or
+  `failed`, with the status it answered or why it could not be reached.
+- The route is documented in `/-/docs`, under **infrapi (replica routes)**, with
+  `/-/healthz` and `/-/readyz`: the library serves that contract next to the
+  service's.
+- The outcomes live in **one key** of the cluster's store, `broadcast-status`,
+  which the replica that received the write updates as its replays answer, and
+  which every replica reads locally: no call to answer.
+- Kept **24 hours**, and at most the **10 000** most recent writes: the old ones
+  are dropped from the value itself, so there is nothing to delete. The cap
+  bounds the key, which every full gossip exchange sends whole, whatever the
+  write rate.
+- `404` for a write that is not broadcast, unknown, or older than that.
+
+### In the logs
+
+One write, followed across replicas by its `write_id` and `correlation_id`:
+
+```json
+// node-2, which received the call: one line per replay, then its access line
+{"msg":"broadcast write: replayed","component":"broadcast","instance":"node-1","addr":"10.0.0.1:8080","method":"POST","path":"/bookmarks/v1/tenants/acme/bookmarks","status":201,"duration":"1.7ms","write_id":"ukolazloc2zg7umkpikknl3ezv","correlation_id":"OGN7YXV7…"}
+{"msg":"request","method":"POST","status":201,"broadcast_to":"node-1","write_id":"ukolazloc2zg7umkpikknl3ezv","correlation_id":"OGN7YXV7…"}
+// node-1, which took the replay
+{"msg":"request","method":"POST","status":201,"broadcast_from":"node-2","write_id":"ukolazloc2zg7umkpikknl3ezv","correlation_id":"OGN7YXV7…"}
+```
+
+- `broadcast write: replayed` (info) or `broadcast write: a replica did not take
+  it` (error, with `err`): one per replica, with its status and how long it
+  took.
+- On the access line: `broadcast_to` and `broadcast_failed`, the replicas that
+  took the write and those that did not; `broadcast_from` on a replica that ran a
+  replay. In the text format they follow gin's line as `key=value`:
+
+  ```text
+  [GIN] 2026/10/08 - 16:38:25 | 201 | 650µs | 127.0.0.1 | POST "/bookmarks/v1/tenants/demo/bookmarks" broadcast_from=node1 correlation_id=TPQYR6P2… tenant=demo write_id=go3ouhwv…
+  ```
+- The replays' own lines carry `component=broadcast`, as the cluster's carry
+  `component=cluster`.
+
+### What it does not do
+
+- **No catching up.** A replica that is down, or joins later, does not get the
+  writes it missed. What every replica must eventually hold belongs in a shared
+  store, or is rebuilt in `Background` as a replica starts.
+- **No undo.** A replica that fails a replay leaves the others with the write:
+  `strict` says so to the caller, who retries; `tolerant` and `async` only log it
+  (`broadcast write: a replica did not take it`), count it in
+  `infrapi_app_broadcast_writes_total{method,route,outcome="failed"}` and keep
+  it in the status.
+
+When every replica must see the same data, a store they share — a database, a
+shared volume, the backend the service fronts — is simpler than keeping copies
+in step.
+
 ## The service's roles
 
 Work of the service's own — a purge on one replica, a cache reload on every one

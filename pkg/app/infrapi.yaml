@@ -1,0 +1,92 @@
+openapi: 3.0.3
+info:
+  title: InfraPI
+  version: "1"
+  description: |
+    The routes every service on infrapi/lib's pkg/app serves besides its own
+    contract. They are the replicas' own, unauthenticated, and not routed by
+    the gateway: call a replica directly.
+paths:
+  /-/broadcast/{id}:
+    get:
+      operationId: getBroadcastStatus
+      summary: How a broadcast write went, replica by replica
+      description: |
+        Every write is answered with `X-Infrapi-Write-ID`. For a write the
+        contract gives a broadcast ring, any replica tells how each replica
+        took it. Kept 24 hours, and at most the 10 000 most recent writes.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The write's `X-Infrapi-Write-ID`.
+          schema: {type: string, example: bujkubzpvqcxv24co3oxuortcq}
+      responses:
+        "200":
+          description: The write's outcome on each replica
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BroadcastStatus"}
+        "404":
+          description: Not a broadcast write, unknown, or older than its retention
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+  /-/healthz:
+    get:
+      operationId: getHealth
+      summary: The process runs
+      responses:
+        "200": {description: Alive}
+  /-/readyz:
+    get:
+      operationId: getReadiness
+      summary: The replica takes traffic
+      responses:
+        "200": {description: Ready}
+        "503": {description: Joining the cluster, or draining}
+components:
+  schemas:
+    BroadcastStatus:
+      type: object
+      properties:
+        write_id: {type: string}
+        at: {type: string, format: date-time, description: When the first replica received the write.}
+        by: {type: string, description: The replica that received it and replayed it.}
+        method: {type: string}
+        path: {type: string}
+        status:
+          type: string
+          enum: [pending, complete, partial, error]
+          description: |
+            pending: a replica has not answered yet; complete: every replica
+            took the write; partial: a replica did not; error: it could not be
+            sent to the others at all, and only the first replica has it.
+        error: {type: string, description: Why it could not be sent, with status error.}
+        replicas:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              state: {type: string, enum: [pending, done, failed]}
+              status: {type: integer, description: The HTTP status the replica answered.}
+              error: {type: string}
+              updated: {type: string, format: date-time}
+      example:
+        write_id: bujkubzpvqcxv24co3oxuortcq
+        by: node-2
+        method: POST
+        path: /bookmarks/v1/tenants/acme/bookmarks
+        status: partial
+        replicas:
+          node-1: {state: failed, status: 500, error: "answered 500: the disk is read-only"}
+          node-2: {state: done, status: 201}
+    Problem:
+      type: object
+      properties:
+        status: {type: integer}
+        code: {type: string}
+        title: {type: string}
+        detail: {type: string}
+        retryable: {type: boolean}
+        correlation_id: {type: string}

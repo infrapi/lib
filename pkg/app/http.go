@@ -4,11 +4,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -24,6 +26,14 @@ import (
 	"github.com/infrapi/lib/pkg/app/internal/relay"
 	"github.com/infrapi/lib/pkg/app/problem"
 )
+
+// infrapiContract documents the routes the library serves besides the
+// service's: /-/docs shows it with the service's own.
+//
+//go:embed infrapi.yaml
+var infrapiContract []byte
+
+var infrapiSpec = server.OpenAPISpec{Name: "infrapi (replica routes)", Path: "infrapi.yaml", Content: infrapiContract}
 
 // Health paths, next to the engine's own /-/metrics and /-/metadata.
 const (
@@ -74,7 +84,8 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 	}
 
 	gin.SetMode(gin.ReleaseMode)
-	engine, err := server.NewServerGin(cfg.app, server.WithOpenAPI(specs...))
+	// The library's own routes are documented next to the service's.
+	engine, err := server.NewServerGin(cfg.app, server.WithOpenAPI(append(slices.Clone(specs), infrapiSpec)...))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -85,23 +96,18 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 	engine.Use(correlate)
 	engine.NoRoute(notFound)
 
-	// Writes go through the leader when the operator says so
-	// (cluster.leader_writes): a backend that takes concurrent writes needs
-	// no single writer. Without a cluster, the one replica is its own leader.
-	var forward gin.HandlerFunc
-	if rt.Cluster.Enabled() && cfg.cluster.LeaderWrites {
-		forward = relay.Forward(relay.Cluster{C: rt.Cluster, Role: writerRole}, peerScheme(cfg))
-	}
 	auth := authenticate(cfg.Auth.APIKeySHA256)
+	// Each write runs the way cluster.writes says, by its operationId: here,
+	// on a ring's leader, or here and on every member of a ring.
+	writes, err := newDispatcher(cfg, rt.Cluster, docs)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	for i, v := range versions {
 		// In order: what is unauthenticated or malformed never claims a key,
 		// and only the leader validates and remembers.
-		chain := []gin.HandlerFunc{paramFields, auth}
-		if forward != nil {
-			chain = append(chain, forward)
-		}
-		chain = append(chain, validator(docs[i]))
+		chain := []gin.HandlerFunc{paramFields, auth, writes.handle, validator(docs[i])}
 		if store != nil {
 			chain = append(chain, idempotency.Middleware(store, scopeOf(spec.IdempotencyScope), int64(cfg.Gateway.MaxBodyBytes)))
 		}
@@ -120,6 +126,7 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 		}
 	})
 	engine.GET("/", indexHandler(cfg, rt.Cluster, specs))
+	engine.GET(BroadcastStatusPath+"/:id", statusHandler(rt.Cluster))
 	// Read only: evicting a replica from the ring is not offered.
 	if err := rt.Cluster.RegisterGin(engine, cluster.HandlerOptions{}); err != nil {
 		return nil, nil, err

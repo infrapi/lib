@@ -57,6 +57,16 @@ var relayed = promauto.NewCounterVec(prometheus.CounterOpts{
 // other's API ("http" or "https"). Mounted on a route group, after routing:
 // the route it records is the contract's.
 func Forward(ring Ring, scheme string) gin.HandlerFunc {
+	return forward(ring, scheme, false)
+}
+
+// ForwardAll relays every request to the leader, reads included: for what
+// only the leader holds.
+func ForwardAll(ring Ring, scheme string) gin.HandlerFunc {
+	return forward(ring, scheme, true)
+}
+
+func forward(ring Ring, scheme string, reads bool) gin.HandlerFunc {
 	transport := &http.Transport{
 		Proxy:                 nil, // replicas talk directly, never through an egress proxy
 		DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
@@ -68,7 +78,7 @@ func Forward(ring Ring, scheme string) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		r := c.Request
-		if !isWrite(r.Method) {
+		if !reads && !isWrite(r.Method) {
 			c.Next()
 			return
 		}

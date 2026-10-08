@@ -169,13 +169,18 @@ func TestLogFields(t *testing.T) {
 	assert.Less(t, strings.Index(out.String(), `"msg"`), strings.Index(out.String(), `"tenant"`))
 }
 
-// Outside a JSON-logged request, LogField is a no-op rather than a panic.
-func TestLogFieldWithoutJSONLog(t *testing.T) {
+// Outside a logged request, LogField is a no-op rather than a panic; in the
+// text format, the fields follow gin's line as key=value, in key order.
+func TestLogFieldInTheTextLog(t *testing.T) {
 	assert.NotPanics(t, func() { LogField(context.Background(), "k", "v") })
 
 	var out bytes.Buffer
 	serve(engineLoggingTo("text", &out), "/fields", nil)
-	assert.NotContains(t, out.String(), "acme")
+	line := out.String()
+	assert.True(t, strings.HasPrefix(line, "[GIN] "), line)
+	assert.Contains(t, line, `"/fields" `)
+	assert.Contains(t, line, " count=3 tenant=acme-corp\n")
+	assert.NotContains(t, line, "status=", "a service field cannot hide the engine's")
 }
 
 // A client that went away leaves a warning, no stack, and no 500 written to a
