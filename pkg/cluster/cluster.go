@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -110,9 +111,12 @@ type Cluster struct {
 
 	// leaderChecks are INFRAPI_CLUSTER_LEADER_CHECKS, parsed once: every
 	// leader-mode role runs them to decide whether this replica may lead.
-	leaderChecks    []Check
-	leaderEligible  *prometheus.GaugeVec
-	leaderCheckFail *prometheus.CounterVec
+	leaderChecks []Check
+	// roleLeaderChecks are INFRAPI_CLUSTER_ROLE_LEADER_CHECKS: one role's own,
+	// run with leaderChecks.
+	roleLeaderChecks map[string][]Check
+	leaderEligible   *prometheus.GaugeVec
+	leaderCheckFail  *prometheus.CounterVec
 
 	mlSvc *memberlist.KVInitService
 	mlKV  *memberlist.KV
@@ -195,6 +199,23 @@ func New(app *config.AppConfig, cfg *config.ClusterConfig, opts Options) (*Clust
 		return nil, err
 	}
 	c.order = order
+
+	// Checks for one role name a leader-mode role this replica joins: one for
+	// a role it does not run, or that elects nobody, is a mistake.
+	c.roleLeaderChecks = make(map[string][]Check, len(cfg.RoleLeaderChecks))
+	for name, raw := range cfg.RoleLeaderChecks {
+		spec, joined := declared[name]
+		switch {
+		case !joined || !slices.Contains(order, name):
+			return nil, fmt.Errorf("%w: INFRAPI_CLUSTER_ROLE_LEADER_CHECKS names %q", ErrRoleNotJoined, name)
+		case spec.Mode != ModeLeader:
+			return nil, fmt.Errorf("%w: INFRAPI_CLUSTER_ROLE_LEADER_CHECKS names %q, a %s role: nobody leads it",
+				ErrWrongMode, name, spec.Mode)
+		}
+		if c.roleLeaderChecks[name], err = ParseChecks(raw); err != nil {
+			return nil, fmt.Errorf("cluster: role %q: %w", name, err)
+		}
+	}
 
 	for _, codecImpl := range opts.Codecs {
 		id := codecImpl.CodecID()

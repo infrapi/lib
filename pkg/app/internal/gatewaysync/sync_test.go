@@ -179,7 +179,7 @@ func TestSyncRoutesAndPlugins(t *testing.T) {
 	must(t, err)
 	docs, err := admin.GetRoute(ctx, "orders-api-docs")
 	must(t, err)
-	if read.UpstreamID != "orders-api-read" || !reflect.DeepEqual(read.Methods, []string{"GET", "HEAD"}) ||
+	if read.UpstreamID != "orders-api-read" || !reflect.DeepEqual(read.Methods, []string{"GET", "HEAD", "OPTIONS"}) ||
 		!reflect.DeepEqual(read.URIs, []string{"/orders/v1/*"}) || read.ServiceID != "orders-api-api" {
 		t.Errorf("read route %+v", read)
 	}

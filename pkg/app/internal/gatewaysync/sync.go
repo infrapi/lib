@@ -92,7 +92,7 @@ func DefaultConfig(name, readyPath string) Config {
 		WriteUpstream: name + "-write",
 		Service:       name + "-api",
 		RouteID:       name + "-{version}-{kind}",
-		ReadMethods:   []string{http.MethodGet, http.MethodHead},
+		ReadMethods:   []string{http.MethodGet, http.MethodHead, http.MethodOptions},
 		WriteMethods:  []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete},
 		Upstream: infragateway.Upstream{
 			Type: "roundrobin",

@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"log/slog"
 	"os"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 	"github.com/infrapi/lib/pkg/cluster"
@@ -18,15 +19,16 @@ const indexCSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'
 type link struct{ Href, Name, What string }
 
 type indexView struct {
-	Name, Instance, Zone, Leader, LeaderErr string
-	Clustered, IsLeader                     bool
-	Contracts                               []link
-	Ops                                     []link
+	Name, Instance, Zone, Leader, LeaderErr   string
+	Clustered, Elects, LeaderWrites, IsLeader bool
+	Contracts                                 []link
+	Ops                                       []link
 }
 
 // indexHandler is the landing page: which replica answered, who leads, and a
 // link to everything this binary serves besides the API itself.
-func indexHandler(name, zone string, cl *cluster.Cluster, specs []server.OpenAPISpec) gin.HandlerFunc {
+func indexHandler(cfg *loaded, cl *cluster.Cluster, specs []server.OpenAPISpec) gin.HandlerFunc {
+	name, zone := cfg.app.AppName, cfg.app.AppLocation
 	hostname, err := os.Hostname()
 	if err != nil {
 		slog.Warn("no host name for the landing page", "err", err)
@@ -34,9 +36,12 @@ func indexHandler(name, zone string, cl *cluster.Cluster, specs []server.OpenAPI
 	}
 	return func(c *gin.Context) {
 		w, r := c.Writer, c.Request
-		v := indexView{Name: name, Instance: hostname, Zone: zone, Clustered: cl.Enabled()}
+		v := indexView{Name: name, Instance: hostname, Zone: zone, Clustered: cl.Enabled(),
+			Elects: cfg.elects(), LeaderWrites: cfg.cluster.LeaderWrites}
 		if v.Clustered {
 			v.Instance = cl.InstanceID()
+		}
+		if v.Elects {
 			if id, _, self, err := (relay.Cluster{C: cl, Role: writerRole}).Leader(); err != nil {
 				v.LeaderErr = err.Error()
 			} else {
@@ -47,15 +52,27 @@ func indexHandler(name, zone string, cl *cluster.Cluster, specs []server.OpenAPI
 			v.Contracts = append(v.Contracts, link{Href: server.OpenAPIPrefix + s.Path, Name: s.Name,
 				What: server.OpenAPIPrefix + s.Path})
 		}
+		clusterWhat := "the replicas and their state"
+		metricsWhat := "Prometheus: API calls per route, gossip, key-value store, Go runtime"
+		if v.Elects {
+			clusterWhat += ", the leader of the writer ring"
+			metricsWhat = "Prometheus: API calls per route, the writer ring, gossip, key-value store, Go runtime"
+		}
+		if v.LeaderWrites {
+			metricsWhat = "Prometheus: API calls per route, writes relayed, the writer ring, gossip, key-value store, Go runtime"
+		}
 		v.Ops = []link{
 			{server.DocsPath, "API documentation", "Swagger UI, every contract served"},
-			{"/-/cluster", "Cluster", "replicas, their state, the leader of the writer ring"},
-			{"/-/cluster/ring/" + writerRole, "Writer ring", "the ring the leader is elected in"},
+			{"/-/cluster", "Cluster", clusterWhat},
 			{"/-/cluster/memberlist", "Gossip store", "memberlist members and the keys they share"},
-			{"/-/metrics", "Metrics", "Prometheus: API calls per route, writes relayed, ring, gossip, key-value store, Go runtime"},
+			{"/-/metrics", "Metrics", metricsWhat},
 			{"/-/metadata", "Metadata", "the service's name, platform, region, location"},
 			{ReadyPath, "Readiness", "200 once joined, 503 while joining or draining"},
 			{HealthPath, "Liveness", "200 while the process runs"},
+		}
+		if v.Elects {
+			v.Ops = slices.Insert(v.Ops, 2, link{"/-/cluster/ring/" + writerRole, "Writer ring",
+				"the ring the leader is elected in"})
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -99,9 +116,10 @@ span.what { color: var(--muted); }
   <h1>{{.Name}}</h1>
   <p class="who">This page was served by <b>{{.Instance}}</b>{{if .Zone}} in <b>{{.Zone}}</b>{{end}}.
   {{if not .Clustered}}<span class="badge follow">single replica</span> it performs every write itself.
-  {{else if .IsLeader}}<span class="badge lead">leader</span> it performs every write.
-  {{else if .Leader}}<span class="badge follow">follower</span> its writes are relayed to <b>{{.Leader}}</b>.
-  {{else}}<span class="badge none">no leader</span> writes are refused as retryable: {{.LeaderErr}}{{end}}</p>
+  {{else if not .Elects}}<span class="badge follow">replica</span> no leader is elected: every replica performs its own writes.
+  {{else if .IsLeader}}<span class="badge lead">leader</span> {{if .LeaderWrites}}it performs every write.{{else}}it keeps the gateway's configuration; every replica performs its own writes.{{end}}
+  {{else if .Leader}}<span class="badge follow">follower</span> {{if .LeaderWrites}}its writes are relayed to <b>{{.Leader}}</b>.{{else}}<b>{{.Leader}}</b> keeps the gateway's configuration; this replica performs its own writes.{{end}}
+  {{else}}<span class="badge none">no leader</span> {{if .LeaderWrites}}writes are refused as retryable{{else}}the gateway's configuration is not kept{{end}}: {{.LeaderErr}}{{end}}</p>
 
   <h2>API</h2>
   <ul>
