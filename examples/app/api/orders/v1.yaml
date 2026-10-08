@@ -8,6 +8,10 @@ info:
     validated against it, and /-/docs shows it.
 security:
   - apikey: []
+# Every write runs on every member of the "everybody" ring: each replica keeps
+# the orders in its memory, and has them all. One replica alone: no ring, and
+# the writes run where they arrive.
+x-infrapi-writes: everybody
 paths:
   /orders/v1/tenants/{tenant}/orders:
     parameters:

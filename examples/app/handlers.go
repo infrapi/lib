@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/infrapi/lib/pkg/app"
 	"github.com/infrapi/lib/pkg/app/problem"
 
 	api "github.com/infrapi/lib/examples/app/internal/ordersv1"
@@ -49,15 +50,22 @@ func (o *orders) ListOrders(_ context.Context, req api.ListOrdersRequestObject) 
 }
 
 // PlaceOrder handles POST …/orders.
-func (o *orders) PlaceOrder(_ context.Context, req api.PlaceOrderRequestObject) (api.PlaceOrderResponseObject, error) {
+func (o *orders) PlaceOrder(ctx context.Context, req api.PlaceOrderRequestObject) (api.PlaceOrderResponseObject, error) {
 	quantity, err := o.quantity(req.Body)
 	if err != nil {
 		return nil, err
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	o.next++
-	order := api.Order{Id: fmt.Sprintf("o-%d", o.next), Item: req.Body.Item, Quantity: quantity}
+	// The id comes from the write: every replica that runs it — the contract
+	// broadcasts writes — gives the order the same one. Called on its own, as
+	// in a test, the write has none: a counter does.
+	id := app.WriteID(ctx)
+	if id == "" {
+		o.next++
+		id = fmt.Sprintf("%d", o.next)
+	}
+	order := api.Order{Id: "o-" + id, Item: req.Body.Item, Quantity: quantity}
 	o.byTenant[req.Tenant] = append(o.byTenant[req.Tenant], order)
 	return api.PlaceOrder201JSONResponse(order), nil
 }
