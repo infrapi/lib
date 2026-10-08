@@ -45,7 +45,7 @@ func TestWriteIDInHandlers(t *testing.T) {
 	var id string
 	var at time.Time
 	e := gin.New()
-	e.Any("/x", f.handle, func(c *gin.Context) {
+	e.Any("/x", func(c *gin.Context) { f.handle(c, "") }, func(c *gin.Context) {
 		id, at = WriteID(c.Request.Context()), WriteTime(c.Request.Context())
 		c.Status(http.StatusNoContent)
 	})

@@ -115,6 +115,7 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 		}
 	})
 	engine.GET("/", indexHandler(cfg, rt.Cluster, specs))
+	engine.GET(BroadcastStatusPath+"/:id", statusHandler(rt.Cluster))
 	// Read only: evicting a replica from the ring is not offered.
 	if err := rt.Cluster.RegisterGin(engine, cluster.HandlerOptions{}); err != nil {
 		return nil, nil, err

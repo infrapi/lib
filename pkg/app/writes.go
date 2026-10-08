@@ -33,13 +33,17 @@ const (
 
 // writeMode is one write's way of running: its kind, and the ring it runs on.
 type writeMode struct {
-	kind string
-	role string
+	kind   string
+	role   string
+	policy string // a broadcast write's: strict, tolerant or async
 }
 
 func (m writeMode) String() string {
-	if m.role == "" {
+	switch {
+	case m.role == "":
 		return m.kind
+	case m.policy != "":
+		return m.kind + " on " + m.role + ", " + m.policy
 	}
 	return m.kind + " on " + m.role
 }
@@ -74,6 +78,12 @@ func newDispatcher(cfg *loaded, cl *cluster.Cluster, docs []*openapi3.T) (*dispa
 	}
 
 	for _, doc := range docs {
+		docPolicy := BroadcastStrict
+		if p, set, err := broadcastPolicy(doc.Extensions); err != nil {
+			return nil, fmt.Errorf("app: %s: %w", doc.Info.Title, err)
+		} else if set {
+			docPolicy = p
+		}
 		docDefault := fallback
 		if name, set, err := extension(doc.Extensions, WritesExtension); err != nil {
 			return nil, fmt.Errorf("app: %s: %w", doc.Info.Title, err)
@@ -94,6 +104,9 @@ func newDispatcher(cfg *loaded, cl *cluster.Cluster, docs []*openapi3.T) (*dispa
 					return nil, fmt.Errorf("app: %s: %w", op.OperationID, err)
 				}
 				if !isWrite(method) {
+					if _, own, _ := broadcastPolicy(op.Extensions); own {
+						return nil, fmt.Errorf("app: %s: %s on a read", op.OperationID, BroadcastExtension)
+					}
 					// A read runs where it arrives, unless its ring is a
 					// leader's: what only the leader holds is read there.
 					if !set {
@@ -117,6 +130,19 @@ func newDispatcher(cfg *loaded, cl *cluster.Cluster, docs []*openapi3.T) (*dispa
 					if m, err = cfg.ringMode(name); err != nil {
 						return nil, fmt.Errorf("app: %s: %s: %w", op.OperationID, RingExtension, err)
 					}
+				}
+				policy, own, err := broadcastPolicy(op.Extensions)
+				switch {
+				case err != nil:
+					return nil, fmt.Errorf("app: %s: %w", op.OperationID, err)
+				case own && m.kind != writeBroadcast:
+					return nil, fmt.Errorf("app: %s: %s on a write that is not broadcast (%s)",
+						op.OperationID, BroadcastExtension, m)
+				case !own:
+					policy = docPolicy
+				}
+				if m.kind == writeBroadcast {
+					m.policy = policy
 				}
 				if !cl.Enabled() {
 					m = writeMode{kind: writeLocal} // one replica: every write runs here
@@ -144,6 +170,19 @@ func newDispatcher(cfg *loaded, cl *cluster.Cluster, docs []*openapi3.T) (*dispa
 		}
 	}
 	return d, nil
+}
+
+// broadcastPolicy reads x-infrapi-broadcast, if set.
+func broadcastPolicy(ext map[string]any) (string, bool, error) {
+	v, set := ext[BroadcastExtension]
+	if !set {
+		return "", false, nil
+	}
+	switch v {
+	case BroadcastStrict, BroadcastTolerant, BroadcastAsync:
+		return v.(string), true, nil
+	}
+	return "", true, fmt.Errorf("%s: %v is not strict, tolerant or async", BroadcastExtension, v)
 }
 
 // extension reads a string extension, if set.
@@ -190,14 +229,14 @@ func (d *dispatcher) handle(c *gin.Context) {
 	m := d.byRoute[c.Request.Method+" "+c.FullPath()]
 	switch m.kind {
 	case writeBroadcast:
-		d.fanouts[m.role].handle(c)
+		d.fanouts[m.role].handle(c, m.policy)
 	case writeLeader:
 		// The identity first: the relay hands over to the leader, which
 		// gives the write its own, or runs it here and goes on.
 		d.local.identify(c, newWriteIdentity(c.Request))
 		d.leaders[m.role](c)
 	default:
-		d.local.handle(c)
+		d.local.handle(c, "")
 	}
 }
 

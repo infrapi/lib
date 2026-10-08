@@ -112,7 +112,24 @@ func newFanout(cl *cluster.Cluster, role, scheme string, maxBody int64) *fanout 
 	}}}
 }
 
-func (f *fanout) handle(c *gin.Context) {
+// How the caller of a broadcast write learns of its replays, set by the
+// contract's x-infrapi-broadcast.
+const (
+	// BroadcastStrict waits for every replica, and answers 502 when one did
+	// not take the write: the caller retries with the same Idempotency-Key.
+	BroadcastStrict = "strict"
+	// BroadcastTolerant waits for every replica, and answers what the first
+	// one did; a replica that failed is in the logs and the metrics only.
+	BroadcastTolerant = "tolerant"
+	// BroadcastAsync answers at once, and replays in the background.
+	BroadcastAsync = "async"
+)
+
+// BroadcastExtension, at the root of a contract or on an operation, says how a
+// broadcast write answers: strict (the default), tolerant or async.
+const BroadcastExtension = "x-infrapi-broadcast"
+
+func (f *fanout) handle(c *gin.Context, policy string) {
 	r := c.Request
 	if !isWrite(r.Method) {
 		c.Next()
@@ -154,16 +171,125 @@ func (f *fanout) handle(c *gin.Context) {
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 
-	f.run(c, w)
-	if c.Writer.Status() >= http.StatusBadRequest {
-		return // refused or failed here: the others are not asked
+	// Strict keeps this replica's answer until the others have answered: it
+	// may have to give another one.
+	var held *heldResponse
+	if policy == BroadcastStrict {
+		held = &heldResponse{ResponseWriter: c.Writer, status: http.StatusOK}
+		c.Writer = held
 	}
-	f.replay(c, w, body)
+	f.run(c, w)
+	if held != nil {
+		c.Writer = held.ResponseWriter
+	}
+	status := c.Writer.Status()
+	if held != nil {
+		status = held.status
+	}
+	if status >= http.StatusBadRequest {
+		held.send() // refused or failed here: the others are not asked
+		return
+	}
+
+	out := snapshot(c, w, body, status)
+	if policy == BroadcastAsync {
+		server.LogField(c, "broadcast", "async")
+		go f.replay(out) // c is gin's again once this returns: the snapshot is all it reads
+		return
+	}
+	done, failed := f.replay(out)
+	server.LogField(c, "broadcast_to", strings.Join(done, ","))
+	if len(failed) > 0 {
+		server.LogField(c, "broadcast_failed", strings.Join(failed, ","))
+	}
+	if held == nil {
+		return
+	}
+	if len(failed) == 0 {
+		held.send()
+		return
+	}
+	// The write is done here and on the others: a retry with the same
+	// Idempotency-Key does it again everywhere, the same, and reaches the
+	// replicas that missed it.
+	for k := range c.Writer.Header() {
+		if k != "X-Correlation-Id" && k != http.CanonicalHeaderKey(WriteIDHeader) {
+			c.Writer.Header().Del(k)
+		}
+	}
+	problem.Write(c.Writer, c.Request, &problem.Error{Status: http.StatusBadGateway, Code: "broadcast_incomplete",
+		Title: "Not every replica took the write", Retryable: true,
+		Detail: "done here and on " + listOr(done, "no other replica") + "; not on " + strings.Join(failed, ", ") +
+			". Retry with the same Idempotency-Key: the write is done again, the same, everywhere"})
+}
+
+func listOr(list []string, none string) string {
+	if len(list) == 0 {
+		return none
+	}
+	return strings.Join(list, ", ")
+}
+
+// heldResponse keeps a handler's answer instead of sending it, until send.
+type heldResponse struct {
+	gin.ResponseWriter
+	status  int
+	written bool
+	body    bytes.Buffer
+}
+
+func (h *heldResponse) WriteHeader(code int) { h.status, h.written = code, true }
+func (h *heldResponse) WriteHeaderNow()      { h.written = true }
+func (h *heldResponse) Write(b []byte) (int, error) {
+	h.written = true
+	return h.body.Write(b)
+}
+func (h *heldResponse) WriteString(s string) (int, error) {
+	h.written = true
+	return h.body.WriteString(s)
+}
+func (h *heldResponse) Status() int   { return h.status }
+func (h *heldResponse) Size() int     { return h.body.Len() }
+func (h *heldResponse) Written() bool { return h.written }
+func (h *heldResponse) Flush()        {}
+
+// send writes the held answer; nothing when there is none to hold.
+func (h *heldResponse) send() {
+	if h == nil {
+		return
+	}
+	h.ResponseWriter.WriteHeader(h.status)
+	if h.body.Len() == 0 {
+		h.ResponseWriter.WriteHeaderNow()
+		return
+	}
+	if _, err := h.ResponseWriter.Write(h.body.Bytes()); err != nil {
+		broadcastLog().Warn("broadcast write: the answer could not be sent", "err", err)
+	}
+}
+
+// outgoing is what a replay needs of the request, copied: an async replay
+// outlives it.
+type outgoing struct {
+	method, path, query, host, route, correlation string
+	header                                        http.Header
+	identity                                      writeIdentity
+	body                                          []byte
+	status                                        int // this replica's answer
+}
+
+func snapshot(c *gin.Context, w writeIdentity, body []byte, status int) outgoing {
+	r := c.Request
+	return outgoing{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery, host: r.Host, route: c.FullPath(),
+		correlation: problem.CorrelationID(r.Context()), header: r.Header.Clone(), identity: w, body: body,
+		status: status}
 }
 
 // run handles the write here, with its identity in the request's context.
 func (f *fanout) run(c *gin.Context, w writeIdentity) {
 	f.identify(c, w)
+	// The caller can ask how the write went, broadcast, under this id.
+	c.Header(WriteIDHeader, w.id)
 	c.Next()
 }
 
@@ -174,28 +300,39 @@ func (f *fanout) identify(c *gin.Context, w writeIdentity) {
 }
 
 // replay sends the write to every other member of the role, at the same time,
-// and waits for them: the caller's call ends when every replica has it.
-func (f *fanout) replay(c *gin.Context, w writeIdentity, body []byte) {
-	r := c.Request
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
+// waits for them, and says which took it and which did not.
+func (f *fanout) replay(out outgoing) (done, failed []string) {
+	ctx, cancel := context.WithTimeout(problem.WithCorrelationID(context.Background(), out.correlation), 2*time.Minute)
 	defer cancel()
 
 	role, err := f.cluster.Role(f.role)
 	if err != nil {
 		broadcastLog().ErrorContext(ctx, "broadcast write: no role to replay on", "role", f.role, "err", err)
-		return
+		return nil, []string{"(" + f.role + ")"}
 	}
 	members, err := role.Members()
 	if err != nil {
 		broadcastLog().ErrorContext(ctx, "broadcast write: no members to replay on", "role", f.role, "err", err)
-		return
+		return nil, []string{"(" + f.role + ")"}
 	}
 
 	self := f.cluster.InstanceID()
+	// What every replica can read back: this one done, the others pending.
+	rec := writeRecord{At: out.identity.at, By: self, Method: out.method, Path: out.path,
+		Replicas: map[string]replicaRecord{}}
+	now := time.Now().UTC()
+	for _, m := range members {
+		r := replicaRecord{State: statePending, Updated: now}
+		if m.ID == self {
+			r.State, r.Status = stateDone, out.status
+		}
+		rec.Replicas[m.ID] = r
+	}
+	record(ctx, f.cluster, out.identity.id, rec)
+
 	var (
-		wg           sync.WaitGroup
-		mu           sync.Mutex
-		done, failed []string
+		wg sync.WaitGroup
+		mu sync.Mutex
 	)
 	for _, m := range members {
 		if m.ID == self {
@@ -205,10 +342,10 @@ func (f *fanout) replay(c *gin.Context, w writeIdentity, body []byte) {
 		go func() {
 			defer wg.Done()
 			start := time.Now()
-			status, err := f.send(ctx, r, m.Addr, w, body)
-			attrs := []any{"instance", m.ID, "addr", m.Addr, "method", r.Method, "path", r.URL.Path,
-				"status", status, "duration", time.Since(start), "write_id", w.id,
-				"correlation_id", problem.CorrelationID(r.Context())}
+			status, err := f.send(ctx, out, m.Addr)
+			attrs := []any{"instance", m.ID, "addr", m.Addr, "method", out.method, "path", out.path,
+				"status", status, "duration", time.Since(start), "write_id", out.identity.id,
+				"correlation_id", out.correlation}
 			outcome := "ok"
 			if err != nil {
 				outcome = "failed"
@@ -216,7 +353,13 @@ func (f *fanout) replay(c *gin.Context, w writeIdentity, body []byte) {
 			} else {
 				broadcastLog().InfoContext(ctx, "broadcast write: replayed", attrs...)
 			}
-			replayed.WithLabelValues(r.Method, c.FullPath(), outcome).Inc()
+			replayed.WithLabelValues(out.method, out.route, outcome).Inc()
+			r := replicaRecord{State: stateDone, Status: status, Updated: time.Now().UTC()}
+			if err != nil {
+				r.State, r.Error = stateFailed, err.Error()
+			}
+			record(ctx, f.cluster, out.identity.id, writeRecord{At: out.identity.at, By: self, Method: out.method,
+				Path: out.path, Replicas: map[string]replicaRecord{m.ID: r}})
 			mu.Lock()
 			if err != nil {
 				failed = append(failed, m.ID)
@@ -227,33 +370,29 @@ func (f *fanout) replay(c *gin.Context, w writeIdentity, body []byte) {
 		}()
 	}
 	wg.Wait()
-	// The caller's access line says where the write went.
 	slices.Sort(done)
 	slices.Sort(failed)
-	server.LogField(c, "broadcast_to", strings.Join(done, ","))
-	if len(failed) > 0 {
-		server.LogField(c, "broadcast_failed", strings.Join(failed, ","))
-	}
+	return done, failed
 }
 
 // send replays the write on one replica: same method, path, query, headers
 // and body, plus its identity.
 // It returns the replica's status, 0 when it did not answer.
-func (f *fanout) send(ctx context.Context, in *http.Request, addr string, w writeIdentity, body []byte) (int, error) {
-	target := url.URL{Scheme: f.scheme, Host: addr, Path: in.URL.Path, RawQuery: in.URL.RawQuery}
-	req, err := http.NewRequestWithContext(ctx, in.Method, target.String(), bytes.NewReader(body))
+func (f *fanout) send(ctx context.Context, out outgoing, addr string) (int, error) {
+	target := url.URL{Scheme: f.scheme, Host: addr, Path: out.path, RawQuery: out.query}
+	req, err := http.NewRequestWithContext(ctx, out.method, target.String(), bytes.NewReader(out.body))
 	if err != nil {
 		return 0, err
 	}
-	req.Header = in.Header.Clone()
-	req.Host = in.Host
+	req.Header = out.header.Clone()
+	req.Host = out.host
 	// The idempotency store would answer the replay with this replica's
 	// response instead of running it: the write's identity does that job.
 	req.Header.Del(idempotency.Header)
 	req.Header.Set(ForwardedHeader, f.cluster.InstanceID())
-	req.Header.Set(WriteIDHeader, w.id)
-	req.Header.Set(WriteTimeHeader, w.at.Format(time.RFC3339Nano))
-	req.Header.Set("X-Correlation-ID", problem.CorrelationID(in.Context()))
+	req.Header.Set(WriteIDHeader, out.identity.id)
+	req.Header.Set(WriteTimeHeader, out.identity.at.Format(time.RFC3339Nano))
+	req.Header.Set("X-Correlation-ID", out.correlation)
 
 	// The host is a member's address, read from the ring; the path is the
 	// route the request already matched.

@@ -55,7 +55,7 @@ func TestTheContractGivesWritesTheirRing(t *testing.T) {
 	d, err := dispatch(t, ringsContract, "")
 	require.NoError(t, err)
 	assert.Equal(t, map[string]writeMode{
-		"POST /orders/v1/tenants/:tenant/orders":       {kind: writeBroadcast, role: "everybody"},
+		"POST /orders/v1/tenants/:tenant/orders":       {kind: writeBroadcast, role: "everybody", policy: BroadcastStrict},
 		"DELETE /orders/v1/tenants/:tenant/orders/:id": {kind: writeLeader, role: "purger"},
 		"PUT /orders/v1/tenants/:tenant/orders/:id":    {kind: writeLocal},
 	}, d.byRoute, "reads are not there: they run where they arrive")

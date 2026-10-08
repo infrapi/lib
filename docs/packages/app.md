@@ -425,10 +425,64 @@ b.CreatedAt = app.WriteTime(ctx)        // not time.Now()
   call's `X-Correlation-ID`. Without its `Idempotency-Key`: the write's identity
   does that job, and a shared idempotency store would otherwise answer the
   replay instead of running it.
-- The replicas are called at the same time, directly, on their API port; the
-  caller's answer is the first replica's, sent once all have answered.
+- The replicas are called at the same time, directly, on their API port.
 - A replay is accepted from the host of a member of the role only
   (`403 not_a_member` otherwise), and is not replayed again.
+
+### What the caller is answered: `x-infrapi-broadcast`
+
+At the root of the contract, or on one operation:
+
+```yaml
+x-infrapi-broadcast: strict        # the default
+paths:
+  /bookmarks/v1/tenants/{tenant}/bookmarks:
+    post:
+      operationId: createBookmark
+      x-infrapi-broadcast: async   # this one answers at once
+```
+
+| Value | The caller waits | When a replica did not take the write |
+|---|---|---|
+| `strict` | for every replica | `502 broadcast_incomplete`, `retryable: true`, naming the replicas that missed it |
+| `tolerant` | for every replica | the first replica's answer; the failure is in the logs and the metrics |
+| `async` | for nobody: answered at once, replayed in the background | the first replica's answer; the failure is in the logs, the metrics and the status |
+
+- `strict` holds the first replica's answer until the others have answered, and
+  sends it only when all took the write: a success means every replica has it.
+- After a `502`, **retry with the same `Idempotency-Key`**: the write's identity
+  comes from the key, so every replica does the same write again, the same, and
+  the one that missed it catches up. The write was done on the others already.
+- `async` is the fastest, and the loosest: a replica that stops before its
+  replays are sent leaves the others without the write.
+- On a write that is not broadcast, or on a read, `x-infrapi-broadcast` is
+  refused at start.
+
+### Did every replica take it: the write id and its status
+
+Every write is answered with `X-Infrapi-Write-ID`. Any replica tells how a
+broadcast write went, replica by replica:
+
+```bash
+curl http://any-replica:8080/-/broadcast/im3vmkqm3xncm2i4t4zw2e53wd
+```
+```json
+{"write_id":"im3vmkqm3xncm2i4t4zw2e53wd","by":"node1","method":"POST","path":"/bookmarks/v1/tenants/demo/bookmarks",
+ "complete":true,"ok":false,
+ "replicas":{"node1":{"state":"done","status":201},
+             "node2":{"state":"failed","status":500,"error":"answered 500: …"}}}
+```
+
+- `state` is `pending` until the replica answered, then `done` or `failed`;
+  `complete` once none is pending, `ok` when all are done.
+- The outcomes live in **one key** of the cluster's store, `broadcast-status`,
+  which the replica that received the write updates as its replays answer, and
+  which every replica reads locally: no call to answer.
+- Kept **24 hours**, and at most the **10 000** most recent writes: the old ones
+  are dropped from the value itself, so there is nothing to delete. The cap
+  bounds the key, which every full gossip exchange sends whole, whatever the
+  write rate.
+- `404` for a write that is not broadcast, unknown, or older than that.
 
 ### In the logs
 
@@ -460,11 +514,11 @@ One write, followed across replicas by its `write_id` and `correlation_id`:
 - **No catching up.** A replica that is down, or joins later, does not get the
   writes it missed. What every replica must eventually hold belongs in a shared
   store, or is rebuilt in `Background` as a replica starts.
-- **No undo.** A replica that fails a replay keeps its state while the others
-  keep theirs: the failure is logged (`broadcast write: a replica did not take
-  it`, with the replica and the write id) and counted in
-  `infrapi_app_broadcast_writes_total{method,route,outcome="failed"}`, and the
-  caller still gets the first replica's answer.
+- **No undo.** A replica that fails a replay leaves the others with the write:
+  `strict` says so to the caller, who retries; `tolerant` and `async` only log it
+  (`broadcast write: a replica did not take it`), count it in
+  `infrapi_app_broadcast_writes_total{method,route,outcome="failed"}` and keep
+  it in the status.
 
 When every replica must see the same data, a store they share — a database, a
 shared volume, the backend the service fronts — is simpler than keeping copies
