@@ -142,8 +142,14 @@ Your fields come after the engine's, in key order. The value is marshalled to
 JSON (one that cannot be is written as its `%v` text); setting a key again
 replaces it. The engine's own names (`time`, `level`, `msg`, `method`, `path`,
 `route`, `status`, `latency_ms`, `client_ip`, `size`, `user_agent`, `request_id`,
-`errors`, `error`, `panic`, `stack`) are refused, so nothing can hide what the engine saw. With text logs
-`LogField` does nothing.
+`errors`, `error`, `panic`, `stack`) are refused, so nothing can hide what the engine saw.
+
+With text logs, the fields follow gin's line as `key=value`, in key order; a
+value with a space, a quote or an `=` is quoted:
+
+```text
+[GIN] 2026/10/08 - 16:38:25 | 201 |    2.52ms |  127.0.0.1 | POST     "/folders" tenant=acme write_id=go3ouhwv…
+```
 
 The engine leaves the global logrus logger alone: a service that wants its own
 lines in JSON sets `logrus.SetFormatter(&logrus.JSONFormatter{})` itself.

@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -73,7 +74,7 @@ const requestIDHeader = "X-Request-Id"
 // logged, with the 500 it was answered with.
 func logMiddlewares(format string, out io.Writer) []gin.HandlerFunc {
 	if format != LogFormatJSON {
-		return []gin.HandlerFunc{gin.LoggerWithWriter(out), gin.RecoveryWithWriter(out)}
+		return []gin.HandlerFunc{textAccessLog(out), gin.RecoveryWithWriter(out)}
 	}
 	return []gin.HandlerFunc{jsonAccessLog(out), jsonRecovery(out)}
 }
@@ -96,13 +97,14 @@ var reservedFields = map[string]bool{
 	"request_id": true, "errors": true, "panic": true, "stack": true, "error": true,
 }
 
-// LogField adds key to the JSON access log line of the request ctx belongs to:
+// LogField adds key to the access log line of the request ctx belongs to:
 // a tenant, a resource id, an outcome — whatever the service knows and the
 // engine cannot. Call it from a gin handler with the *gin.Context itself, or
 // from a net/http handler mounted with gin.WrapH with the request's context.
-// The value must marshal to JSON; adding the same key again replaces it.
+// The value must marshal to JSON; adding the same key again replaces it. In
+// the text format, the fields follow gin's line as key=value.
 //
-// It does nothing when the request is not logged as JSON, and drops the names
+// It does nothing outside a logged request, and drops the names
 // the engine writes itself (time, level, msg, method, path, route, status,
 // latency_ms, client_ip, size, user_agent, request_id, errors, error, panic, stack).
 func LogField(ctx context.Context, key string, value any) {
@@ -159,6 +161,52 @@ func writeLine(out io.Writer, v any, extra map[string]any) {
 	if _, err := out.Write(append(b, '\n')); err != nil {
 		log.Printf("server: log line lost: %v", err)
 	}
+}
+
+// textAccessLog is gin's own line, followed by the fields the request added.
+func textAccessLog(out io.Writer) gin.HandlerFunc {
+	inner := gin.LoggerWithConfig(gin.LoggerConfig{Output: out, Formatter: textLine})
+	return func(c *gin.Context) {
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), logFieldsKey{}, &logFields{}))
+		inner(c)
+	}
+}
+
+// textLine is gin's default line, with the request's fields before the
+// errors.
+func textLine(p gin.LogFormatterParams) string {
+	var statusColor, methodColor, resetColor string
+	if p.IsOutputColor() {
+		statusColor, methodColor, resetColor = p.StatusCodeColor(), p.MethodColor(), p.ResetColor()
+	}
+	if p.Latency > time.Minute {
+		p.Latency = p.Latency.Truncate(time.Second)
+	}
+	var fields strings.Builder
+	if p.Request != nil {
+		if f, ok := p.Request.Context().Value(logFieldsKey{}).(*logFields); ok {
+			f.mu.Lock()
+			keys := make([]string, 0, len(f.values))
+			for k := range f.values {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				v := fmt.Sprint(f.values[k])
+				if v == "" || strings.ContainsAny(v, " \t\"=") {
+					v = strconv.Quote(v)
+				}
+				fields.WriteString(" " + k + "=" + v)
+			}
+			f.mu.Unlock()
+		}
+	}
+	return fmt.Sprintf("[GIN] %v |%s %3d %s| %13v | %15s |%s %-7s %s %#v%s\n%s",
+		p.TimeStamp.Format("2006/01/02 - 15:04:05"),
+		statusColor, p.StatusCode, resetColor,
+		p.Latency, p.ClientIP,
+		methodColor, p.Method, resetColor,
+		p.Path, fields.String(), p.ErrorMessage)
 }
 
 func jsonAccessLog(out io.Writer) gin.HandlerFunc {
