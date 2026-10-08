@@ -117,8 +117,8 @@ span.what { color: var(--muted); }
   <p class="who">This page was served by <b>{{.Instance}}</b>{{if .Zone}} in <b>{{.Zone}}</b>{{end}}.
   {{if not .Clustered}}<span class="badge follow">single replica</span> it performs every write itself.
   {{else if not .Elects}}<span class="badge follow">replica</span> no leader is elected: every replica performs its own writes.
-  {{else if .IsLeader}}<span class="badge lead">leader</span> {{if .LeaderWrites}}it performs every write.{{else}}it keeps the gateway's configuration; every replica performs its own writes.{{end}}
-  {{else if .Leader}}<span class="badge follow">follower</span> {{if .LeaderWrites}}its writes are relayed to <b>{{.Leader}}</b>.{{else}}<b>{{.Leader}}</b> keeps the gateway's configuration; this replica performs its own writes.{{end}}
+  {{else if .IsLeader}}<span class="badge lead">leader</span> {{if .LeaderWrites}}it performs every write the contract does not give another ring.{{else}}it keeps the gateway's configuration; every replica performs its own writes.{{end}}
+  {{else if .Leader}}<span class="badge follow">follower</span> {{if .LeaderWrites}}the writes the contract does not give another ring are relayed to <b>{{.Leader}}</b>.{{else}}<b>{{.Leader}}</b> keeps the gateway's configuration; this replica performs its own writes.{{end}}
   {{else}}<span class="badge none">no leader</span> {{if .LeaderWrites}}writes are refused as retryable{{else}}the gateway's configuration is not kept{{end}}: {{.LeaderErr}}{{end}}</p>
 
   <h2>API</h2>

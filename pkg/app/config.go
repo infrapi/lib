@@ -168,9 +168,12 @@ type GatewayHealthCheck struct {
 
 // loaded is the configuration once resolved.
 type loaded struct {
-	app        *config.AppConfig
-	cluster    *config.ClusterConfig
-	roles      []cluster.RoleSpec // the rings declared: the service's, and writer when elected
+	app     *config.AppConfig
+	cluster *config.ClusterConfig
+	roles   []cluster.RoleSpec // the rings declared: the service's, and writer when elected
+	// roleModes is every role of Spec.Roles, by name: a contract gives its
+	// writes to them.
+	roleModes  map[string]cluster.Mode
 	Auth       AuthConfig
 	Database   DatabaseConfig
 	Gateway    GatewayConfig
@@ -324,6 +327,7 @@ func (l *loaded) selectRoles(roles []cluster.RoleSpec) error {
 		}
 		leads = leads || m == cluster.ModeLeader
 	}
+	l.roleModes = mode
 	if l.elects() {
 		cl.Roles = append(cl.Roles, writerRole)
 		leads = true

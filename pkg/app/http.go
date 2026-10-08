@@ -85,23 +85,18 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 	engine.Use(correlate)
 	engine.NoRoute(notFound)
 
-	// Writes go through the leader when the operator says so
-	// (cluster.leader_writes): a backend that takes concurrent writes needs
-	// no single writer. Without a cluster, the one replica is its own leader.
-	var forward gin.HandlerFunc
-	if rt.Cluster.Enabled() && cfg.cluster.LeaderWrites {
-		forward = relay.Forward(relay.Cluster{C: rt.Cluster, Role: writerRole}, peerScheme(cfg))
-	}
 	auth := authenticate(cfg.Auth.APIKeySHA256)
+	// Each write runs the way cluster.writes says, by its operationId: here,
+	// on a ring's leader, or here and on every member of a ring.
+	writes, err := newDispatcher(cfg, rt.Cluster, docs)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	for i, v := range versions {
 		// In order: what is unauthenticated or malformed never claims a key,
 		// and only the leader validates and remembers.
-		chain := []gin.HandlerFunc{paramFields, auth}
-		if forward != nil {
-			chain = append(chain, forward)
-		}
-		chain = append(chain, validator(docs[i]))
+		chain := []gin.HandlerFunc{paramFields, auth, writes.handle, validator(docs[i])}
 		if store != nil {
 			chain = append(chain, idempotency.Middleware(store, scopeOf(spec.IdempotencyScope), int64(cfg.Gateway.MaxBodyBytes)))
 		}
