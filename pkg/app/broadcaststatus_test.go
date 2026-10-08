@@ -96,3 +96,27 @@ func TestBroadcastStatusContentIsPerReplica(t *testing.T) {
 	assert.Equal(t, []string{"w1/node-1", "w1/node-2"}, first.MergeContent())
 	assert.Equal(t, []string{"w1/node-2"}, second.MergeContent(), "not a superset of the first")
 }
+
+func TestBroadcastOutcome(t *testing.T) {
+	rec := func(states ...string) *writeRecord {
+		w := &writeRecord{Replicas: map[string]replicaRecord{}}
+		for i, st := range states {
+			w.Replicas[fmt.Sprintf("node-%d", i)] = replicaRecord{State: st}
+		}
+		return w
+	}
+	assert.Equal(t, outcomeComplete, rec(stateDone, stateDone).outcome())
+	assert.Equal(t, outcomePartial, rec(stateDone, stateFailed).outcome())
+	assert.Equal(t, outcomePending, rec(stateDone, stateFailed, statePending).outcome(), "not over yet")
+	w := rec(stateDone)
+	w.Error = "no members"
+	assert.Equal(t, outcomeError, w.outcome())
+
+	// The error travels like the replicas do.
+	s := newBroadcastStatus()
+	_, err := s.Merge(&broadcastStatus{Writes: map[string]*writeRecord{"w1": {At: time.Now(), Error: "no members",
+		Replicas: map[string]replicaRecord{}}}}, false)
+	require.NoError(t, err)
+	assert.Equal(t, "no members", s.Writes["w1"].Error)
+	assert.Contains(t, s.MergeContent(), "w1/error")
+}

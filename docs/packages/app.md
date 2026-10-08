@@ -467,14 +467,21 @@ broadcast write went, replica by replica:
 curl http://any-replica:8080/-/broadcast/im3vmkqm3xncm2i4t4zw2e53wd
 ```
 ```json
-{"write_id":"im3vmkqm3xncm2i4t4zw2e53wd","by":"node1","method":"POST","path":"/bookmarks/v1/tenants/demo/bookmarks",
- "complete":true,"ok":false,
+{"write_id":"2wz5qmemf3emfd6heriefwhnsq","status":"partial","by":"node1","method":"POST",
+ "path":"/bookmarks/v1/tenants/demo/bookmarks",
  "replicas":{"node1":{"state":"done","status":201},
-             "node2":{"state":"failed","status":500,"error":"answered 500: …"}}}
+             "node2":{"state":"failed","error":"unreachable: … connect: connection refused"}}}
 ```
 
-- `state` is `pending` until the replica answered, then `done` or `failed`;
-  `complete` once none is pending, `ok` when all are done.
+- `status` sums the write up: `pending` while a replica has not answered,
+  `complete` when every replica took it, `partial` when one did not, `error`
+  when it could not be sent to the others at all (no ring, no members; `error`
+  says why) and only the first replica has it.
+- Each replica's `state` is `pending` until it answered, then `done` or
+  `failed`, with the status it answered or why it could not be reached.
+- The route is documented in `/-/docs`, under **infrapi (replica routes)**, with
+  `/-/healthz` and `/-/readyz`: the library serves that contract next to the
+  service's.
 - The outcomes live in **one key** of the cluster's store, `broadcast-status`,
   which the replica that received the write updates as its replays answer, and
   which every replica reads locally: no call to answer.

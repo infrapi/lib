@@ -4,11 +4,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -24,6 +26,14 @@ import (
 	"github.com/infrapi/lib/pkg/app/internal/relay"
 	"github.com/infrapi/lib/pkg/app/problem"
 )
+
+// infrapiContract documents the routes the library serves besides the
+// service's: /-/docs shows it with the service's own.
+//
+//go:embed infrapi.yaml
+var infrapiContract []byte
+
+var infrapiSpec = server.OpenAPISpec{Name: "infrapi (replica routes)", Path: "infrapi.yaml", Content: infrapiContract}
 
 // Health paths, next to the engine's own /-/metrics and /-/metadata.
 const (
@@ -74,7 +84,8 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 	}
 
 	gin.SetMode(gin.ReleaseMode)
-	engine, err := server.NewServerGin(cfg.app, server.WithOpenAPI(specs...))
+	// The library's own routes are documented next to the service's.
+	engine, err := server.NewServerGin(cfg.app, server.WithOpenAPI(append(slices.Clone(specs), infrapiSpec)...))
 	if err != nil {
 		return nil, nil, err
 	}

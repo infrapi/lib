@@ -56,6 +56,36 @@ type writeRecord struct {
 	Method   string                   `json:"method"`
 	Path     string                   `json:"path"`
 	Replicas map[string]replicaRecord `json:"replicas"`
+	// Error is why the write could not be sent to the others at all.
+	Error string `json:"error,omitempty"`
+}
+
+// The outcome of a broadcast write as a whole.
+const (
+	outcomePending  = "pending"  // a replica has not answered yet
+	outcomeComplete = "complete" // every replica took it
+	outcomePartial  = "partial"  // a replica did not
+	outcomeError    = "error"    // it could not be sent to the others at all
+)
+
+// outcome sums the replicas up.
+func (w *writeRecord) outcome() string {
+	if w.Error != "" {
+		return outcomeError
+	}
+	failed := false
+	for _, r := range w.Replicas {
+		switch r.State {
+		case statePending:
+			return outcomePending
+		case stateFailed:
+			failed = true
+		}
+	}
+	if failed {
+		return outcomePartial
+	}
+	return outcomeComplete
 }
 
 type replicaRecord struct {
@@ -143,6 +173,16 @@ func (s *broadcastStatus) Merge(other memberlist.Mergeable, _ bool) (memberlist.
 			mine = &writeRecord{At: ow.At, By: ow.By, Method: ow.Method, Path: ow.Path, Replicas: map[string]replicaRecord{}}
 			s.Writes[id] = mine
 		}
+		if ow.Error > mine.Error { // the same on every replica, whatever the order
+			mine.Error = ow.Error
+			c := change.Writes[id]
+			if c == nil {
+				c = &writeRecord{At: mine.At, By: mine.By, Method: mine.Method, Path: mine.Path,
+					Replicas: map[string]replicaRecord{}}
+				change.Writes[id] = c
+			}
+			c.Error = mine.Error
+		}
 		for node, or := range ow.Replicas {
 			if m, ok := mine.Replicas[node]; ok && !or.after(m) {
 				continue
@@ -172,6 +212,9 @@ func (s *broadcastStatus) MergeContent() []string {
 	for id, w := range s.Writes {
 		for node := range w.Replicas {
 			out = append(out, id+"/"+node)
+		}
+		if w.Error != "" {
+			out = append(out, id+"/error")
 		}
 	}
 	sort.Strings(out)
@@ -268,12 +311,11 @@ func statusHandler(cl *cluster.Cluster) gin.HandlerFunc {
 			problem.Abort(c, problem.NotFound("no broadcast write %q in the last %s", id, BroadcastStatusRetention))
 			return
 		}
-		complete, ok := true, true
-		for _, r := range w.Replicas {
-			complete = complete && r.State != statePending
-			ok = ok && r.State == stateDone
+		body := gin.H{"write_id": id, "status": w.outcome(), "at": w.At, "by": w.By, "method": w.Method,
+			"path": w.Path, "replicas": w.Replicas}
+		if w.Error != "" {
+			body["error"] = w.Error
 		}
-		c.JSON(http.StatusOK, gin.H{"write_id": id, "at": w.At, "by": w.By, "method": w.Method, "path": w.Path,
-			"complete": complete, "ok": ok, "replicas": w.Replicas})
+		c.JSON(http.StatusOK, body)
 	}
 }

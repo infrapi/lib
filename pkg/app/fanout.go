@@ -305,18 +305,20 @@ func (f *fanout) replay(out outgoing) (done, failed []string) {
 	ctx, cancel := context.WithTimeout(problem.WithCorrelationID(context.Background(), out.correlation), 2*time.Minute)
 	defer cancel()
 
+	self := f.cluster.InstanceID()
 	role, err := f.cluster.Role(f.role)
-	if err != nil {
-		broadcastLog().ErrorContext(ctx, "broadcast write: no role to replay on", "role", f.role, "err", err)
-		return nil, []string{"(" + f.role + ")"}
+	var members []cluster.Member
+	if err == nil {
+		members, err = role.Members()
 	}
-	members, err := role.Members()
 	if err != nil {
-		broadcastLog().ErrorContext(ctx, "broadcast write: no members to replay on", "role", f.role, "err", err)
+		broadcastLog().ErrorContext(ctx, "broadcast write: not sent to the others", "role", f.role, "err", err)
+		record(ctx, f.cluster, out.identity.id, writeRecord{At: out.identity.at, By: self, Method: out.method,
+			Path: out.path, Error: err.Error(), Replicas: map[string]replicaRecord{
+				self: {State: stateDone, Status: out.status, Updated: time.Now().UTC()}}})
 		return nil, []string{"(" + f.role + ")"}
 	}
 
-	self := f.cluster.InstanceID()
 	// What every replica can read back: this one done, the others pending.
 	rec := writeRecord{At: out.identity.at, By: self, Method: out.method, Path: out.path,
 		Replicas: map[string]replicaRecord{}}
