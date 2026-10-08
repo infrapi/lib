@@ -582,11 +582,15 @@ func TestRoles_give_one_leader_per_zone(t *testing.T) {
 	dc2c, err := c.Role(dc2Role.Name)
 	require.NoError(t, err)
 
-	// dc1 elects exactly one leader among its two replicas.
+	// dc1 elects exactly one leader among its two replicas, once each sees
+	// the other: until then each is alone in its view, and its own leader.
 	require.Eventually(t, func() bool {
 		x, errX := dc1a.IsLeader()
 		y, errY := dc1b.IsLeader()
-		return errX == nil && errY == nil && (x != y)
+		ma, errMA := dc1a.Members()
+		mb, errMB := dc1b.Members()
+		return errX == nil && errY == nil && errMA == nil && errMB == nil &&
+			len(ma) == 2 && len(mb) == 2 && x != y
 	}, 10*time.Second, 50*time.Millisecond, "dc1 should elect one of its own two replicas")
 
 	// dc2 elects its own, independently, and it is the only member of its ring.
