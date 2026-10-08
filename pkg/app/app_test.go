@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/infrapi/lib/pkg/cluster"
 	"github.com/infrapi/lib/pkg/server"
 
 	"github.com/infrapi/lib/pkg/app/problem"
@@ -103,8 +105,10 @@ service:
 	assert.Equal(t, "debug", cfg.app.AppLogLevel.String())
 	assert.Equal(t, []string{"a:7946", "b:7946"}, cfg.cluster.JoinMembers, "a YAML list reaches the library")
 	assert.Equal(t, 8080, cfg.cluster.InstancePort, "the ring address is the API's port")
+	assert.Empty(t, cfg.cluster.InstanceAddr, "on a wildcard, the address comes from the interfaces")
+	assert.Equal(t, []string{"0.0.0.0"}, cfg.cluster.GossipBindAddrs)
 	assert.Equal(t, "orders-api/", cfg.cluster.KvPrefix)
-	assert.Equal(t, []string{writerRole}, cfg.cluster.Roles)
+	assert.Empty(t, cfg.cluster.Roles, "a disabled cluster elects no leader")
 	assert.Equal(t, "from-env", cfg.Gateway.AdminKey)
 	assert.Equal(t, "orders-api", cfg.Gateway.Name)
 	assert.Equal(t, 15*time.Second, cfg.Gateway.Interval)
@@ -112,10 +116,112 @@ service:
 	assert.Equal(t, "hello", svc.Greeting)
 }
 
+// An API bound to one address is reached there: the ring advertises it, with
+// no interface to look up, and gossip binds it; a configured one still wins.
+func TestTheRingAdvertisesTheAPIsAddress(t *testing.T) {
+	cfg, err := loadConfig(Spec{Name: "orders-api"}, writeFile(t, required+"  listen_address: 127.0.0.2:9090\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.2", cfg.cluster.InstanceAddr)
+	assert.Equal(t, 9090, cfg.cluster.InstancePort)
+	assert.Equal(t, []string{"127.0.0.2"}, cfg.cluster.GossipBindAddrs, "two replicas on one host gossip apart")
+
+	cfg, err = loadConfig(Spec{Name: "orders-api"},
+		writeFile(t, required+"  listen_address: 127.0.0.2:9090\ncluster: {instance_addr: 10.0.0.1}\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "10.0.0.1", cfg.cluster.InstanceAddr)
+}
+
+// A leader is elected only for what needs one: writes through it, or the
+// gateway's configuration. Otherwise there is no ring to join, and leader
+// checks, which would decide nothing, are refused.
+func TestALeaderOnlyWhenSomethingNeedsOne(t *testing.T) {
+	const clustered = `
+cluster:
+  enabled: true
+  kv_store: inmemory
+  instance_addr: 127.0.0.1
+`
+	for name, c := range map[string]struct {
+		extra string
+		roles []string
+	}{
+		"nothing":       {"", nil},
+		"leader writes": {"  leader_writes: true\n", []string{writerRole}},
+		"gateway":       {"gateway: {admin_url: http://apisix:9180}\n", []string{writerRole}},
+	} {
+		cfg, err := loadConfig(Spec{Name: "orders-api"}, writeFile(t, required+clustered+c.extra))
+		require.NoError(t, err, name)
+		assert.ElementsMatch(t, c.roles, cfg.cluster.Roles, name)
+		var declared []string
+		for _, r := range clusterOptions(cfg).Roles {
+			declared = append(declared, r.Name)
+		}
+		assert.Equal(t, c.roles, declared, name)
+	}
+
+	_, err := loadConfig(Spec{Name: "orders-api"},
+		writeFile(t, required+clustered+"  leader_checks: [\"tcp://db:5432\"]\n"))
+	assert.ErrorContains(t, err, "no leader is elected")
+}
+
+// The service declares its rings; cluster.roles chooses which a replica
+// joins, all by default; writer is added when something needs a leader.
+func TestTheServicesRoles(t *testing.T) {
+	spec := Spec{Name: "orders-api", Roles: []cluster.RoleSpec{
+		{Name: "purger", Mode: cluster.ModeLeader},
+		{Name: "cache", Mode: cluster.ModeBroadcast},
+	}}
+	const clustered = `
+cluster:
+  enabled: true
+  kv_store: inmemory
+  instance_addr: 127.0.0.1
+`
+	for name, c := range map[string]struct {
+		extra    string
+		joined   []string
+		declared []string
+	}{
+		"all by default":     {"", []string{"purger", "cache"}, []string{"purger", "cache"}},
+		"chosen":             {"  roles: [cache]\n", []string{"cache"}, []string{"purger", "cache"}},
+		"none":               {"  roles: []\n", nil, nil},
+		"with a leader":      {"  roles: [cache]\n  leader_writes: true\n", []string{"cache", writerRole}, []string{"purger", "cache", writerRole}},
+		"checks per role":    {"  roles: [purger]\n  leader_writes: true\n  role_leader_checks:\n    purger: [\"exec:/bin/is-active-dc\"]\n    writer: [\"tcp://db:5432\"]\n", []string{"purger", writerRole}, []string{"purger", "cache", writerRole}},
+		"checks, own leader": {"  roles: [purger]\n  leader_checks: [\"tcp://db:5432\"]\n", []string{"purger"}, []string{"purger", "cache"}},
+	} {
+		cfg, err := loadConfig(spec, writeFile(t, required+clustered+c.extra))
+		require.NoError(t, err, name)
+		assert.ElementsMatch(t, c.joined, cfg.cluster.Roles, name)
+		var declared []string
+		for _, r := range clusterOptions(cfg).Roles {
+			declared = append(declared, r.Name)
+		}
+		assert.Equal(t, c.declared, declared, name)
+	}
+	cfg, err := loadConfig(spec, writeFile(t, required+clustered+"  role_leader_checks: {purger: [\"exec:/bin/is-active-dc\"]}\n"))
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{"purger": {"exec:/bin/is-active-dc"}}, cfg.cluster.RoleLeaderChecks,
+		"a YAML map reaches the library")
+
+	for name, c := range map[string]struct{ extra, err string }{
+		"unknown":              {"  roles: [compactor]\n", `"compactor" is not one of the service's roles [cache purger]`},
+		"writer":               {"  roles: [writer]\n", "the library's own ring"},
+		"checks, nobody leads": {"  roles: [cache]\n  leader_checks: [\"tcp://db:5432\"]\n", "no leader is elected here"},
+	} {
+		_, err := loadConfig(spec, writeFile(t, required+clustered+c.extra))
+		assert.ErrorContains(t, err, c.err, name)
+	}
+
+	assert.ErrorContains(t, Run(context.Background(), Spec{Name: "x", API: func(context.Context, *Runtime) ([]Version, error) {
+		return nil, nil
+	}, Roles: []cluster.RoleSpec{{Name: writerRole}}}, ""), "the library's own ring")
+}
+
 func TestLoadConfigRefuses(t *testing.T) {
 	for name, content := range map[string]string{
 		"a key the library does not know": required + "  listen_adress: 0.0.0.0:1\n",
 		"a misspelled section":            required + "clustr: {}\n",
+		"a role the service has not":      required + "cluster: {roles: [writer]}\n",
 		"a key the service does not know": required + "service: {greting: x}\n",
 		"a value the library refuses":     strings.Replace(required, "dc1", "mars", 1),
 	} {
@@ -157,8 +263,15 @@ func TestRun(t *testing.T) {
 	t.Cleanup(func() { gin.DefaultWriter = previous })
 
 	var svc serviceConfig
+	background, stopped := make(chan struct{}), make(chan struct{})
 	spec := Spec{
 		Name: "orders-api", Service: &svc,
+		Background: func(ctx context.Context, rt *Runtime) error {
+			close(background)
+			<-ctx.Done()
+			close(stopped)
+			return ctx.Err()
+		},
 		API: func(_ context.Context, rt *Runtime) ([]Version, error) {
 			assert.Equal(t, "orders-api", rt.App.AppName)
 			return []Version{{
@@ -191,6 +304,11 @@ func TestRun(t *testing.T) {
 	go func() { done <- Run(ctx, spec, path) }()
 
 	base := "http://" + addr
+	select {
+	case <-background:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the background did not start")
+	}
 	require.Eventually(t, func() bool {
 		resp, err := http.Get(base + ReadyPath)
 		if err != nil {
@@ -265,6 +383,24 @@ func TestRun(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("Run did not stop with its context")
 	}
+	select {
+	case <-stopped:
+	default:
+		t.Error("Run returned before its background did")
+	}
+}
+
+// A background that fails stops the service with its error.
+func TestABackgroundErrorStopsTheService(t *testing.T) {
+	path := writeFile(t, required+"  listen_address: "+freePort(t)+"\nshutdown: {drain_delay: 0s}\n")
+	err := Run(context.Background(), Spec{Name: "orders-api",
+		API: func(context.Context, *Runtime) ([]Version, error) {
+			return []Version{{OpenAPI: server.OpenAPISpec{Name: "orders v1", Path: "orders/v1.yaml", Content: ordersV1},
+				Routes: func(Router) {}}}, nil
+		},
+		Background: func(context.Context, *Runtime) error { return errors.New("the purge failed") },
+	}, path)
+	assert.ErrorContains(t, err, "app: background: the purge failed")
 }
 
 func TestRunRefusesAnIncompleteSpec(t *testing.T) {
@@ -298,6 +434,7 @@ cluster:
   kv_store: inmemory
   instance_addr: 127.0.0.1
   leader_checks: ["ping://db"]
+  leader_writes: true
 `)
 	cfg, err = loadConfig(Spec{Name: "orders-api"}, bad)
 	require.NoError(t, err)

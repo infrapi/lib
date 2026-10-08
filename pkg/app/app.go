@@ -33,6 +33,13 @@ type Spec struct {
 	// it has none.
 	Service any
 
+	// Roles are the service's own rings, for work of its own: a periodic job
+	// on one replica (cluster.ModeLeader, with Role.Run), an action on every
+	// one (cluster.ModeBroadcast). cluster.roles chooses which of them a
+	// replica joins, all by default; rt.Cluster.Role reaches them. "writer"
+	// is the library's own ring, joined when something needs a leader.
+	Roles []cluster.RoleSpec
+
 	// IdempotencyScope says whose an Idempotency-Key is: the same key under
 	// two scopes names two different requests. Nil is the caller the gateway
 	// authenticated (X-Consumer-Username); a service whose keys belong to
@@ -40,8 +47,21 @@ type Spec struct {
 	IdempotencyScope func(c *Context) string
 
 	// API builds the service once the configuration is loaded, and returns
-	// its contract versions with their routes.
+	// its contract versions with their routes. The cluster is not joined yet:
+	// work on its roles belongs in Background.
 	API func(ctx context.Context, rt *Runtime) ([]Version, error)
+
+	// Background, if set, runs once the replica serves and has joined the
+	// cluster: the place for work on the service's Roles, such as
+	//
+	//	purger, err := rt.Cluster.Role("purger")
+	//	...
+	//	return purger.Run(ctx, time.Hour, purge)
+	//
+	// Its context ends when the service starts shutting down, before the
+	// replica leaves the cluster; the shutdown waits for it to return. An
+	// error stops the service; returning early without one does not.
+	Background func(ctx context.Context, rt *Runtime) error
 }
 
 // Version is one major version of the service's contract.
@@ -93,6 +113,11 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 	if spec.API == nil {
 		return errors.New("app: Spec.API is required")
 	}
+	for _, r := range spec.Roles {
+		if r.Name == writerRole {
+			return fmt.Errorf("app: Spec.Roles: %q is the library's own ring", writerRole)
+		}
+	}
 
 	cfg, err := loadConfig(spec, configFile)
 	if err != nil {
@@ -118,7 +143,7 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 
 	cl, err := newCluster(cfg)
 	if err != nil {
-		return fmt.Errorf("app: cluster: %w", err)
+		return fmt.Errorf("app: %w", err)
 	}
 
 	rt := &Runtime{App: cfg.app, Cluster: cl}
@@ -147,7 +172,7 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 	// Joined once the API listens: the ring then advertises an address that
 	// answers. Until then a write is refused as retryable (no leader yet).
 	if err := cl.Start(ctx); err != nil {
-		return errors.Join(fmt.Errorf("app: cluster: %w", err), srv.Close())
+		return errors.Join(fmt.Errorf("app: %w", err), srv.Close())
 	}
 	ready.joined.Store(true)
 	if cl.Enabled() {
@@ -158,26 +183,66 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 		return errors.Join(err, cl.Stop(context.Background()), srv.Close())
 	}
 
-	select {
-	case err := <-errc:
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
+	bgCtx, stopBackground := context.WithCancel(ctx)
+	defer stopBackground()
+	var bgDone chan error // nil when there is nothing to wait for
+	if spec.Background != nil {
+		bgDone = make(chan error, 1)
+		go func() { bgDone <- spec.Background(bgCtx, rt) }()
+	}
+	// endBackground stops the background work and waits for it to return.
+	endBackground := func() error {
+		stopBackground()
+		if bgDone == nil {
+			return nil
 		}
-		return errors.Join(err, cl.Stop(context.Background()))
-	case err := <-cl.Err():
-		slog.Error("cluster failed", "err", err)
-	case <-ctx.Done():
+		err := <-bgDone
+		bgDone = nil
+		return backgroundErr(err)
+	}
+
+	var failed error
+wait:
+	for {
+		select {
+		case err := <-errc:
+			if errors.Is(err, http.ErrServerClosed) {
+				err = nil
+			}
+			return errors.Join(err, endBackground(), cl.Stop(context.Background()))
+		case err := <-cl.Err():
+			slog.Error("cluster failed", "err", err)
+			break wait
+		case err := <-bgDone: // a nil channel: never, without a background
+			bgDone = nil
+			if failed = backgroundErr(err); failed != nil {
+				slog.Error("background failed", "err", err)
+				break wait
+			}
+		case <-ctx.Done():
+			break wait
+		}
 	}
 
 	// Stop being routed to before stopping: the gateway notices /-/readyz
-	// first. Leave the ring first, so that leadership moves while this
-	// replica still finishes the writes it has in hand.
+	// first. The background work ends, then the replica leaves the ring, so
+	// that leadership moves while it still finishes the writes it has in hand.
 	ready.draining.Store(true)
+	failed = errors.Join(failed, endBackground())
 	if err := cl.Stop(context.Background()); err != nil {
 		slog.Warn("leaving the cluster", "err", err)
 	}
 	time.Sleep(cfg.drainDelay)
 	shutdown, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	return srv.Shutdown(shutdown)
+	return errors.Join(failed, srv.Shutdown(shutdown))
+}
+
+// backgroundErr is what a background's return means for the service: nothing
+// when it returned early or because it was asked to stop.
+func backgroundErr(err error) error {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return nil
+	}
+	return fmt.Errorf("app: background: %w", err)
 }

@@ -51,6 +51,7 @@ func TestGetClusterConfig_defaults(t *testing.T) {
 	assert.Empty(t, cfg.ExcludedZones)
 	assert.False(t, cfg.LeaderWrites)
 	assert.Empty(t, cfg.LeaderChecks)
+	assert.Empty(t, cfg.RoleLeaderChecks)
 	assert.Equal(t, 10*time.Second, cfg.LeaderCheckInterval)
 	assert.Equal(t, 5*time.Second, cfg.LeaderCheckTimeout)
 	assert.Equal(t, 2, cfg.LeaderCheckThreshold)
@@ -108,6 +109,7 @@ func TestGetClusterConfig_dotenv_overrides(t *testing.T) {
 		"INFRAPI_CLUSTER_ETCD_PASSWORD":                 "s3cret",
 		"INFRAPI_CLUSTER_MESSAGE_HISTORY_BUFFER_BYTES":  "1048576",
 		"INFRAPI_CLUSTER_LEADER_CHECKS":                 `["tcp://db:5432","!file:///etc/maintenance"]`,
+		"INFRAPI_CLUSTER_ROLE_LEADER_CHECKS":            `{"scheduler": ["exec:/usr/local/bin/is-active-dc"]}`,
 		"INFRAPI_CLUSTER_LEADER_CHECK_INTERVAL":         "3s",
 		"INFRAPI_CLUSTER_LEADER_CHECK_TIMEOUT":          "1s",
 		"INFRAPI_CLUSTER_LEADER_CHECK_THRESHOLD":        "3",
@@ -133,6 +135,7 @@ func TestGetClusterConfig_dotenv_overrides(t *testing.T) {
 	assert.Equal(t, []string{"dc3"}, cfg.ExcludedZones)
 	assert.Equal(t, "bridge", cfg.GossipZoneRole)
 	assert.Equal(t, []string{"tcp://db:5432", "!file:///etc/maintenance"}, cfg.LeaderChecks)
+	assert.Equal(t, map[string][]string{"scheduler": {"exec:/usr/local/bin/is-active-dc"}}, cfg.RoleLeaderChecks)
 	assert.Equal(t, 3*time.Second, cfg.LeaderCheckInterval)
 	assert.Equal(t, time.Second, cfg.LeaderCheckTimeout)
 	assert.Equal(t, 3, cfg.LeaderCheckThreshold)
@@ -178,6 +181,10 @@ func TestGetClusterConfig_key_errors(t *testing.T) {
 		"enabled not a bool": {
 			values:  map[string]string{"INFRAPI_CLUSTER_ENABLED": "yes"},
 			wantMsg: "INFRAPI_CLUSTER_ENABLED",
+		},
+		"role leader checks not an object": {
+			values:  map[string]string{"INFRAPI_CLUSTER_ROLE_LEADER_CHECKS": `["tcp://db:5432"]`},
+			wantMsg: "INFRAPI_CLUSTER_ROLE_LEADER_CHECKS",
 		},
 		"instance addr not an ip": {
 			values:  map[string]string{"INFRAPI_CLUSTER_INSTANCE_ADDR": "not-an-ip"},

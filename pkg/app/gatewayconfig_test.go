@@ -19,7 +19,7 @@ func TestGatewayDefaults(t *testing.T) {
 	assert.Equal(t, "orders-api-write", sync.WriteUpstream)
 	assert.Equal(t, "orders-api-api", sync.Service)
 	assert.Equal(t, "orders-api-{version}-{kind}", sync.RouteID)
-	assert.Equal(t, []string{"GET", "HEAD"}, sync.ReadMethods)
+	assert.Equal(t, []string{"GET", "HEAD", "OPTIONS"}, sync.ReadMethods)
 	assert.Equal(t, ReadyPath, sync.Upstream.Checks.Active.HTTPPath)
 	assert.Equal(t, 120.0, sync.Upstream.Timeout.Read)
 	assert.ElementsMatch(t, []string{"key-auth", "limit-count", "client-control", "request-id"}, keys(sync.Plugins))

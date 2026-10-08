@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"os"
 	"path/filepath"
 	"slices"
@@ -186,4 +187,47 @@ func TestLeaderChecks_refuse_a_check_that_does_not_parse(t *testing.T) {
 	cfg := testClusterConfig(t, map[string]string{"INFRAPI_CLUSTER_LEADER_CHECKS": `["ftp://x:21"]`})
 	_, err := New(testAppConfig(), cfg, Options{Logger: testLogger()})
 	assert.ErrorContains(t, err, "ftp://x:21")
+}
+
+// A role's own checks apply to it alone: one replica in maintenance for one
+// role still leads, or may lead, the other.
+func TestLeaderChecks_of_one_role(t *testing.T) {
+	purger, writer := uniqueRole(t, "purger", ModeLeader), uniqueRole(t, "writer", ModeLeader)
+	flag := filepath.Join(t.TempDir(), "maintenance")
+	require.NoError(t, os.WriteFile(flag, nil, 0o600))
+	overrides := fastChecks()
+	overrides["INFRAPI_CLUSTER_ROLE_LEADER_CHECKS"] = `{"` + purger.Name + `": ["!file://` + flag + `"]}`
+
+	c := startTestCluster(t, overrides, purger, writer)
+	rp, err := c.Role(purger.Name)
+	require.NoError(t, err)
+	rw, err := c.Role(writer.Name)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		may, _, _ := rp.LeaderEligibility()
+		return !may
+	}, 10*time.Second, 50*time.Millisecond, "the purger sees its flag")
+	_, reason, _ := rp.LeaderEligibility()
+	assert.Contains(t, reason, "!file://"+flag)
+	may, _, _ := rw.LeaderEligibility()
+	assert.True(t, may, "the writer has no check of its own")
+	waitForLeader(t, c.InstanceID(), rw)
+}
+
+func TestLeaderChecks_of_one_role_name_a_leader_role_it_joins(t *testing.T) {
+	leader, broadcast := RoleSpec{Name: "purger", Mode: ModeLeader}, RoleSpec{Name: "cache", Mode: ModeBroadcast}
+	for checks, want := range map[string]string{
+		`{"compactor": ["tcp://db:5432"]}`: `"compactor"`,
+		`{"cache": ["tcp://db:5432"]}`:     "nobody leads it",
+		`{"purger": ["ftp://x:21"]}`:       "ftp://x:21",
+	} {
+		cfg := testClusterConfig(t, map[string]string{
+			"INFRAPI_CLUSTER_ROLES":              `["purger", "cache"]`,
+			"INFRAPI_CLUSTER_ROLE_LEADER_CHECKS": checks,
+		})
+		_, err := New(testAppConfig(), cfg, Options{Roles: []RoleSpec{leader, broadcast}, Logger: testLogger(),
+			Registerer: prometheus.NewRegistry()})
+		assert.ErrorContains(t, err, want, checks)
+	}
 }

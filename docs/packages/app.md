@@ -81,7 +81,9 @@ generated code: copy it to start a new one.
 | `Name` | Default of `INFRAPI_APP_NAME`; also names the ring's key prefix and gossip label, and the APISIX objects. |
 | `Service` | Pointer to the service's own configuration, decoded from the file's `service` section, unknown keys refused. |
 | `IdempotencyScope` | `func(*app.Context) string`: whose an `Idempotency-Key` is, e.g. `c.Param("tenant")`. Default: the consumer the gateway authenticated. |
-| `API` | Builds the service once the configuration is loaded; returns its versions. |
+| `API` | Builds the service once the configuration is loaded; returns its versions. The cluster is not joined yet. |
+| `Roles` | The service's own rings, `[]cluster.RoleSpec`: see [The service's roles](#the-services-roles). |
+| `Background` | `func(ctx, *app.Runtime) error`, run once the replica serves and has joined the cluster; its context ends when the shutdown starts, which waits for it. An error stops the service. |
 
 A `Version` is one contract and its routes. Its `Prefix` — `/orders/v1/` — is
 derived from the contract's paths unless set.
@@ -204,38 +206,173 @@ variable, and the three secrets above, which are better kept out of it.
 | `app.name` | `Spec.Name` | |
 | `app.listen_address` | `0.0.0.0:8080` | a service listens on every interface |
 | `app.log_format` | `json` | |
-| `cluster.roles` | `["writer"]` | the one ring |
+| `cluster.roles` | every role in `Spec.Roles` | which of the service's roles this replica joins; `writer` is added when a leader is needed |
 | `cluster.instance_port` | the API's port | the leader's address is where writes are relayed |
+| `cluster.instance_addr`, `cluster.gossip_bind_addrs` | the IP of `app.listen_address`, unless it is a wildcard (`0.0.0.0`): then the library's (the interfaces; every address) | peers reach the API where it listens, and two replicas on one host do not share `:7946` |
 | `cluster.keep_instance_in_ring_on_shutdown` | `false` | a stopping replica hands leadership over at once |
 | `cluster.kv_prefix`, `cluster.gossip_cluster_label` | from `Spec.Name` | apart from other services' rings |
 
-## The writer ring
+## The writer ring: `leader_writes`
 
-Whether a service's writes go through one replica is the operator's choice, not
-the code's: a backend that takes concurrent writes needs no single writer, and
-the same service can run either way. `Spec` says nothing about it.
+A service behind several replicas, possibly in several data centres, often wants
+**one writer**: a backend that does not take concurrent writes well, an order to
+keep between calls, a rate limit that counts per caller. `cluster.leader_writes`
+gives it that without a line of code: the replicas elect a leader, and every
+write, wherever it arrives, is performed by that leader.
 
-With `cluster.enabled` and `cluster.leader_writes`, the replicas elect a leader
-and only it performs writes. A write that reaches another replica is relayed to it
-unchanged (`X-Infrapi-Forwarded-By`); every write's answer names the replica that
-performed it (`X-Infrapi-Leader`). Reads are served where they arrive. No leader
-yet, or leadership moving mid-relay: `503`, `retryable: true`.
+It is the operator's choice, not the code's: a backend that takes concurrent
+writes needs no single writer, and the same service can run either way. `Spec`
+says nothing about it.
 
-Who may lead is the [leader checks'](cluster.md#choosing-who-may-lead) to say:
-`cluster.leader_checks` — `tcp://`, `http(s)://`, `exec:`, `file://`, `!`. A
-replica in maintenance (`!file://…`) hands the writes, and APISIX's write
-upstream, to another.
+```yaml
+cluster:
+  enabled: true
+  join_members: [orders-1.dc1:7946, orders-1.dc2:7946]
+  leader_writes: true                                   # default false
+  leader_checks: ["!file:///etc/orders/maintenance"]    # optional: who may lead
+```
 
-Without `leader_writes`, every replica performs the writes it receives, and
-APISIX's write upstream holds every replica like the read one. A cluster is
-still useful then: its leader alone keeps APISIX in line with the ring.
+### What it does
 
-This is not a lock: during a partition each side can elect its own leader. Writes
-that converge on their body end where one leader would; others must be fenced in
-what they write to. See [`cluster`](cluster.md).
+1. **A ring, `writer`, and its leader.** Every replica joins the library's own
+   leader-mode role. The leader is the healthy replica
+   [that may lead](cluster.md#choosing-who-may-lead) with the
+   [smallest token](cluster.md#how-the-leader-is-chosen); every replica computes
+   the same answer from the ring it gossips.
+2. **Writes go to the leader.** `POST`, `PUT`, `PATCH`, `DELETE` that reach a
+   replica which is not the leader are relayed to it, as they came: same method,
+   path, headers and body, plus `X-Infrapi-Forwarded-By: <relaying replica>` and
+   the call's `X-Correlation-ID`, so one id follows the call in both replicas'
+   logs. The leader's answer comes back unchanged.
+3. **Reads stay where they arrive.** `GET`, `HEAD`, `OPTIONS` are served by the
+   replica that received them: they change nothing, and the backend is the same.
+4. **Every write's answer names who performed it**: `X-Infrapi-Leader: <id>`.
+5. **APISIX follows.** With the [gateway](#the-gateway), the write upstream holds the
+   leader alone, so writes rarely need the hop; the read upstream holds every
+   replica.
 
-`infrapi_app_relayed_requests_total{method,route}` counts the writes a replica
-relayed.
+```text
+ client ──POST──► APISIX ──► replica dc2 ──relay──► leader dc1 ──► backend
+                                  │                      │
+ client ◄── 201, X-Infrapi-Leader: dc1-a ◄───────────────┘
+ client ──GET───► APISIX ──► any replica ─────────────────────────► backend
+```
+
+### In the chain
+
+The relay sits after authentication and before the contract's validation and
+the idempotency store, so that:
+
+- a caller that is not authenticated is refused by the replica it reached, and
+  is never relayed;
+- only the leader validates the request and claims its `Idempotency-Key`: a key
+  lives in one place, whatever replica the retry reaches.
+
+### When there is no leader to give the write to
+
+Every refusal is a problem document with `retryable: true`: the caller, or its
+workflow engine, tries again.
+
+| Status, `code` | When |
+|---|---|
+| `503 no_leader` | no replica may lead right now: the cluster is starting, or every replica fails its leader checks |
+| `503 not_leader` | the write was relayed, and the replica it reached is no longer the leader: leadership moved during the hop. It is not relayed a second time, so two replicas that disagree cannot bounce it |
+| `503 leader_unreachable` | the leader did not answer the relay. It may or may not have performed the write: send it with an `Idempotency-Key`, and the retry is safe |
+
+### Failover
+
+When the leader stops, fails its checks, or disappears, the next replica that may
+lead takes over:
+
+- a replica that **stops** leaves the ring at once, and hands over immediately
+  (`keep_instance_in_ring_on_shutdown` is false under `app`);
+- a replica that **fails its checks** is skipped after `leader_check_threshold ×
+  leader_check_interval`, plus a gossip round;
+- a replica that **dies** is skipped once its heartbeat is stale,
+  `heartbeat_timeout`.
+
+Writes in that window answer `503`, retryable. When the old leader may lead
+again, it takes the leadership back if its token is the smallest: two changes,
+not one.
+
+### What it is not
+
+Not a lock. The ring has no quorum and no lease: during a partition, each side can
+elect its own leader and both write, until the partition heals. Writes that
+converge on their body — a create that checks what exists, a replace that sets
+what it was given, a delete of nothing that succeeds — end where one leader
+would. Others must be fenced in what they write to: a compare-and-swap, a
+conditional write, a unique constraint.
+
+### Without it
+
+Every replica performs the writes it receives, and APISIX's write upstream holds
+every replica like the read one. With the gateway, a leader is still elected: it
+alone keeps APISIX's configuration in line with the ring.
+
+**No role, no ring, no leader.** The writer ring is joined only when something
+needs a leader: `cluster.leader_writes`, or the gateway (`gateway.admin_url`).
+With neither, and no [role of the service's](#the-services-roles), the replicas
+gossip and show their status pages, and that is all; `cluster.leader_checks` is
+then refused at start, since there is nobody to choose.
+
+### Watching it
+
+- `/` says which replica answered, whether it leads, and to whom it relays.
+- `/-/cluster/ring/writer`: every replica, its state, whether it may lead and why
+  not.
+- `infrapi_app_relayed_requests_total{method,route}`: the writes a replica relayed.
+- `infrapi_cluster_leader_eligible{name="writer"}`: 1 when this replica may lead.
+- Access log fields: `relayed` and `leader` on every write.
+
+## The service's roles
+
+Work of the service's own — a purge on one replica, a cache reload on every one
+— runs on rings it declares, the [`cluster`](cluster.md) package's roles:
+
+```go
+app.Main(app.Spec{
+	Name: "orders-api",
+	Roles: []cluster.RoleSpec{
+		{Name: "purger", Mode: cluster.ModeLeader},   // one replica acts
+		{Name: "cache", Mode: cluster.ModeBroadcast}, // every replica acts
+	},
+	Background: func(ctx context.Context, rt *app.Runtime) error {
+		purger, err := rt.Cluster.Role("purger")
+		if err != nil {
+			return err // this replica does not run it: return nil to accept that
+		}
+		return purger.Run(ctx, time.Hour, purge) // on the leader only, moves with it
+	},
+	API: ...,
+})
+```
+
+```yaml
+cluster:
+  enabled: true
+  roles: [purger]   # this replica's share; every role of the service by default
+```
+
+- `cluster.roles` chooses among `Spec.Roles`; a name the service does not declare
+  is refused at start, and so is `writer`, the library's own.
+- `roles: []` joins none of them: `rt.Cluster.Role` then answers
+  `cluster.ErrRoleNotJoined`.
+- `cluster.leader_checks` apply to every leader-mode role a replica joins,
+  `writer` included; `cluster.role_leader_checks` adds checks for one role:
+
+  ```yaml
+  cluster:
+    leader_checks: ["!file:///etc/orders/maintenance"]   # every leader role
+    role_leader_checks:                                   # and, for one role
+      writer: ["http://backend:3000/api/health"]
+      purger: ["exec:/usr/local/bin/is-active-dc"]
+  ```
+
+  Leave `leader_checks` out for no common rule. A role named there must be a
+  leader-mode role this replica joins.
+- The roles are reached from `Background`, not from `API`: the replica joins
+  the cluster only once it serves.
 
 ## The gateway
 
@@ -247,7 +384,7 @@ its Admin API ([`gateway`](gateway.md)), every `interval`:
 | upstream | `<name>-read` | every replica, health-checked on `/-/readyz` |
 | upstream | `<name>-write` | the leader alone |
 | service | `<name>-api` | `key-auth` (header `apikey`), `limit-count` per consumer (429), `client-control` (413), `request-id` (`X-Correlation-ID`) |
-| routes | `<name>-<version>-read`, `-write` | per version: `GET`/`HEAD` to read, `POST`/`PUT`/`PATCH`/`DELETE` to write |
+| routes | `<name>-<version>-read`, `-write` | per version: `GET`/`HEAD`/`OPTIONS` to read, `POST`/`PUT`/`PATCH`/`DELETE` to write |
 | route | `<name>-docs` | `/-/docs` and `/-/openapi/*`, no key |
 
 All of it is the `gateway` section's to change; what it leaves out keeps the
@@ -261,7 +398,7 @@ gateway:
   name: orders-api                   # default Spec.Name
   labels: {managed-by: orders-api}   # on every object
 
-  read:  {upstream: "{name}-read",  methods: [GET, HEAD]}
+  read:  {upstream: "{name}-read",  methods: [GET, HEAD, OPTIONS]}
   write: {upstream: "{name}-write", methods: [POST, PUT, PATCH, DELETE]}
   service: "{name}-api"
   route_id: "{name}-{version}-{kind}"   # {version}: orders-v1; {kind}: read or write

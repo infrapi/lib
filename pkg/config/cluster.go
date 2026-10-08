@@ -44,6 +44,7 @@ type ClusterDefaultConfig struct {
 	// Leader eligibility
 	LeaderWrites         *VariableOpts
 	LeaderChecks         *VariableOpts
+	RoleLeaderChecks     *VariableOpts
 	LeaderCheckInterval  *VariableOpts
 	LeaderCheckTimeout   *VariableOpts
 	LeaderCheckThreshold *VariableOpts
@@ -200,6 +201,10 @@ func newClusterDefaultConfig(hostname string) *ClusterDefaultConfig {
 		LeaderChecks: &VariableOpts{
 			Key:     "INFRAPI_CLUSTER_LEADER_CHECKS",
 			Default: "[]",
+		},
+		RoleLeaderChecks: &VariableOpts{
+			Key:     "INFRAPI_CLUSTER_ROLE_LEADER_CHECKS",
+			Default: "{}",
 		},
 		LeaderCheckInterval: &VariableOpts{
 			Key:     "INFRAPI_CLUSTER_LEADER_CHECK_INTERVAL",
@@ -438,6 +443,7 @@ type ClusterConfig struct {
 	// Leader eligibility
 	LeaderWrites         bool
 	LeaderChecks         []string
+	RoleLeaderChecks     map[string][]string
 	LeaderCheckInterval  time.Duration
 	LeaderCheckTimeout   time.Duration
 	LeaderCheckThreshold int
@@ -544,6 +550,17 @@ func (l *clusterLoader) duration(opts *VariableOpts) time.Duration {
 	return value
 }
 
+func (l *clusterLoader) mapSlice(opts *VariableOpts) map[string][]string {
+	if l.err != nil {
+		return nil
+	}
+	value, err := l.v.GetMapSliceString(opts)
+	if err != nil {
+		l.err = err
+	}
+	return value
+}
+
 func (l *clusterLoader) slice(opts *VariableOpts) []string {
 	if l.err != nil {
 		return nil
@@ -602,6 +619,7 @@ func (v *Variables) GetClusterConfig() (*ClusterConfig, error) {
 
 		LeaderWrites:         l.boolean(d.LeaderWrites),
 		LeaderChecks:         l.slice(d.LeaderChecks),
+		RoleLeaderChecks:     l.mapSlice(d.RoleLeaderChecks),
 		LeaderCheckInterval:  l.duration(d.LeaderCheckInterval),
 		LeaderCheckTimeout:   l.duration(d.LeaderCheckTimeout),
 		LeaderCheckThreshold: l.integer(d.LeaderCheckThreshold),

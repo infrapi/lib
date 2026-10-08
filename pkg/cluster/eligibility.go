@@ -131,10 +131,12 @@ func streakAfter(streakValue bool, streak int, result bool) int {
 	return 1
 }
 
-// leaderChecks is every check a leader-mode role runs: the configured ones,
-// then the role's own.
+// leaderChecks is every check a leader-mode role runs: the node's
+// (INFRAPI_CLUSTER_LEADER_CHECKS), the role's (INFRAPI_CLUSTER_ROLE_LEADER_CHECKS),
+// then the code's (RoleSpec.LeaderCheck).
 func (r *Role) leaderChecks() []Check {
 	checks := append([]Check{}, r.cluster.leaderChecks...)
+	checks = append(checks, r.cluster.roleLeaderChecks[r.spec.Name]...)
 	if r.spec.LeaderCheck != nil {
 		checks = append(checks, CheckFunc(fmt.Sprintf("%s check", r.spec.Name), r.spec.LeaderCheck))
 	}

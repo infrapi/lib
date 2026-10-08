@@ -3,14 +3,18 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/infrapi/lib/pkg/cluster"
 	"github.com/infrapi/lib/pkg/config"
 	"gopkg.in/yaml.v3"
 )
@@ -123,7 +127,7 @@ type GatewayConfig struct {
 // GatewayRoutes is one of the two upstreams and the methods it receives.
 type GatewayRoutes struct {
 	Upstream string   `yaml:"upstream"` // default {name}-read, {name}-write
-	Methods  []string `yaml:"methods"`  // default GET HEAD; POST PUT PATCH DELETE
+	Methods  []string `yaml:"methods"`  // default GET HEAD OPTIONS; POST PUT PATCH DELETE
 }
 
 // GatewayUpstream is what both upstreams share.
@@ -166,6 +170,7 @@ type GatewayHealthCheck struct {
 type loaded struct {
 	app        *config.AppConfig
 	cluster    *config.ClusterConfig
+	roles      []cluster.RoleSpec // the rings declared: the service's, and writer when elected
 	Auth       AuthConfig
 	Database   DatabaseConfig
 	Gateway    GatewayConfig
@@ -174,6 +179,14 @@ type loaded struct {
 
 // writerRole is the ring the replicas elect the writer in.
 const writerRole = "writer"
+
+// elects says whether anything in the configuration needs a leader: the
+// writes, when they go through one, and the gateway's configuration, which
+// one replica writes. Nothing else does, and then no leader is elected: the
+// cluster is the replicas, their gossip and their status pages.
+func (l *loaded) elects() bool {
+	return l.cluster.Enabled && (l.cluster.LeaderWrites || l.Gateway.AdminURL != "")
+}
 
 func loadConfig(spec Spec, path string) (*loaded, error) {
 	var file fileConfig
@@ -225,13 +238,29 @@ func loadConfig(spec Spec, path string) (*loaded, error) {
 	// handing leadership over instead of holding it until its heartbeat goes
 	// stale. Its own key prefix and gossip label keep it apart from other
 	// services' rings on a shared network.
-	_, port, err := net.SplitHostPort(app.AppListenAddress)
+	host, port, err := net.SplitHostPort(app.AppListenAddress)
 	if err != nil {
 		return nil, fmt.Errorf("app: listen address %q: %w", app.AppListenAddress, err)
 	}
 	d := defaults.Cluster
-	d.Roles.Default = `["` + writerRole + `"]`
+	names := make([]string, 0, len(spec.Roles))
+	for _, r := range spec.Roles {
+		names = append(names, r.Name)
+	}
+	all, err := json.Marshal(names)
+	if err != nil {
+		return nil, fmt.Errorf("app: Spec.Roles: %w", err)
+	}
+	d.Roles.Default = string(all) // every role of the service, unless cluster.roles chooses
 	d.InstancePort.Default = port
+	// And its address, when the API listens on one: an API bound to
+	// 127.0.0.2 is reached there, whatever eth0 holds, and gossips there too,
+	// so that two replicas on one host do not fight over 0.0.0.0:7946. On a
+	// wildcard, both are the library's: the interfaces, and every address.
+	if ip := net.ParseIP(host); ip != nil && !ip.IsUnspecified() {
+		d.InstanceAddr.Default = host
+		d.GossipBindAddrs.Default = `["` + host + `"]`
+	}
 	d.KeepInstanceInRingOnShutdown.Default = "false"
 	d.KvPrefix.Default = spec.Name + "/"
 	d.GossipClusterLabel.Default = spec.Name
@@ -254,6 +283,10 @@ func loadConfig(spec Spec, path string) (*loaded, error) {
 	override(&l.Database.DSN, "INFRAPI_DATABASE_DSN")
 	override(&l.Gateway.AdminKey, "INFRAPI_GATEWAY_ADMIN_KEY")
 
+	if err := l.selectRoles(spec.Roles); err != nil {
+		return nil, fmt.Errorf("app: %s: %w", path, err)
+	}
+
 	if g := &l.Gateway; g.AdminURL != "" {
 		if g.Interval == 0 {
 			g.Interval = 15 * time.Second
@@ -267,6 +300,47 @@ func loadConfig(spec Spec, path string) (*loaded, error) {
 		}
 	}
 	return l, nil
+}
+
+// selectRoles checks cluster.roles against the service's roles, and adds the
+// writer ring when something needs a leader. The rings are declared only when
+// this replica joins one: a declared ring nobody joins is refused by the
+// cluster, and a replica with none is a key-value cluster.
+func (l *loaded) selectRoles(roles []cluster.RoleSpec) error {
+	cl := l.cluster
+	mode := map[string]cluster.Mode{}
+	for _, r := range roles {
+		mode[r.Name] = r.Mode
+	}
+	leads := false
+	for _, name := range cl.Roles {
+		m, ok := mode[name]
+		switch {
+		case name == writerRole:
+			return fmt.Errorf("cluster.roles: %q is the library's own ring, joined when "+
+				"cluster.leader_writes or gateway.admin_url needs a leader", writerRole)
+		case !ok:
+			return fmt.Errorf("cluster.roles: %q is not one of the service's roles %v", name, slices.Sorted(maps.Keys(mode)))
+		}
+		leads = leads || m == cluster.ModeLeader
+	}
+	if l.elects() {
+		cl.Roles = append(cl.Roles, writerRole)
+		leads = true
+	}
+	// Leader checks decide who may lead; with no leader to elect, they would
+	// be read, run and ignored. Those of one role are the cluster's to check.
+	if len(cl.LeaderChecks) > 0 && !leads {
+		return errors.New("cluster.leader_checks: no leader is elected here: no leader-mode role is " +
+			"joined, and neither cluster.leader_writes nor gateway.admin_url is set")
+	}
+	if len(cl.Roles) > 0 {
+		l.roles = roles
+		if l.elects() {
+			l.roles = append(slices.Clone(roles), cluster.RoleSpec{Name: writerRole, Mode: cluster.ModeLeader})
+		}
+	}
+	return nil
 }
 
 func override(field *string, env string) {
@@ -304,8 +378,8 @@ func keyValues(prefix, section string, from map[string]any, known map[string]boo
 	return values, nil
 }
 
-// keyValue writes a YAML value the way a dotenv file holds it: lists as JSON
-// arrays, everything else as its text.
+// keyValue writes a YAML value the way a dotenv file holds it: lists and maps
+// as JSON, everything else as its text.
 func keyValue(v any) (string, error) {
 	switch x := v.(type) {
 	case nil:
@@ -324,7 +398,8 @@ func keyValue(v any) (string, error) {
 		b, err := json.Marshal(items)
 		return string(b), err
 	case map[string]any:
-		return "", fmt.Errorf("a map is not a value")
+		b, err := json.Marshal(x)
+		return string(b), err
 	default:
 		return fmt.Sprint(x), nil
 	}

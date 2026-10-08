@@ -153,12 +153,24 @@ INFRAPI_CLUSTER_LEADER_CHECKS=["!file:///etc/infrapi/maintenance", "tcp://db.dc1
 - A check that times out fails, negated or not: an unknown condition is not a pass.
 - A check that does not parse is refused by `New`: a condition silently dropped is
   a node that leads when it should not.
-- Code can add its own: `RoleSpec.LeaderCheck`, a `func(ctx) error` run with the
-  configured ones.
+- They apply to **every leader-mode role** this replica joins. A role can have
+  more of its own, in the configuration and in code:
+
+  ```text
+  INFRAPI_CLUSTER_LEADER_CHECKS=["!file:///etc/infrapi/maintenance"]          # every leader role
+  INFRAPI_CLUSTER_ROLE_LEADER_CHECKS={"scheduler": ["exec:/usr/local/bin/is-active-dc"]}
+  ```
+
+  A role runs the node's checks, then its own from
+  `INFRAPI_CLUSTER_ROLE_LEADER_CHECKS`, then `RoleSpec.LeaderCheck`, a
+  `func(ctx) error` in code. Leave `INFRAPI_CLUSTER_LEADER_CHECKS` out for no
+  common rule. A role named in `INFRAPI_CLUSTER_ROLE_LEADER_CHECKS` must be a
+  leader-mode role this replica joins: anything else is refused by `New`.
 
 | Key | Default | Notes |
 |-----|---------|-------|
-| `INFRAPI_CLUSTER_LEADER_CHECKS` | `[]` | The checks, all of which must pass. Empty: every member may lead. |
+| `INFRAPI_CLUSTER_LEADER_CHECKS` | `[]` | The checks of every leader-mode role, all of which must pass. Empty: no common rule. |
+| `INFRAPI_CLUSTER_ROLE_LEADER_CHECKS` | `{}` | More checks for one role, as a JSON object: `{"role": ["check", …]}`. |
 | `INFRAPI_CLUSTER_LEADER_WRITES` | `false` | Read by [`app`](app.md): a service's writes go through the leader of its writer ring. |
 | `INFRAPI_CLUSTER_LEADER_CHECK_INTERVAL` | `10s` | How often they run. |
 | `INFRAPI_CLUSTER_LEADER_CHECK_TIMEOUT` | `5s` | Each check's budget. |
