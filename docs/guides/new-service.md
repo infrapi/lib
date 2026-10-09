@@ -811,10 +811,11 @@ import "github.com/infrapi/lib/pkg/cluster"
 
 ### Give the writes to a ring
 
-Add one line to `api/bookmarks.yaml`, and run `go generate ./...`:
+Add these lines to `api/bookmarks.yaml`, and run `go generate ./...`:
 
 ```yaml
-writes: everybody    # every write runs on every replica of the "everybody" ring
+cluster:
+  writes: everybody    # every write runs on every replica of the "everybody" ring
 ```
 
 That is all the code there is. The library now runs every write — create,
@@ -825,8 +826,10 @@ they arrive: each replica reads its own copy.
 One operation can be given another ring of its own:
 
 ```yaml
-rings:
-  delete: cache      # a delete: on the leader of "cache" only, relayed there from the others
+cluster:
+  writes: everybody
+  rings:
+    delete: cache      # a delete: on the leader of "cache" only, relayed there from the others
 ```
 
 | The operation's ring | It runs |
@@ -929,9 +932,11 @@ from the key, so every replica writes the same bookmark again, and the one that
 missed it catches up. To choose otherwise, for every write or per operation:
 
 ```yaml
-broadcast: async        # strict (the default), tolerant or async
-broadcasts:
-  create: tolerant      # this one otherwise
+cluster:
+  writes: everybody
+  broadcast: async        # strict (the default), tolerant or async
+  broadcasts:
+    create: tolerant      # this one otherwise
 ```
 
 | | The caller waits | A replica that failed |

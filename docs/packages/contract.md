@@ -43,10 +43,11 @@ filters:
 operations: [list, create, get, replace, delete]
 example: {url: "https://grafana.com/docs/", title: Grafana documentation}
 
-writes: everybody               # the ring every write runs on (x-infrapi-writes)
-rings: {delete: cache}          # one operation's own ring (x-infrapi-ring)
-broadcast: strict               # how a broadcast write answers (x-infrapi-broadcast)
-broadcasts: {create: async}     # one operation's own
+cluster:                        # the resource's place in the service's rings (Spec.Roles)
+  writes: everybody             # the ring every write runs on (x-infrapi-writes)
+  rings: {delete: cache}        # one operation's own ring; a read can have a leader's (x-infrapi-ring)
+  broadcast: strict             # how a broadcast write answers (x-infrapi-broadcast)
+  broadcasts: {create: async}   # one operation's own
 ```
 
 A key the format does not know, at the top or in a field, is refused: a typo

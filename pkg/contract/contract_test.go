@@ -26,8 +26,9 @@ filters:
   tag: {type: string}
 operations: [list, create, get, replace, delete]
 example: {url: "https://grafana.com/docs/", title: Grafana documentation}
-writes: everybody
-rings: {delete: cache}
+cluster:
+  writes: everybody
+  rings: {delete: cache}
 `
 
 func generate(t *testing.T, src string) map[string]any {
@@ -102,7 +103,8 @@ func TestParseRefuses(t *testing.T) {
 		"a bad type":             {strings.Replace(bookmarks, "type: datetime", "type: timestamp", 1), `type "timestamp"`},
 		"a list without of":      {strings.Replace(bookmarks, ", of: string", "", 1), "a list needs of"},
 		"an unknown operation":   {strings.Replace(bookmarks, "delete]", "purge]", 1), `"purge" is not one of`},
-		"a ring on no operation": {strings.Replace(bookmarks, "delete: cache", "patch: cache", 1), `rings: "patch"`},
+		"a ring on no operation": {strings.Replace(bookmarks, "delete: cache", "patch: cache", 1), `cluster.rings: "patch"`},
+		"an unknown cluster key": {strings.Replace(bookmarks, "  writes: everybody", "  wirtes: everybody", 1), `cluster: "wirtes"`},
 		"filters without list":   {strings.Replace(bookmarks, "[list, ", "[", 1), "no list to filter"},
 		"a param not in path":    {strings.Replace(bookmarks, "  tenant: {", "  team: {", 1), "params.team"},
 	} {

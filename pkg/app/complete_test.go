@@ -70,8 +70,9 @@ fields:
 filters:
   tag: {type: string}
 operations: [list, create, get, replace, delete]
-writes: everybody
-rings: {delete: cache}
+cluster:
+  writes: everybody
+  rings: {delete: cache}
 `))
 	require.NoError(t, err)
 	generated, err := contract.Generate(r)

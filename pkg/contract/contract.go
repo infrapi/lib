@@ -11,6 +11,8 @@
 //	  url:   {type: string, required: true, max: 2000}
 //	  title: {type: string, required: true, max: 200}
 //	operations: [list, create, get, replace, delete]
+//	cluster:
+//	  writes: everybody
 //
 // What every contract shares — the error format, the API key — is not written
 // here: pkg/app adds it to every contract it serves.
@@ -74,6 +76,19 @@ type Field struct {
 // sent says whether the caller sends the field.
 func (f Field) sent() bool { return !f.Computed || f.Optional }
 
+// Cluster is the resource's place in the service's rings (Spec.Roles).
+type Cluster struct {
+	// Writes is the ring every write runs on (x-infrapi-writes).
+	Writes string `yaml:"writes"`
+	// Rings gives one operation a ring of its own (x-infrapi-ring); a read
+	// can be given a leader's.
+	Rings map[string]string `yaml:"rings"`
+	// Broadcast says how a broadcast write answers — strict, tolerant or
+	// async — and Broadcasts per operation (x-infrapi-broadcast).
+	Broadcast  string            `yaml:"broadcast"`
+	Broadcasts map[string]string `yaml:"broadcasts"`
+}
+
 // Resource is the description a contract is written from.
 type Resource struct {
 	// Name is the plural, lower-case name: the path's first segment and the
@@ -99,14 +114,9 @@ type Resource struct {
 	Operations []string `yaml:"operations"`
 	// Example is a body to create one, shown in /-/docs, in its own order.
 	Example yaml.Node `yaml:"example"`
-	// Writes is the ring every write runs on; Rings gives one operation
-	// another (x-infrapi-writes, x-infrapi-ring).
-	Writes string            `yaml:"writes"`
-	Rings  map[string]string `yaml:"rings"`
-	// Broadcast says how a broadcast write answers; Broadcasts per operation
-	// (x-infrapi-broadcast).
-	Broadcast  string            `yaml:"broadcast"`
-	Broadcasts map[string]string `yaml:"broadcasts"`
+	// Cluster says which ring each operation runs on, and how a broadcast
+	// write answers.
+	Cluster Cluster `yaml:"cluster"`
 }
 
 var (
@@ -151,10 +161,21 @@ func checkKeys(data []byte) error {
 		return fmt.Errorf("contract: %w", err)
 	}
 	known := []string{"name", "version", "title", "description", "path", "params", "resource", "id", "fields",
-		"filters", "operations", "example", "writes", "rings", "broadcast", "broadcasts"}
+		"filters", "operations", "example", "cluster"}
 	for k := range top {
 		if !slices.Contains(known, k) {
 			return fmt.Errorf("contract: %q is not a key of the format (%s)", k, strings.Join(known, ", "))
+		}
+	}
+	if c, ok := top["cluster"]; ok {
+		var keys map[string]yaml.Node
+		if err := c.Decode(&keys); err != nil {
+			return fmt.Errorf("contract: cluster: %w", err)
+		}
+		for k := range keys {
+			if !slices.Contains([]string{"writes", "rings", "broadcast", "broadcasts"}, k) {
+				return fmt.Errorf("contract: cluster: %q is not one of writes, rings, broadcast, broadcasts", k)
+			}
 		}
 	}
 	return nil
@@ -216,21 +237,21 @@ func (r *Resource) check() error {
 			bad("operations: %q is not one of %s", op, strings.Join(allOps, ", "))
 		}
 	}
-	for op := range r.Rings {
+	for op := range r.Cluster.Rings {
 		if !slices.Contains(r.Operations, op) {
-			bad("rings: %q is not one of the operations", op)
+			bad("cluster.rings: %q is not one of the operations", op)
 		}
 	}
-	for op, b := range r.Broadcasts {
+	for op, b := range r.Cluster.Broadcasts {
 		if !slices.Contains(r.Operations, op) {
-			bad("broadcasts: %q is not one of the operations", op)
+			bad("cluster.broadcasts: %q is not one of the operations", op)
 		}
 		if !slices.Contains([]string{"strict", "tolerant", "async"}, b) {
-			bad("broadcasts.%s: %q is not strict, tolerant or async", op, b)
+			bad("cluster.broadcasts.%s: %q is not strict, tolerant or async", op, b)
 		}
 	}
-	if r.Broadcast != "" && !slices.Contains([]string{"strict", "tolerant", "async"}, r.Broadcast) {
-		bad("broadcast: %q is not strict, tolerant or async", r.Broadcast)
+	if r.Cluster.Broadcast != "" && !slices.Contains([]string{"strict", "tolerant", "async"}, r.Cluster.Broadcast) {
+		bad("cluster.broadcast: %q is not strict, tolerant or async", r.Cluster.Broadcast)
 	}
 	if len(r.Filters) > 0 && !slices.Contains(r.Operations, OpList) {
 		bad("filters: there is no list to filter")
@@ -320,11 +341,11 @@ func Generate(r *Resource) ([]byte, error) {
 		info = append(info, kv{"description", r.Description})
 	}
 	doc := obj{{"openapi", "3.0.3"}, {"info", info}}
-	if r.Writes != "" {
-		doc = append(doc, kv{"x-infrapi-writes", r.Writes})
+	if r.Cluster.Writes != "" {
+		doc = append(doc, kv{"x-infrapi-writes", r.Cluster.Writes})
 	}
-	if r.Broadcast != "" {
-		doc = append(doc, kv{"x-infrapi-broadcast", r.Broadcast})
+	if r.Cluster.Broadcast != "" {
+		doc = append(doc, kv{"x-infrapi-broadcast", r.Cluster.Broadcast})
 	}
 
 	var pathParams []any
@@ -336,10 +357,10 @@ func Generate(r *Resource) ([]byte, error) {
 
 	op := func(name, id, summary string, extra ...kv) obj {
 		o := obj{{"operationId", id}, {"summary", summary}}
-		if ring, ok := r.Rings[name]; ok {
+		if ring, ok := r.Cluster.Rings[name]; ok {
 			o = append(o, kv{"x-infrapi-ring", ring})
 		}
-		if b, ok := r.Broadcasts[name]; ok {
+		if b, ok := r.Cluster.Broadcasts[name]; ok {
 			o = append(o, kv{"x-infrapi-broadcast", b})
 		}
 		return append(o, extra...)
