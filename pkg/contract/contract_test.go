@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -107,5 +108,57 @@ func TestParseRefuses(t *testing.T) {
 	} {
 		_, err := Parse([]byte(c.src))
 		assert.ErrorContains(t, err, c.want, name)
+	}
+}
+
+// Each field says who sets it and when, as a Terraform schema does.
+func TestFieldBehaviours(t *testing.T) {
+	doc := generate(t, `
+name: users
+version: 1
+resource: user
+fields:
+  login:    {type: string, required: true, immutable: true}
+  name:     {type: string}
+  password: {type: string, required: true, sensitive: true}
+  role:     {type: string, optional: true, computed: true}
+  created:  {type: datetime, computed: true}
+operations: [create, get, replace]
+`)
+	props := func(schema string) map[string]any {
+		return get(t, doc, "components", "schemas", schema, "properties").(map[string]any)
+	}
+	keys := func(m map[string]any) []string {
+		var out []string
+		for k := range m {
+			out = append(out, k)
+		}
+		slices.Sort(out)
+		return out
+	}
+	assert.Equal(t, []string{"login", "name", "password", "role"}, keys(props("UserSpec")),
+		"created is the service's alone; role the caller's or the service's")
+	assert.Equal(t, []string{"name", "password", "role"}, keys(props("UserUpdate")), "login is set on creation only")
+	assert.Equal(t, []string{"created", "id", "login", "name", "role"}, keys(props("User")), "password is never answered")
+	assert.Equal(t, "#/components/schemas/UserSpec",
+		get(t, doc, "paths", "/users/v1/users", "post", "requestBody", "content", "application/json", "schema", "$ref"))
+	assert.Equal(t, "#/components/schemas/UserUpdate",
+		get(t, doc, "paths", "/users/v1/users/{id}", "put", "requestBody", "content", "application/json", "schema", "$ref"))
+
+	// Without an immutable field, creating and replacing send the same.
+	plain := generate(t, bookmarks)
+	assert.NotContains(t, get(t, plain, "components", "schemas"), "BookmarkUpdate")
+}
+
+func TestFieldBehavioursThatContradict(t *testing.T) {
+	for opts, want := range map[string]string{
+		"required: true, optional: true":  "required and optional",
+		"required: true, computed: true":  "required and computed",
+		"sensitive: true, computed: true": "sensitive and computed",
+		"required: true, default: x":      "required with a default",
+		"immutable: true, computed: true": "immutable and computed",
+	} {
+		_, err := Parse([]byte("name: users\nversion: 1\nresource: user\noperations: [get]\nfields:\n  f: {type: string, " + opts + "}\n"))
+		assert.ErrorContains(t, err, want, opts)
 	}
 }

@@ -45,8 +45,13 @@ type Field struct {
 	// Type is string, integer, number, boolean, datetime, date or list.
 	Type string `yaml:"type"`
 	// Of is a list's item type: string, integer, number or boolean.
-	Of          string `yaml:"of"`
+	Of string `yaml:"of"`
+	// Required, Optional and Computed say who sets the field, as a Terraform
+	// schema does: the caller must (required), may (optional, the default),
+	// or the service does (computed) — or either (optional and computed: the
+	// caller may, else the service does).
 	Required    bool   `yaml:"required"`
+	Optional    bool   `yaml:"optional"`
 	Description string `yaml:"description"`
 	// Min and Max bound a string's length, a list's size, a number's value.
 	Min *float64 `yaml:"min"`
@@ -56,10 +61,18 @@ type Field struct {
 	Enum    []string `yaml:"enum"`
 	Default any      `yaml:"default"`
 	Example any      `yaml:"example"`
-	// Computed fields are set by the service, never sent: they are in the
-	// answers only, as a creation date is.
+	// Computed fields are set by the service: in the answers, and sent only
+	// when Optional too.
 	Computed bool `yaml:"computed"`
+	// Sensitive fields are sent, and never answered: a password, a token.
+	Sensitive bool `yaml:"sensitive"`
+	// Immutable fields are sent on creation only: replacing the resource
+	// keeps them (Terraform's ForceNew).
+	Immutable bool `yaml:"immutable"`
 }
+
+// sent says whether the caller sends the field.
+func (f Field) sent() bool { return !f.Computed || f.Optional }
 
 // Resource is the description a contract is written from.
 type Resource struct {
@@ -166,8 +179,8 @@ func orderedFields(n *yaml.Node, where string) ([]Field, error) {
 			return nil, fmt.Errorf("contract: %s.%s: %w", where, n.Content[i].Value, err)
 		}
 		for k := range keys {
-			if !slices.Contains([]string{"type", "of", "required", "description", "min", "max", "pattern", "enum",
-				"default", "example", "computed"}, k) {
+			if !slices.Contains([]string{"type", "of", "required", "optional", "description", "min", "max", "pattern",
+				"enum", "default", "example", "computed", "sensitive", "immutable"}, k) {
 				return nil, fmt.Errorf("contract: %s.%s: %q is not a key of a field", where, n.Content[i].Value, k)
 			}
 		}
@@ -271,8 +284,17 @@ func (f Field) check() error {
 	default:
 		return fmt.Errorf("type %q: string, integer, number, boolean, datetime, date or list", f.Type)
 	}
-	if f.Computed && f.Required {
-		return errors.New("computed and required: a computed field is not sent")
+	switch {
+	case f.Required && f.Optional:
+		return errors.New("required and optional: one or the other")
+	case f.Required && f.Computed:
+		return errors.New("required and computed: the caller sends it, or the service sets it; optional and computed for either")
+	case f.Sensitive && f.Computed:
+		return errors.New("sensitive and computed: a sensitive field is never answered, a computed one is")
+	case f.Required && f.Default != nil:
+		return errors.New("required with a default: a default is for a field the caller may leave out")
+	case f.Immutable && !f.sent():
+		return errors.New("immutable and computed: an immutable field is sent on creation; optional and computed for either")
 	}
 	return nil
 }
@@ -326,8 +348,18 @@ func Generate(r *Resource) ([]byte, error) {
 	answer := func(code, desc string, schema any) kv {
 		return kv{"responses", obj{{code, obj{{"description", desc}, {"content", jsonOf(schema)}}}}}
 	}
+	updateSchema := single + "Spec"
+	for _, f := range r.Fields {
+		if f.Immutable {
+			updateSchema = single + "Update" // replacing keeps what was set on creation
+		}
+	}
 	body := func(withExample bool) kv {
-		media := obj{{"schema", ref("#/components/schemas/" + single + "Spec")}}
+		schema := single + "Spec"
+		if !withExample {
+			schema = updateSchema
+		}
+		media := obj{{"schema", ref("#/components/schemas/" + schema)}}
 		if withExample && r.Example.Kind != 0 {
 			media = append(media, kv{"example", &r.Example})
 		}
@@ -399,33 +431,44 @@ func Generate(r *Resource) ([]byte, error) {
 		components = append(components, kv{"parameters", params})
 	}
 
-	// What the caller sends, and what the service answers: the answer has the
-	// id and the computed fields, and every field, always.
-	spec, specRequired := obj{}, []any{}
-	if r.ID == "caller" {
-		spec = append(spec, kv{"id", obj{{"type", "string"},
-			{"description", "The id to give it; the service chooses one when absent."}}})
+	// What the caller sends — on creation, and on replacing when immutable
+	// fields make it differ — and what the service answers: the id and every
+	// field but the sensitive ones, always.
+	input := func(withImmutable bool) obj {
+		props, required := obj{}, []any{}
+		if r.ID == "caller" && withImmutable {
+			props = append(props, kv{"id", obj{{"type", "string"},
+				{"description", "The id to give it; the service chooses one when absent."}}})
+		}
+		for _, f := range r.Fields {
+			if !f.sent() || (f.Immutable && !withImmutable) {
+				continue
+			}
+			props = append(props, kv{f.Name, f.schema()})
+			if f.Required {
+				required = append(required, f.Name)
+			}
+		}
+		s := obj{{"type", "object"}, {"additionalProperties", false}}
+		if len(required) > 0 {
+			s = append(s, kv{"required", required})
+		}
+		return append(s, kv{"properties", props})
 	}
 	full, fullRequired := obj{{"id", obj{{"type", "string"}}}}, []any{"id"}
 	for _, f := range r.Fields {
-		if !f.Computed {
-			spec = append(spec, kv{f.Name, f.schema()})
-			if f.Required {
-				specRequired = append(specRequired, f.Name)
-			}
+		if f.Sensitive {
+			continue
 		}
 		full = append(full, kv{f.Name, f.answerSchema()})
 		fullRequired = append(fullRequired, f.Name)
 	}
-	specSchema := obj{{"type", "object"}, {"additionalProperties", false}}
-	if len(specRequired) > 0 {
-		specSchema = append(specSchema, kv{"required", specRequired})
+	schemas := obj{{single + "Spec", input(true)}}
+	if updateSchema != single+"Spec" {
+		schemas = append(schemas, kv{updateSchema, input(false)})
 	}
-	specSchema = append(specSchema, kv{"properties", spec})
-	components = append(components, kv{"schemas", obj{
-		{single + "Spec", specSchema},
-		{single, obj{{"type", "object"}, {"required", fullRequired}, {"properties", full}}},
-	}})
+	schemas = append(schemas, kv{single, obj{{"type", "object"}, {"required", fullRequired}, {"properties", full}}})
+	components = append(components, kv{"schemas", schemas})
 	doc = append(doc, kv{"components", components})
 
 	var out bytes.Buffer

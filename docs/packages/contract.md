@@ -54,16 +54,31 @@ does not vanish.
 
 ### Fields
 
+Who sets a field, and when, is said as a Terraform schema says it:
+
+| Option | Like Terraform's | The caller | The answer |
+|---|---|---|---|
+| `required: true` | `Required` | must send it | has it |
+| *(none)*, or `optional: true` | `Optional` | may send it | has it |
+| `computed: true` | `Computed` | never sends it: the service sets it | has it |
+| `optional: true, computed: true` | `Optional` + `Computed` | may send it; the service sets it otherwise | has it |
+| `sensitive: true` | `Sensitive`, `WriteOnly` | sends it | never has it: a password, a token |
+| `immutable: true` | `ForceNew` | sends it on creation only: replacing keeps it | has it |
+
+And for any field:
+
 | Option | |
 |---|---|
 | `type` | `string`, `integer`, `number`, `boolean`, `datetime`, `date`, or `list` with `of` |
 | `of` | a list's items: `string`, `integer`, `number` or `boolean` |
-| `required` | the caller must send it |
 | `min`, `max` | a string's length, a list's size, a number's value |
 | `pattern` | a regular expression for a string, or for each item of a list |
 | `enum` | the only values allowed |
-| `default`, `example`, `description` | documentation |
-| `computed` | set by the service: in the answers only, never sent |
+| `default` | the value when the caller leaves it out |
+| `example`, `description` | documentation |
+
+Contradictions are refused: `required` with `optional`, `computed` or a
+`default`; `sensitive` with `computed`; `immutable` with `computed` alone.
 
 Filters are fields too, as query parameters of the list.
 
@@ -77,11 +92,14 @@ Filters are fields too, as query parameters of the list.
 | `replace` | `PUT …/{name}/{id}` | `replace<Resource>` | `200` |
 | `delete` | `DELETE …/{name}/{id}` | `delete<Resource>` | `204`, gone or already gone |
 
-- `<Resource>Spec` is what the caller sends: the fields that are not computed,
+- `<Resource>Spec` is what the caller sends to create: the fields it may send,
   with their rules, and no other (`additionalProperties: false`). With
   `id: caller`, an optional `id` too.
-- `<Resource>` is what the service answers: the `id` and every field, always
-  present.
+- `<Resource>Update` is what it sends to replace, when immutable fields make it
+  differ: the same without them. Without immutable fields, replacing sends a
+  `<Resource>Spec` too.
+- `<Resource>` is what the service answers: the `id` and every field but the
+  sensitive ones, always present.
 - The error format and the `apikey` header are not written: [`app`](app.md)
   adds them to every contract it serves.
 - The file starts with `# Generated from … DO NOT EDIT`: change the description

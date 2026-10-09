@@ -128,17 +128,23 @@ Line by line:
 | `operations` | what the API offers, among `list`, `create`, `get`, `replace`, `delete` | all five |
 | `example` | a body to create one, shown in `/-/docs` | |
 
-A field is `{type: …}` and, as needed:
+A field is `{type: …}` — `string`, `integer`, `number`, `boolean`, `datetime`,
+`date`, or `list` with `of: string` — and says who sets it, the way a Terraform
+schema does:
 
-| Option | Meaning |
-|---|---|
-| `type` | `string`, `integer`, `number`, `boolean`, `datetime`, `date`, or `list` with `of: string` (or integer, number, boolean) |
-| `required: true` | the caller must send it |
-| `min`, `max` | a string's length, a list's size, a number's value |
-| `pattern` | a regular expression a string — or each item of a list — must match |
-| `enum: [a, b]` | the only values allowed |
-| `default`, `example`, `description` | for the documentation |
-| `computed: true` | the service sets it, the caller never sends it: it is in the answers only, as a creation date is |
+| Option | The caller | The answer |
+|---|---|---|
+| `required: true` | must send it | has it |
+| *(none)* | may send it | has it |
+| `computed: true` | never sends it: the service sets it, as a creation date | has it |
+| `optional: true, computed: true` | may send it; the service sets it otherwise | has it |
+| `sensitive: true` | sends it | never has it: a password, a token |
+| `immutable: true` | sends it on creation only: replacing keeps it | has it |
+
+Its rules, as needed: `min` and `max` (a string's length, a list's size, a
+number's value), `pattern` (a regular expression a string — or each item of a
+list — must match), `enum: [a, b]`, `default` (when the caller leaves it out),
+and `example` and `description` for the documentation.
 
 What the generated contract holds, without your writing it:
 
