@@ -699,22 +699,24 @@ VERSION=$(git ls-remote --tags --sort=-v:refname https://github.com/infrapi/lib.
 go get github.com/infrapi/lib/pkg/app@$VERSION
 ```
 
-!!! warning "Temporary: add these lines to `go.mod`"
-    `pkg/app` still refers to versions of its sibling modules that no longer
-    exist, so `go get` fails with `unknown revision v1.6.0`. Until that is fixed
-    in the library, add this to the end of `go.mod`, with the same version for
-    all three, then run the `go get` again:
+Then add this line at the end of `go.mod`, and run the `go get` again:
+
+```text
+replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20260921102813-8c522db348af
+```
+
+The cluster library uses Grafana's fork of memberlist, and Go does not pass a
+dependency's `replace` on to you: every service on `pkg/app` carries this line.
+
+!!! note "With v0.4.0 only"
+    v0.4.0's `pkg/app` refers to versions of its sibling modules that do not
+    exist, so `go get` fails with `unknown revision v1.6.0`. Take a later
+    release, or add these two lines to the `replace` too:
 
     ```text
-    replace (
-    	github.com/infrapi/lib => github.com/infrapi/lib v0.4.0
-    	github.com/infrapi/lib/pkg/cluster => github.com/infrapi/lib/pkg/cluster v0.4.0
-    	github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20260921102813-8c522db348af
-    )
+    replace github.com/infrapi/lib => github.com/infrapi/lib v0.4.0
+    replace github.com/infrapi/lib/pkg/cluster => github.com/infrapi/lib/pkg/cluster v0.4.0
     ```
-
-    The last line is needed in any case: the cluster library uses Grafana's
-    fork of memberlist, and Go does not pass a dependency's `replace` on to you.
 
 ```bash
 go mod tidy

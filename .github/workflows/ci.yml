@@ -64,6 +64,31 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           allow-initial-development-versions: true
 
+      - uses: actions/setup-go@v7
+        if: steps.semrel.outputs.version != ''
+        with:
+          go-version-file: go.mod
+
+      # Each submodule requires its siblings at the version it is released
+      # with: pkg/app vX needs the library's and pkg/cluster's vX. The in-repo
+      # replace directives hide a stale require while building here, and a
+      # consumer, who does not get them, would ask for a version that does not
+      # exist. The submodule tags below go on this commit.
+      - name: Point the submodules at this release
+        if: steps.semrel.outputs.version != ''
+        run: |
+          v="v${{ steps.semrel.outputs.version }}"
+          lib=github.com/infrapi/lib
+          (cd pkg/cluster && go mod edit -require=$lib@$v)
+          (cd pkg/app && go mod edit -require=$lib@$v -require=$lib/pkg/cluster@$v)
+          (cd examples/cluster && go mod edit -require=$lib@$v -require=$lib/pkg/cluster@$v)
+          (cd examples/app && go mod edit -require=$lib@$v -require=$lib/pkg/app@$v -require=$lib/pkg/cluster@$v)
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): submodules require $v [skip ci]"
+          git push origin HEAD:main
+
       # The module proxy resolves github.com/infrapi/lib/pkg/cluster@vX.Y.Z from
       # a tag literally named pkg/cluster/vX.Y.Z, which go-semantic-release does
       # not create. The submodules are versioned in lockstep with the library

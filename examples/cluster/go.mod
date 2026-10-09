@@ -6,8 +6,8 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/grafana/dskit v0.0.0-20260928073014-b6a53f6bee29
-	github.com/infrapi/lib v1.3.1
-	github.com/infrapi/lib/pkg/cluster v0.0.0
+	github.com/infrapi/lib v0.4.0
+	github.com/infrapi/lib/pkg/cluster v0.4.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
 )
