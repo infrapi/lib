@@ -148,7 +148,7 @@ With text logs, the fields follow gin's line as `key=value`, in key order; a
 value with a space, a quote or an `=` is quoted:
 
 ```text
-[GIN] 2026/10/08 - 16:38:25 | 201 |    2.52ms |  127.0.0.1 | POST     "/folders" tenant=acme write_id=go3ouhwv…
+[GIN] 2026/10/08 - 16:38:25 | 201 |    2.52ms |  127.0.0.1 | POST     "/folders" tenant=acme broadcast_id=go3ouhwv…
 ```
 
 The engine leaves the global logrus logger alone: a service that wants its own

@@ -12,14 +12,14 @@ paths:
       operationId: getBroadcastStatus
       summary: How a broadcast write went, replica by replica
       description: |
-        Every write is answered with `X-Infrapi-Write-ID`. For a write the
+        Every write is answered with `X-Infrapi-Broadcast-ID`. For a write the
         contract gives a broadcast ring, any replica tells how each replica
         took it. Kept 24 hours, and at most the 10 000 most recent writes.
       parameters:
         - name: id
           in: path
           required: true
-          description: The write's `X-Infrapi-Write-ID`.
+          description: The write's `X-Infrapi-Broadcast-ID`.
           schema: {type: string, example: bujkubzpvqcxv24co3oxuortcq}
       responses:
         "200":
@@ -50,7 +50,7 @@ components:
     BroadcastStatus:
       type: object
       properties:
-        write_id: {type: string}
+        broadcast_id: {type: string}
         at: {type: string, format: date-time, description: When the first replica received the write.}
         by: {type: string, description: The replica that received it and replayed it.}
         method: {type: string}
@@ -76,7 +76,7 @@ components:
               error: {type: string}
               updated: {type: string, format: date-time}
       example:
-        write_id: bujkubzpvqcxv24co3oxuortcq
+        broadcast_id: bujkubzpvqcxv24co3oxuortcq
         by: node-2
         method: POST
         path: /bookmarks/v1/tenants/acme/bookmarks

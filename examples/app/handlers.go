@@ -60,7 +60,7 @@ func (o *orders) PlaceOrder(ctx context.Context, req api.PlaceOrderRequestObject
 	// The id comes from the write: every replica that runs it — the contract
 	// broadcasts writes — gives the order the same one. Called on its own, as
 	// in a test, the write has none: a counter does.
-	id := app.WriteID(ctx)
+	id := app.BroadcastID(ctx)
 	if id == "" {
 		o.next++
 		id = fmt.Sprintf("%d", o.next)

@@ -434,10 +434,10 @@ func (h *handlers) CreateBookmark(ctx context.Context, req api.CreateBookmarkReq
 	// machine's clock: if the write runs on several replicas, every one
 	// creates the same bookmark.
 	b := fromAPI(req.Body)
-	if id := app.WriteID(ctx); id != "" { // empty when the handler is called on its own, as in a test
+	if id := app.BroadcastID(ctx); id != "" { // empty when the handler is called on its own, as in a test
 		b.ID = "bm-" + id[:10]
 	}
-	b.CreatedAt = app.WriteTime(ctx) // zero then too: the store sets both
+	b.CreatedAt = app.BroadcastTime(ctx) // zero then too: the store sets both
 	saved, err := h.store.Create(req.Tenant, b)
 	if err != nil {
 		return nil, err
@@ -516,9 +516,9 @@ API's single error format:
 Requests that do not match the contract never reach your code: the library
 answers 400 for them.
 
-**Why `CreateBookmark` takes its id from `app.WriteID`.** Every write the library
-handles has an identity: `app.WriteID(ctx)`, 26 letters and digits, and
-`app.WriteTime(ctx)`, when it arrived. With one replica it changes nothing. In
+**Why `CreateBookmark` takes its id from `app.BroadcastID`.** Every write the library
+handles has an identity: `app.BroadcastID(ctx)`, 26 letters and digits, and
+`app.BroadcastTime(ctx)`, when it arrived. With one replica it changes nothing. In
 step 10, the same write runs on every replica: if each drew its own random id,
 each would create a different bookmark; with the write's id, they all create the
 same one. Take the habit now: what a handler would draw by chance or read from
@@ -890,7 +890,7 @@ curl -si -X POST http://127.0.0.2:8080/bookmarks/v1/tenants/acme/bookmarks \
 ```
 ```text
 HTTP/1.1 201 Created
-X-Infrapi-Write-Id: bujkubzpvqcxv24co3oxuortcq
+X-Infrapi-Broadcast-Id: bujkubzpvqcxv24co3oxuortcq
 {"created_at":"2026-10-08T15:58:54.818186545Z","id":"bm-bujkubzpvq",…}
 ```
 ```bash
@@ -904,18 +904,18 @@ data2/acme:
 bm-bujkubzpvq.json
 ```
 
-The same bookmark, same id, on both: the id came from `app.WriteID`.
+The same bookmark, same id, on both: the id came from `app.BroadcastID`.
 
 ### Check that every replica took it
 
-Every write is answered with `X-Infrapi-Write-Id`. Any replica says how it went
+Every write is answered with `X-Infrapi-Broadcast-Id`. Any replica says how it went
 — also in Swagger UI, at `/-/docs`, under **infrapi (replica routes)**:
 
 ```bash
 curl -s http://127.0.0.1:8080/-/broadcast/bujkubzpvqcxv24co3oxuortcq
 ```
 ```json
-{"write_id":"bujkubzpvqcxv24co3oxuortcq","status":"complete","by":"node-2",
+{"broadcast_id":"bujkubzpvqcxv24co3oxuortcq","status":"complete","by":"node-2",
  "replicas":{"node-1":{"state":"done","status":201},"node-2":{"state":"done","status":201}}}
 ```
 
@@ -950,7 +950,7 @@ cluster:
 - A replica that is stopped when a write happens does not get it later. When
   every replica must hold the same data whatever happens, a store they share — a
   database, a shared volume — is simpler than keeping copies in step.
-- The logs follow a write across replicas by its `write_id`: `broadcast_to` on the
+- The logs follow a write across replicas by its `broadcast_id`: `broadcast_to` on the
   replica that received it, `broadcast_from` on the others.
 - [app](../packages/app.md) has the details: rings per operation, the three
   modes, the status, and `leader_writes`, which sends every write to one leader

@@ -23,7 +23,7 @@
 //	go run . -config node2.yaml
 //	curl -si -X POST 127.0.0.2:8080/orders/v1/tenants/acme/orders -d '{"item":"book"}'
 //	curl -s 127.0.0.1:8080/orders/v1/tenants/acme/orders     # node1 has it too
-//	curl -s 127.0.0.1:8080/-/broadcast/<X-Infrapi-Write-Id>  # how each replica took it
+//	curl -s 127.0.0.1:8080/-/broadcast/<X-Infrapi-Broadcast-Id>  # how each replica took it
 //
 // To change the API: edit the contract, run go generate, and let the compiler
 // list what the handlers must now do.

@@ -17,7 +17,7 @@ import (
 )
 
 // BroadcastStatusPath answers, from any replica, how a broadcast write went on
-// each replica: GET {BroadcastStatusPath}/{write id}.
+// each replica: GET {BroadcastStatusPath}/{broadcast id}.
 const BroadcastStatusPath = "/-/broadcast"
 
 // BroadcastStatusRetention is how long a broadcast write's outcome is kept:
@@ -44,7 +44,7 @@ const (
 	stateMissed  = "missed" // registered in the ring, not healthy: not sent
 )
 
-// broadcastStatus is every recent broadcast write's outcome, by write id.
+// broadcastStatus is every recent broadcast write's outcome, by broadcast id.
 type broadcastStatus struct {
 	Writes map[string]*writeRecord `json:"writes"`
 }
@@ -266,7 +266,7 @@ func (statusCodec) Decode(b []byte) (interface{}, error) {
 func record(ctx context.Context, cl *cluster.Cluster, id string, w writeRecord) {
 	client, err := cl.KVClient(statusCodecID)
 	if err != nil {
-		broadcastLog().WarnContext(ctx, "broadcast write: no status kept", "write_id", id, "err", err)
+		broadcastLog().WarnContext(ctx, "broadcast write: no status kept", "broadcast_id", id, "err", err)
 		return
 	}
 	update := &broadcastStatus{Writes: map[string]*writeRecord{id: &w}}
@@ -281,7 +281,7 @@ func record(ctx context.Context, cl *cluster.Cluster, id string, w writeRecord) 
 		return current, true, nil
 	})
 	if err != nil {
-		broadcastLog().WarnContext(ctx, "broadcast write: status not kept", "write_id", id, "err", err)
+		broadcastLog().WarnContext(ctx, "broadcast write: status not kept", "broadcast_id", id, "err", err)
 	}
 }
 
@@ -312,7 +312,7 @@ func statusHandler(cl *cluster.Cluster) gin.HandlerFunc {
 			problem.Abort(c, problem.NotFound("no broadcast write %q in the last %s", id, BroadcastStatusRetention))
 			return
 		}
-		body := gin.H{"write_id": id, "status": w.outcome(), "at": w.At, "by": w.By, "method": w.Method,
+		body := gin.H{"broadcast_id": id, "status": w.outcome(), "at": w.At, "by": w.By, "method": w.Method,
 			"path": w.Path, "replicas": w.Replicas}
 		if w.Error != "" {
 			body["error"] = w.Error

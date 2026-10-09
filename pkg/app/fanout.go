@@ -28,43 +28,46 @@ import (
 	"github.com/infrapi/lib/pkg/app/problem"
 )
 
-// Headers a replayed write carries: the identity the first replica gave it.
+// Headers a replayed write carries: the broadcast id and time the first
+// replica gave it.
 const (
-	WriteIDHeader   = "X-Infrapi-Write-ID"
-	WriteTimeHeader = "X-Infrapi-Write-Time"
+	BroadcastIDHeader   = "X-Infrapi-Broadcast-ID"
+	BroadcastTimeHeader = "X-Infrapi-Broadcast-Time"
 )
 
-type writeKey struct{}
+type broadcastKey struct{}
 
-type writeIdentity struct {
+type broadcastIdentity struct {
 	id string
 	at time.Time
 }
 
-// WriteID is the identity of the write being handled, the same on every
-// replica that runs it: a handler derives what it creates from it — an id, a
-// name — where it would otherwise draw one at random, so that every replica
-// creates the same thing. With an Idempotency-Key, it is derived from the key:
-// a retry creates the same thing again. Empty outside a write.
-func WriteID(ctx context.Context) string {
-	w, _ := ctx.Value(writeKey{}).(writeIdentity)
+// BroadcastID is the broadcast id of the write being handled: the same on
+// every replica that runs it, so that what each participant records carries
+// the one id of the operation they all took part in. A handler derives what
+// it creates from it — an id, a name — where it would otherwise draw one at
+// random. With an Idempotency-Key, it is derived from the key: a retry is the
+// same broadcast again. Every write has one, broadcast or not; empty outside a
+// write.
+func BroadcastID(ctx context.Context) string {
+	w, _ := ctx.Value(broadcastKey{}).(broadcastIdentity)
 	return w.id
 }
 
-// WriteTime is when the write was received by the first replica, the same on
+// BroadcastTime is when the first replica received the write, the same on
 // every replica that runs it: a handler uses it instead of time.Now for what it
 // records. Zero outside a write.
-func WriteTime(ctx context.Context) time.Time {
-	w, _ := ctx.Value(writeKey{}).(writeIdentity)
+func BroadcastTime(ctx context.Context) time.Time {
+	w, _ := ctx.Value(broadcastKey{}).(broadcastIdentity)
 	return w.at
 }
 
 var idEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-// newWriteIdentity is a write's identity: from its Idempotency-Key when it has
-// one, at random otherwise.
-func newWriteIdentity(r *http.Request) writeIdentity {
-	w := writeIdentity{at: time.Now().UTC()}
+// newBroadcastIdentity is a write's broadcast id and time: the id from its
+// Idempotency-Key when it has one, at random otherwise.
+func newBroadcastIdentity(r *http.Request) broadcastIdentity {
+	w := broadcastIdentity{at: time.Now().UTC()}
 	if key := r.Header.Get(idempotency.Header); key != "" {
 		sum := sha256.Sum256([]byte(r.URL.Path + "\n" + key))
 		w.id = strings.ToLower(idEncoding.EncodeToString(sum[:16]))
@@ -76,12 +79,12 @@ func newWriteIdentity(r *http.Request) writeIdentity {
 	return w
 }
 
-// WriteUUID is WriteID as a UUID: the same on every replica that runs the
-// write, and as unpredictable — 122 random bits, or derived from the
-// Idempotency-Key, which only its caller knows. The id to give what a write
-// creates, when ids are UUIDs. Empty outside a write.
-func WriteUUID(ctx context.Context) string {
-	id := WriteID(ctx)
+// BroadcastUUID is the broadcast id as a UUID: the same on every replica
+// that runs the write, and as unpredictable — 122 random bits, or derived from
+// the Idempotency-Key, which only its caller knows. The id to give what a
+// write creates, when ids are UUIDs. Empty outside a write.
+func BroadcastUUID(ctx context.Context) string {
+	id := BroadcastID(ctx)
 	if id == "" {
 		return ""
 	}
@@ -160,10 +163,10 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 	}
 
 	// A replay from another member: its identity, and no replay of our own.
-	if by := r.Header.Get(ForwardedHeader); by != "" && r.Header.Get(WriteIDHeader) != "" && f.role != "" {
-		at, err := time.Parse(time.RFC3339Nano, r.Header.Get(WriteTimeHeader))
+	if by := r.Header.Get(ForwardedHeader); by != "" && r.Header.Get(BroadcastIDHeader) != "" && f.role != "" {
+		at, err := time.Parse(time.RFC3339Nano, r.Header.Get(BroadcastTimeHeader))
 		if err != nil {
-			problem.Abort(c, problem.Invalid("%s: %v", WriteTimeHeader, err))
+			problem.Abort(c, problem.Invalid("%s: %v", BroadcastTimeHeader, err))
 			return
 		}
 		if !f.fromMember(r) {
@@ -172,11 +175,11 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 			return
 		}
 		server.LogField(c, "broadcast_from", by)
-		f.run(c, writeIdentity{id: r.Header.Get(WriteIDHeader), at: at})
+		f.run(c, broadcastIdentity{id: r.Header.Get(BroadcastIDHeader), at: at})
 		return
 	}
 
-	w := newWriteIdentity(r)
+	w := newBroadcastIdentity(r)
 	if f.role == "" || !f.cluster.Enabled() {
 		f.run(c, w)
 		return
@@ -236,7 +239,7 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 	// Idempotency-Key does it again everywhere, the same, and reaches the
 	// replicas that missed it.
 	for k := range c.Writer.Header() {
-		if k != "X-Correlation-Id" && k != http.CanonicalHeaderKey(WriteIDHeader) {
+		if k != "X-Correlation-Id" && k != http.CanonicalHeaderKey(BroadcastIDHeader) {
 			c.Writer.Header().Del(k)
 		}
 	}
@@ -296,12 +299,12 @@ func (h *heldResponse) send() {
 type outgoing struct {
 	method, path, query, host, route, correlation string
 	header                                        http.Header
-	identity                                      writeIdentity
+	identity                                      broadcastIdentity
 	body                                          []byte
 	status                                        int // this replica's answer
 }
 
-func snapshot(c *gin.Context, w writeIdentity, body []byte, status int) outgoing {
+func snapshot(c *gin.Context, w broadcastIdentity, body []byte, status int) outgoing {
 	r := c.Request
 	return outgoing{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery, host: r.Host, route: c.FullPath(),
 		correlation: problem.CorrelationID(r.Context()), header: r.Header.Clone(), identity: w, body: body,
@@ -309,17 +312,17 @@ func snapshot(c *gin.Context, w writeIdentity, body []byte, status int) outgoing
 }
 
 // run handles the write here, with its identity in the request's context.
-func (f *fanout) run(c *gin.Context, w writeIdentity) {
+func (f *fanout) run(c *gin.Context, w broadcastIdentity) {
 	f.identify(c, w)
 	// The caller can ask how the write went, broadcast, under this id.
-	c.Header(WriteIDHeader, w.id)
+	c.Header(BroadcastIDHeader, w.id)
 	c.Next()
 }
 
-// identify puts the write's identity in the request's context and its log line.
-func (f *fanout) identify(c *gin.Context, w writeIdentity) {
-	server.LogField(c, "write_id", w.id)
-	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), writeKey{}, w))
+// identify puts the broadcast id in the request's context and its log line.
+func (f *fanout) identify(c *gin.Context, w broadcastIdentity) {
+	server.LogField(c, "broadcast_id", w.id)
+	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), broadcastKey{}, w))
 }
 
 // replay sends the write to every other member of the role, at the same time,
@@ -371,7 +374,7 @@ func (f *fanout) replay(out outgoing) (done, failed []string) {
 		failed = append(failed, m.ID)
 		replayed.WithLabelValues(out.method, out.route, "missed").Inc()
 		broadcastLog().WarnContext(ctx, "broadcast write: a replica is registered but not healthy, not sent",
-			"instance", m.ID, "state", m.State, "write_id", out.identity.id, "correlation_id", out.correlation)
+			"instance", m.ID, "state", m.State, "broadcast_id", out.identity.id, "correlation_id", out.correlation)
 	}
 	record(ctx, f.cluster, out.identity.id, rec)
 
@@ -389,7 +392,7 @@ func (f *fanout) replay(out outgoing) (done, failed []string) {
 			start := time.Now()
 			status, err := f.send(ctx, out, m.Addr)
 			attrs := []any{"instance", m.ID, "addr", m.Addr, "method", out.method, "path", out.path,
-				"status", status, "duration", time.Since(start), "write_id", out.identity.id,
+				"status", status, "duration", time.Since(start), "broadcast_id", out.identity.id,
 				"correlation_id", out.correlation}
 			outcome := "ok"
 			if err != nil {
@@ -432,11 +435,11 @@ func (f *fanout) send(ctx context.Context, out outgoing, addr string) (int, erro
 	req.Header = out.header.Clone()
 	req.Host = out.host
 	// The idempotency store would answer the replay with this replica's
-	// response instead of running it: the write's identity does that job.
+	// response instead of running it: the broadcast id does that job.
 	req.Header.Del(idempotency.Header)
 	req.Header.Set(ForwardedHeader, f.cluster.InstanceID())
-	req.Header.Set(WriteIDHeader, out.identity.id)
-	req.Header.Set(WriteTimeHeader, out.identity.at.Format(time.RFC3339Nano))
+	req.Header.Set(BroadcastIDHeader, out.identity.id)
+	req.Header.Set(BroadcastTimeHeader, out.identity.at.Format(time.RFC3339Nano))
 	req.Header.Set("X-Correlation-ID", out.correlation)
 
 	// The host is a member's address, read from the ring; the path is the

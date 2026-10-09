@@ -233,7 +233,7 @@ func (d *dispatcher) handle(c *gin.Context) {
 	case writeLeader:
 		// The identity first: the relay hands over to the leader, which
 		// gives the write its own, or runs it here and goes on.
-		d.local.identify(c, newWriteIdentity(c.Request))
+		d.local.identify(c, newBroadcastIdentity(c.Request))
 		d.leaders[m.role](c)
 	default:
 		d.local.handle(c, "")

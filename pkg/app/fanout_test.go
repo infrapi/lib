@@ -14,9 +14,9 @@ import (
 	"github.com/infrapi/lib/pkg/app/idempotency"
 )
 
-// A write's identity: random without an Idempotency-Key, derived from it with
+// A broadcast id: random without an Idempotency-Key, derived from it with
 // one, so that a retry creates the same thing again.
-func TestWriteIdentity(t *testing.T) {
+func TestBroadcastIdentity(t *testing.T) {
 	req := func(key string) *http.Request {
 		r := httptest.NewRequest(http.MethodPost, "/orders/v1/tenants/acme/orders", nil)
 		if key != "" {
@@ -24,18 +24,18 @@ func TestWriteIdentity(t *testing.T) {
 		}
 		return r
 	}
-	a, b := newWriteIdentity(req("")), newWriteIdentity(req(""))
+	a, b := newBroadcastIdentity(req("")), newBroadcastIdentity(req(""))
 	assert.NotEqual(t, a.id, b.id)
 	assert.Regexp(t, `^[a-z2-7]{26}$`, a.id, "lower-case, usable in an id")
 	assert.WithinDuration(t, time.Now(), a.at, time.Second)
 
-	k1, k2 := newWriteIdentity(req("wf-1")), newWriteIdentity(req("wf-1"))
+	k1, k2 := newBroadcastIdentity(req("wf-1")), newBroadcastIdentity(req("wf-1"))
 	assert.Equal(t, k1.id, k2.id, "the same key, the same identity")
-	assert.NotEqual(t, k1.id, newWriteIdentity(req("wf-2")).id)
+	assert.NotEqual(t, k1.id, newBroadcastIdentity(req("wf-2")).id)
 }
 
 // Handlers read the identity from their context: on every write, none on a read.
-func TestWriteIDInHandlers(t *testing.T) {
+func TestBroadcastIDInHandlers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg, err := loadConfig(Spec{Name: "orders-api"}, writeFile(t, required))
 	require.NoError(t, err)
@@ -46,7 +46,7 @@ func TestWriteIDInHandlers(t *testing.T) {
 	var at time.Time
 	e := gin.New()
 	e.Any("/x", func(c *gin.Context) { f.handle(c, "") }, func(c *gin.Context) {
-		id, at = WriteID(c.Request.Context()), WriteTime(c.Request.Context())
+		id, at = BroadcastID(c.Request.Context()), BroadcastTime(c.Request.Context())
 		c.Status(http.StatusNoContent)
 	})
 
@@ -57,18 +57,18 @@ func TestWriteIDInHandlers(t *testing.T) {
 	e.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/x", nil))
 	assert.Empty(t, id, "a read is not a write")
 	assert.True(t, at.IsZero())
-	assert.Empty(t, WriteID(context.Background()))
+	assert.Empty(t, BroadcastID(context.Background()))
 }
 
 // The write's UUID is the same wherever its id is, and a well-formed version 4.
-func TestWriteUUID(t *testing.T) {
-	assert.Empty(t, WriteUUID(context.Background()))
-	w := newWriteIdentity(httptest.NewRequest(http.MethodPost, "/x", nil))
-	ctx := context.WithValue(context.Background(), writeKey{}, w)
-	u := WriteUUID(ctx)
+func TestBroadcastUUID(t *testing.T) {
+	assert.Empty(t, BroadcastUUID(context.Background()))
+	w := newBroadcastIdentity(httptest.NewRequest(http.MethodPost, "/x", nil))
+	ctx := context.WithValue(context.Background(), broadcastKey{}, w)
+	u := BroadcastUUID(ctx)
 	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, u)
-	assert.Equal(t, u, WriteUUID(context.WithValue(context.Background(), writeKey{}, writeIdentity{id: w.id})),
+	assert.Equal(t, u, BroadcastUUID(context.WithValue(context.Background(), broadcastKey{}, broadcastIdentity{id: w.id})),
 		"a replay, which carries the id, gets the same UUID")
-	assert.NotEqual(t, u, WriteUUID(context.WithValue(context.Background(), writeKey{},
-		newWriteIdentity(httptest.NewRequest(http.MethodPost, "/x", nil)))))
+	assert.NotEqual(t, u, BroadcastUUID(context.WithValue(context.Background(), broadcastKey{},
+		newBroadcastIdentity(httptest.NewRequest(http.MethodPost, "/x", nil)))))
 }
