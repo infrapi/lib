@@ -358,7 +358,8 @@ func TestRun(t *testing.T) {
 
 	code, body, _ = do(http.MethodGet, "/-/openapi/orders/v1.yaml", "")
 	assert.Equal(t, http.StatusOK, code)
-	assert.Equal(t, string(ordersV1), body)
+	assert.True(t, strings.HasPrefix(body, "openapi: 3.0.3\ninfo: {title: Orders"), "the author's contract, in its order")
+	assert.Contains(t, body, `default: {$ref: "#/components/responses/Problem"}`, "completed with what every contract shares")
 	code, _, _ = do(http.MethodGet, "/-/openapi.json", "")
 	assert.Equal(t, http.StatusNotFound, code, "the contract is the only OpenAPI description")
 	_, body, _ = do(http.MethodGet, "/", "")

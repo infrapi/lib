@@ -67,7 +67,14 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 		if v.Routes == nil {
 			return nil, nil, fmt.Errorf("app: version %q has no routes", v.OpenAPI.Name)
 		}
-		doc, err := openapi3.NewLoader().LoadFromData(v.OpenAPI.Content)
+		// What every contract shares is added: the contract is served,
+		// validated and documented complete.
+		content, err := complete(v.OpenAPI.Content)
+		if err != nil {
+			return nil, nil, fmt.Errorf("app: version %q: %w", v.OpenAPI.Name, err)
+		}
+		v.OpenAPI.Content = content
+		doc, err := openapi3.NewLoader().LoadFromData(content)
 		if err != nil {
 			return nil, nil, fmt.Errorf("app: version %q: %w", v.OpenAPI.Name, err)
 		}

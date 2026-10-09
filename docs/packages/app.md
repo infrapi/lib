@@ -88,6 +88,21 @@ generated code: copy it to start a new one.
 A `Version` is one contract and its routes. Its `Prefix` — `/orders/v1/` — is
 derived from the contract's paths unless set.
 
+### What every contract gets
+
+A contract need not say what every contract shares: `app` adds it when it loads
+the contract, unless the contract has it already, and serves, validates and
+documents the result.
+
+- the `Problem` schema, and a `default` answer on every operation that is a
+  problem document — the errors of [Errors](#errors);
+- the `apikey` header, as a security scheme every operation requires, unless the
+  contract says its own `security`.
+
+The author's order and comments are kept. With [`contract`](contract.md), a
+service does not write its contract at all: it describes its resource in a few
+lines.
+
 ## Handlers
 
 Handlers generated from the contract plug in whole: `Mount` takes the
