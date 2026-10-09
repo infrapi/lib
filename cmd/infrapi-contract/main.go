@@ -29,7 +29,7 @@ func run(args []string) error {
 		return fmt.Errorf("usage: infrapi-contract <resource.yaml> <contract.yaml>")
 	}
 	in, out := args[0], args[1]
-	data, err := os.ReadFile(in) // #nosec G304 -- the file the developer names
+	data, err := os.ReadFile(in) // #nosec G304 G703 -- the file the developer names, from go generate
 	if err != nil {
 		return err
 	}
@@ -43,8 +43,8 @@ func run(args []string) error {
 	}
 	header := fmt.Sprintf("# Generated from %s by infrapi-contract. DO NOT EDIT: change %s and run go generate.\n",
 		filepath.Base(in), filepath.Base(in))
-	if err := os.MkdirAll(filepath.Dir(out), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(out), 0o750); err != nil { // #nosec G703 -- the developer's own path
 		return err
 	}
-	return os.WriteFile(out, append([]byte(header), doc...), 0o600) // #nosec G306 -- a source file
+	return os.WriteFile(out, append([]byte(header), doc...), 0o600) // #nosec G306 G703 -- the developer's own source file
 }
