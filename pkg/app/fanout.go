@@ -204,6 +204,10 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 		held = &heldResponse{ResponseWriter: c.Writer, status: http.StatusOK}
 		c.Writer = held
 	}
+	// The request as the caller sent it: what follows may rewrite it — the
+	// library's ids become the backend's — and the replicas take the
+	// caller's.
+	path, query := c.Request.URL.Path, c.Request.URL.RawQuery
 	f.run(c, w)
 	if held != nil {
 		c.Writer = held.ResponseWriter
@@ -218,6 +222,7 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 	}
 
 	out := snapshot(c, w, body, status)
+	out.path, out.query = path, query
 	if policy == BroadcastAsync {
 		server.LogField(c, "broadcast", "async")
 		go f.replay(out) // c is gin's again once this returns: the snapshot is all it reads

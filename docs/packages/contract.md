@@ -31,7 +31,8 @@ params:
   tenant: {type: string, pattern: "^[a-z0-9-]{1,40}$", description: Who the bookmarks belong to.}
 
 resource: bookmark              # one item, singular
-id: service                     # service (default): the service gives the id; caller: the caller may
+id: service                     # service (default): the service gives the id; caller: the caller may;
+                                # infrapi: the library answers UUIDs and pairs them with the backend's (x-infrapi-ids)
 fields:
   url:        {type: string, required: true, max: 2000}
   title:      {type: string, required: true, min: 1, max: 200}

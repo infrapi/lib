@@ -105,8 +105,10 @@ type Resource struct {
 	// Resource is the singular name, e.g. bookmark: the types are named
 	// after it.
 	Resource string `yaml:"resource"`
-	// ID says who chooses an item's id: the service ("service", the default)
-	// or the caller ("caller", an optional id field when creating).
+	// ID says whose id the API answers: the service's ("service", the
+	// default), the caller's ("caller", an optional id field when creating),
+	// or the library's ("infrapi": a UUID the API answers and takes, while
+	// the handlers see only the backend's ids — x-infrapi-ids).
 	ID     string  `yaml:"id"`
 	Fields []Field `yaml:"-"`
 	// Filters are the list's query parameters, e.g. tag.
@@ -225,9 +227,9 @@ func (r *Resource) check() error {
 		bad("version: 1 or more")
 	}
 	switch r.ID {
-	case "", "service", "caller":
+	case "", "service", "caller", "infrapi":
 	default:
-		bad("id %q: service or caller", r.ID)
+		bad("id %q: service, caller or infrapi", r.ID)
 	}
 	if len(r.Operations) == 0 {
 		bad("operations: at least one of %s", strings.Join(allOps, ", "))
@@ -341,6 +343,9 @@ func Generate(r *Resource) ([]byte, error) {
 		info = append(info, kv{"description", r.Description})
 	}
 	doc := obj{{"openapi", "3.0.3"}, {"info", info}}
+	if r.ID == "infrapi" {
+		doc = append(doc, kv{"x-infrapi-ids", r.Name})
+	}
 	if r.Cluster.Writes != "" {
 		doc = append(doc, kv{"x-infrapi-writes", r.Cluster.Writes})
 	}
@@ -352,8 +357,9 @@ func Generate(r *Resource) ([]byte, error) {
 	for _, m := range pathParam.FindAllStringSubmatch(r.Path, -1) {
 		pathParams = append(pathParams, ref("#/components/parameters/"+pascal(m[1])))
 	}
+	idSchema := obj{{"type", "string"}}
 	idParam := obj{{"name", "id"}, {"in", "path"}, {"required", true},
-		{"description", "The " + words(r.Resource) + "'s id."}, {"schema", obj{{"type", "string"}}}}
+		{"description", "The " + words(r.Resource) + "'s id."}, {"schema", idSchema}}
 
 	op := func(name, id, summary string, extra ...kv) obj {
 		o := obj{{"operationId", id}, {"summary", summary}}
@@ -476,7 +482,7 @@ func Generate(r *Resource) ([]byte, error) {
 		}
 		return append(s, kv{"properties", props})
 	}
-	full, fullRequired := obj{{"id", obj{{"type", "string"}}}}, []any{"id"}
+	full, fullRequired := obj{{"id", idSchema}}, []any{"id"}
 	for _, f := range r.Fields {
 		if f.Sensitive {
 			continue

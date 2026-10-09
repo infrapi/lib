@@ -18,6 +18,8 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 require (
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/gin-gonic/gin v1.12.0
+	github.com/google/uuid v1.6.0
+	github.com/grafana/dskit v0.0.0-20260928073014-b6a53f6bee29
 	github.com/infrapi/lib v0.5.0
 	github.com/infrapi/lib/pkg/cluster v0.5.0
 	github.com/jackc/pgx/v5 v5.11.0
@@ -60,9 +62,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/grafana/dskit v0.0.0-20260928073014-b6a53f6bee29 // indirect
 	github.com/grafana/otel-profiling-go v0.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
 	github.com/hashicorp/consul/api v1.34.5 // indirect

@@ -164,3 +164,12 @@ func TestFieldBehavioursThatContradict(t *testing.T) {
 		assert.ErrorContains(t, err, want, opts)
 	}
 }
+
+// With id: infrapi, the library keeps the ids: the contract says so, and its
+// file keeps the backend's ids as plain strings for the generated code.
+func TestLibraryKeptIDs(t *testing.T) {
+	doc := generate(t, strings.Replace(bookmarks, "resource: bookmark", "resource: bookmark\nid: infrapi", 1))
+	assert.Equal(t, "bookmarks", doc["x-infrapi-ids"])
+	assert.Nil(t, get(t, doc, "components", "schemas", "Bookmark", "properties", "id", "format"))
+	assert.NotContains(t, get(t, doc, "components", "schemas", "BookmarkSpec", "properties"), "id")
+}

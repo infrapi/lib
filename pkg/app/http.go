@@ -1,9 +1,11 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"database/sql"
 	_ "embed"
 	"encoding/hex"
 	"errors"
@@ -55,7 +57,8 @@ type readiness struct{ joined, draining atomic.Bool }
 // newEngine is the whole HTTP side: the library's engine with the service's
 // versions on it, behind the API's middlewares, and the operational pages. It
 // returns each version's prefix, which the gateway routes on.
-func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store idempotency.Store,
+func newEngine(ctx context.Context, spec Spec, cfg *loaded, rt *Runtime, versions []Version, store idempotency.Store,
+	db *sql.DB,
 	ready *readiness) (*gin.Engine, []string, error) {
 	if len(versions) == 0 {
 		return nil, nil, errors.New("app: the service has no version")
@@ -111,12 +114,29 @@ func newEngine(spec Spec, cfg *loaded, rt *Runtime, versions []Version, store id
 		return nil, nil, err
 	}
 
+	var ids *idStore
 	for i, v := range versions {
 		// In order: what is unauthenticated or malformed never claims a key,
 		// and only the leader validates and remembers.
 		chain := []gin.HandlerFunc{paramFields, auth, writes.handle, validator(docs[i])}
 		if store != nil {
 			chain = append(chain, idempotency.Middleware(store, scopeOf(spec.IdempotencyScope), int64(cfg.Gateway.MaxBodyBytes)))
+		}
+		// Last before the handlers, so that what the idempotency store keeps
+		// is the API's ids.
+		if resource, set, err := extension(docs[i].Extensions, IDsExtension); err != nil {
+			return nil, nil, fmt.Errorf("app: version %q: %w", v.OpenAPI.Name, err)
+		} else if set {
+			if db == nil {
+				return nil, nil, fmt.Errorf("app: version %q: %s keeps the ids in the database: set database.dsn",
+					v.OpenAPI.Name, IDsExtension)
+			}
+			if ids == nil {
+				if ids, err = newIDStore(ctx, db); err != nil {
+					return nil, nil, err
+				}
+			}
+			chain = append(chain, idsMiddleware(ids, resource, docs[i], writes.broadcasts, rt.Cluster.InstanceID))
 		}
 		v.Routes(&router{group: engine.Group("", chain...), doc: docs[i]})
 	}

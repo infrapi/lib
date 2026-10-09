@@ -553,7 +553,35 @@ When every replica must see the same data, a store they share — a database, a
 shared volume, the backend the service fronts — is simpler than keeping copies
 in step.
 
-## The service's roles
+## The API's own ids: `x-infrapi-ids`
+
+A service in front of another system — Grafana, a cloud, a storage — need not
+show that system's ids: the library gives the API its own, **UUIDs**, and
+pairs them with the backend's, which the handlers alone see.
+
+```yaml
+x-infrapi-ids: bookmarks     # at the root of the contract; id: infrapi in a resource description
+```
+```yaml
+database:
+  dsn: postgres://…          # where the pairs are kept, with the idempotency keys
+```
+
+- **In**: the UUID in the URL becomes the backend's id before the handler runs.
+  One the API does not know is a `404`; one that is not a UUID, a `400`.
+- **Out**: the `id` of the answer — an object, or each object of a list —
+  becomes its UUID. A creation gets one, the same on every replica that runs it
+  (`app.BroadcastUUID`); an item met for the first time, made outside the API,
+  gets one too. A delete that succeeds forgets the pair.
+- **The handlers** read and answer the backend's ids, as if there were no
+  library: the contract's file says `type: string`, and what is served says
+  `format: uuid`.
+- **The pairs** are in one table, `infrapi_ids`: resource, scope (the path's other
+  parameters, as the tenant), replica, the API's id, the backend's. When the
+  resource's writes are broadcast, every replica has its own backend, and its
+  own pairs: the same UUID, each replica's backend id.
+- The idempotency store keeps the answers with the API's ids.
+
 
 Work of the service's own — a purge on one replica, a cache reload on every one
 — runs on rings it declares, the [`cluster`](cluster.md) package's roles:

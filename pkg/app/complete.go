@@ -47,6 +47,14 @@ func complete(content []byte) ([]byte, error) {
 		}
 	}
 
+	// With the library keeping the ids, the API's are UUIDs: said where the
+	// contract has an id, so that a caller sees it and a malformed one is
+	// refused before it is looked up. The handlers' own code, generated from
+	// the contract's file, keeps the backend's, whatever they are.
+	if lookup(doc, IDsExtension) != nil {
+		uuidIDs(doc)
+	}
+
 	var out bytes.Buffer
 	enc := yaml.NewEncoder(&out)
 	enc.SetIndent(2)
@@ -112,4 +120,42 @@ func setDefault(m *yaml.Node, key, value string) {
 		panic(fmt.Sprintf("app: the library's own YAML does not parse: %v", err)) // a constant of this file
 	}
 	m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, v.Content[0])
+}
+
+// uuidIDs says format: uuid on every path parameter called id, and every
+// property called id of the components' schemas.
+func uuidIDs(doc *yaml.Node) {
+	idParams := func(list *yaml.Node) {
+		if list == nil || list.Kind != yaml.SequenceNode {
+			return
+		}
+		for _, p := range list.Content {
+			if name := lookup(p, "name"); name != nil && name.Value == "id" {
+				if in := lookup(p, "in"); in != nil && in.Value == "path" {
+					setDefault(child(p, "schema"), "format", "uuid")
+				}
+			}
+		}
+	}
+	if paths := lookup(doc, "paths"); paths != nil && paths.Kind == yaml.MappingNode {
+		for i := 1; i < len(paths.Content); i += 2 {
+			item := paths.Content[i]
+			idParams(lookup(item, "parameters"))
+			for j := 1; j < len(item.Content); j += 2 {
+				idParams(lookup(item.Content[j], "parameters"))
+			}
+		}
+	}
+	if params := lookup(lookup(doc, "components"), "parameters"); params != nil && params.Kind == yaml.MappingNode {
+		for i := 1; i < len(params.Content); i += 2 {
+			idParams(&yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{params.Content[i]}})
+		}
+	}
+	if schemas := lookup(lookup(doc, "components"), "schemas"); schemas != nil && schemas.Kind == yaml.MappingNode {
+		for i := 1; i < len(schemas.Content); i += 2 {
+			if id := lookup(lookup(schemas.Content[i], "properties"), "id"); id != nil && id.Kind == yaml.MappingNode {
+				setDefault(id, "format", "uuid")
+			}
+		}
+	}
 }

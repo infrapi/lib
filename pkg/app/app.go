@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -126,8 +127,9 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 	setupLogging(cfg.app)
 
 	var store idempotency.Store
+	var db *sql.DB
 	if cfg.Database.DSN != "" {
-		pg, closeDB, err := openStore(ctx, cfg.Database.DSN)
+		pg, opened, closeDB, err := openStore(ctx, cfg.Database.DSN)
 		if err != nil {
 			return err
 		}
@@ -136,7 +138,7 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 				slog.Warn("closing the idempotency store", "err", err)
 			}
 		}()
-		store = pg
+		store, db = pg, opened
 	} else {
 		slog.Warn("no database: Idempotency-Key is IGNORED, and a retried write runs twice")
 	}
@@ -153,7 +155,7 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 	}
 
 	ready := &readiness{}
-	engine, prefixes, err := newEngine(spec, cfg, rt, versions, store, ready)
+	engine, prefixes, err := newEngine(ctx, spec, cfg, rt, versions, store, db, ready)
 	if err != nil {
 		return err
 	}

@@ -217,6 +217,11 @@ func (l *loaded) ringMode(name string) (writeMode, error) {
 	}
 }
 
+// broadcasts says whether a route's writes run on every member of a ring.
+func (d *dispatcher) broadcasts(route string) bool {
+	return d.byRoute[route].kind == writeBroadcast
+}
+
 func (d *dispatcher) handle(c *gin.Context) {
 	if !isWrite(c.Request.Method) {
 		if m, ok := d.reads[c.Request.Method+" "+c.FullPath()]; ok {
