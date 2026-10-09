@@ -17,8 +17,8 @@ By the end you will have:
   that each one took it.
 
 ```text
-           contract (you write)           generated (never edited)
-         api/bookmarks/v1.yaml  ──go generate──►  internal/bookmarksv1/gen.go
+   the resource (you write)        the contract           the server code
+     api/bookmarks.yaml ──go generate──► api/bookmarks/v1.yaml ──► internal/bookmarksv1/gen.go
                     │                                    │
                     │ validates every request            │ the interface to implement
                     ▼                                    ▼
@@ -69,9 +69,10 @@ When you are done, the project will look like this:
 
 ```text
 bookmarks-api/
-├── api/bookmarks/v1.yaml        1. the contract
-├── oapi-codegen.yaml            2. what to generate from it
-├── generate.go                  2. the generate command
+├── api/bookmarks.yaml           2. the resource: its fields and operations
+├── api/bookmarks/v1.yaml        3. generated: the contract
+├── oapi-codegen.yaml            3. what to generate from it
+├── generate.go                  3. the generate command
 ├── internal/bookmarksv1/gen.go  2. generated: never edit it
 ├── internal/storage/storage.go  4. the backend
 ├── handlers.go                  5. the contract's operations
@@ -80,196 +81,93 @@ bookmarks-api/
 └── handlers_test.go             9. a test
 ```
 
-## 2. Write the contract
+## 2. Describe the resource
 
-The contract is the single source of truth. The library validates every request
-against it, serves it as documentation at `/-/docs`, and the Go code is generated
-from it. **Write it first, by hand.**
+The **contract** is the API's single source of truth: the library validates every
+request against it, shows it as documentation at `/-/docs`, and the Go code is
+generated from it. It is an [OpenAPI](https://spec.openapis.org/oas/v3.0.3) file,
+long and exacting to write by hand. You do not write it: you **describe the
+resource** in a few lines, and the contract is generated from that.
 
-Create `api/bookmarks/v1.yaml`:
+Create `api/bookmarks.yaml`:
 
 ```yaml
-openapi: 3.0.3
-info:
-  title: Bookmarks
-  version: "1"
-  description: Save and find the links a team cares about.
+# The Bookmarks API: go generate writes the full contract,
+# api/bookmarks/v1.yaml, from this file.
+name: bookmarks
+version: 1
+description: Save and find the links a team cares about.
+path: tenants/{tenant}
+params:
+  tenant: {type: string, pattern: "^[a-z0-9-]{1,40}$", description: Who the bookmarks belong to.}
 
-# Every operation needs the apikey header (see step 11).
-security:
-  - apikey: []
+resource: bookmark
+fields:
+  url:        {type: string, required: true, max: 2000}
+  title:      {type: string, required: true, min: 1, max: 200}
+  tags:       {type: list, of: string, max: 10, pattern: "^[a-z0-9-]{1,30}$"}
+  created_at: {type: datetime, computed: true}
+filters:
+  tag: {type: string, description: Only the bookmarks with this tag.}
 
-paths:
-  # The collection: list and create.
-  /bookmarks/v1/tenants/{tenant}/bookmarks:
-    parameters:
-      - $ref: "#/components/parameters/Tenant"
-    get:
-      operationId: listBookmarks
-      summary: List a tenant's bookmarks
-      parameters:
-        - name: tag
-          in: query
-          description: Only the bookmarks with this tag.
-          schema: {type: string}
-      responses:
-        "200":
-          description: The bookmarks
-          content:
-            application/json:
-              schema:
-                type: array
-                items: {$ref: "#/components/schemas/Bookmark"}
-        default: {$ref: "#/components/responses/Problem"}
-    post:
-      operationId: createBookmark
-      summary: Save a bookmark
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/BookmarkSpec"}
-            example:
-              url: https://grafana.com/docs/
-              title: Grafana documentation
-              tags: [docs, grafana]
-      responses:
-        "201":
-          description: Saved
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Bookmark"}
-        default: {$ref: "#/components/responses/Problem"}
-
-  # One item: read, replace, delete.
-  /bookmarks/v1/tenants/{tenant}/bookmarks/{id}:
-    parameters:
-      - $ref: "#/components/parameters/Tenant"
-      - name: id
-        in: path
-        required: true
-        schema: {type: string}
-    get:
-      operationId: getBookmark
-      summary: Read a bookmark
-      responses:
-        "200":
-          description: The bookmark
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Bookmark"}
-        default: {$ref: "#/components/responses/Problem"}
-    put:
-      operationId: replaceBookmark
-      summary: Replace a bookmark
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/BookmarkSpec"}
-      responses:
-        "200":
-          description: The bookmark, after the change
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Bookmark"}
-        default: {$ref: "#/components/responses/Problem"}
-    delete:
-      operationId: deleteBookmark
-      summary: Delete a bookmark
-      responses:
-        "204":
-          description: Deleted, or already gone
-        default: {$ref: "#/components/responses/Problem"}
-
-components:
-  securitySchemes:
-    apikey: {type: apiKey, in: header, name: apikey}
-
-  parameters:
-    Tenant:
-      name: tenant
-      in: path
-      required: true
-      description: Who the bookmarks belong to.
-      schema: {type: string, pattern: "^[a-z0-9-]{1,40}$"}
-
-  responses:
-    Problem:
-      description: An error, as a problem document
-      content:
-        application/problem+json:
-          schema: {$ref: "#/components/schemas/Problem"}
-
-  schemas:
-    # What the caller sends.
-    BookmarkSpec:
-      type: object
-      additionalProperties: false
-      required: [url, title]
-      properties:
-        url: {type: string, maxLength: 2000}
-        title: {type: string, minLength: 1, maxLength: 200}
-        tags:
-          type: array
-          maxItems: 10
-          items: {type: string, pattern: "^[a-z0-9-]{1,30}$"}
-    # What the API answers.
-    Bookmark:
-      type: object
-      required: [id, url, title, tags, created_at]
-      properties:
-        id: {type: string}
-        url: {type: string}
-        title: {type: string}
-        tags:
-          type: array
-          items: {type: string}
-        created_at: {type: string, format: date-time}
-    # The library's error format, documented for the callers.
-    Problem:
-      type: object
-      required: [status, code, title]
-      properties:
-        status: {type: integer}
-        code: {type: string}
-        title: {type: string}
-        detail: {type: string}
-        retryable: {type: boolean}
-        correlation_id: {type: string}
+operations: [list, create, get, replace, delete]
+example: {url: "https://grafana.com/docs/", title: Grafana documentation, tags: [docs, grafana]}
 ```
 
-What each part is for:
+Line by line:
 
-- **`paths`**: one entry per URL, one operation per HTTP method. Every path starts
-  with the same prefix, `/bookmarks/v1/`: the library routes the version on it.
-- **`operationId`**: becomes the Go method you write in step 5.
-  `getBookmark` → `GetBookmark`. Choose clear verbs; changing one later renames
-  the method.
-- **`parameters`**: `{tenant}` and `{id}` in the path, `tag` in the query. Their
-  `schema` is checked: a tenant with a capital letter is refused before your code
-  runs.
-- **`requestBody`** and **`schemas`**: the shape of the JSON.
-    - `required` lists the fields that must be there.
-    - `additionalProperties: false` refuses unknown fields: a typo like `"titel"`
-      is an error instead of being ignored.
-    - `minLength`, `maxLength`, `maxItems`, `pattern` are checked by the library.
-- **Two schemas, `BookmarkSpec` and `Bookmark`**: what the caller sends is not
-  what the API answers. The answer adds what the service decides: the `id` and
-  `created_at`.
-- **`default: Problem`**: any error answer is a problem document (step 5 explains
-  how they are produced). It is documentation for the callers.
-- **`example`**: shown in Swagger UI, ready to send.
+| Key | What it says | Here |
+|---|---|---|
+| `name` | the collection, plural: the URL's first segment and the collection's | `bookmarks` |
+| `version` | the contract's major version, in the URL | `/bookmarks/v1/…` |
+| `path` | what comes between the version and the collection, with its parameters | `/bookmarks/v1/tenants/{tenant}/bookmarks` |
+| `params` | the path parameters' rules; a plain string when not given | a tenant is lower-case, 1 to 40 characters |
+| `resource` | one item, singular: the Go types are named after it | `Bookmark`, `BookmarkSpec` |
+| `fields` | the item's fields, in order | |
+| `filters` | the list's query parameters | `?tag=docs` |
+| `operations` | what the API offers, among `list`, `create`, `get`, `replace`, `delete` | all five |
+| `example` | a body to create one, shown in `/-/docs` | |
 
-!!! tip "Validate it as you write"
-    Paste the file into <https://editor.swagger.io> to see mistakes and the
-    rendered documentation.
+A field is `{type: …}` and, as needed:
 
-## 3. Generate the Go code
+| Option | Meaning |
+|---|---|
+| `type` | `string`, `integer`, `number`, `boolean`, `datetime`, `date`, or `list` with `of: string` (or integer, number, boolean) |
+| `required: true` | the caller must send it |
+| `min`, `max` | a string's length, a list's size, a number's value |
+| `pattern` | a regular expression a string — or each item of a list — must match |
+| `enum: [a, b]` | the only values allowed |
+| `default`, `example`, `description` | for the documentation |
+| `computed: true` | the service sets it, the caller never sends it: it is in the answers only, as a creation date is |
 
-[oapi-codegen](https://github.com/oapi-codegen/oapi-codegen) reads the contract
-and writes the Go side: the types, the router, and the interface your handlers
-must implement.
+What the generated contract holds, without your writing it:
+
+- five operations, named after the resource: `listBookmarks`, `createBookmark`,
+  `getBookmark`, `replaceBookmark`, `deleteBookmark` — they become the Go methods
+  of step 5;
+- `BookmarkSpec`, what the caller sends: the fields that are not computed, and
+  nothing else — a typo like `"titel"` is refused instead of ignored;
+- `Bookmark`, what the API answers: the `id` the service gives it, and every
+  field;
+- the answers' codes: `201` for a creation, `204` for a deletion, `200` otherwise.
+
+And what every contract shares, the library adds when it serves it: the error
+format (every error is a *problem document*, step 5) and the `apikey` header
+every call carries (step 11). You will see them in `/-/docs`.
+
+!!! tip "When the short form is not enough"
+    An operation that is not one of the five — an action, a search across
+    resources — needs the contract written by hand, in OpenAPI: write
+    `api/bookmarks/v1.yaml` yourself, without `api/bookmarks.yaml`, and drop
+    the `infrapi-contract` line of step 3. Everything else in this guide is
+    the same. `examples/app` in the library is such a hand-written contract.
+
+## 3. Generate the contract and the Go code
+
+Two generators, one after the other: `infrapi-contract` writes the contract from
+the resource, then [oapi-codegen](https://github.com/oapi-codegen/oapi-codegen)
+reads the contract and writes the Go side — the types, the router, and the
+interface your handlers must implement.
 
 Create `oapi-codegen.yaml`, which says what to generate and where:
 
@@ -282,24 +180,28 @@ generate:
   strict-server: true   # typed requests in, typed responses out
 ```
 
-Create `generate.go`, which records the command in the project itself:
+Create `generate.go`, which records the two commands in the project itself, in
+the order they run:
 
 ```go
 package main
 
+//go:generate go tool infrapi-contract api/bookmarks.yaml api/bookmarks/v1.yaml
 //go:generate go tool oapi-codegen -config oapi-codegen.yaml api/bookmarks/v1.yaml
 ```
 
-Add the generator to the project as a tool, then run it:
+Add the generators to the project as tools, then run them:
 
 ```bash
+go get -tool github.com/infrapi/lib/cmd/infrapi-contract@latest
 go get -tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0
 go generate ./...
 ```
 
-`go get -tool` records the generator's version in `go.mod`: everyone who clones
-the project generates the same code, with nothing to install. `go generate`
-runs the `//go:generate` line and writes `internal/bookmarksv1/gen.go`.
+`go get -tool` records each generator's version in `go.mod`: everyone who clones
+the project generates the same files, with nothing to install. `go generate`
+runs the `//go:generate` lines: `api/bookmarks/v1.yaml`, then
+`internal/bookmarksv1/gen.go`. Open the contract: about 150 lines, from your 20.
 
 Open it and find two things. The types of the schemas:
 
@@ -324,9 +226,9 @@ type StrictServerInterface interface {
 }
 ```
 
-!!! warning "Never edit `gen.go`"
-    It is rewritten every time you run `go generate`. Change the contract
-    instead, then generate again.
+!!! warning "Never edit `v1.yaml` or `gen.go`"
+    Both are rewritten every time you run `go generate`. Change
+    `api/bookmarks.yaml` instead, then generate again.
 
 ## 4. Write the backend
 
@@ -692,7 +594,7 @@ What happens when it starts:
 needs no file next to it to validate requests and show the documentation.
 
 Now add the library, and let Go fetch everything the code uses. Take the
-latest release: step 10 needs one after v0.3.0.
+latest release.
 
 ```bash
 VERSION=$(git ls-remote --tags --sort=-v:refname https://github.com/infrapi/lib.git 'refs/tags/v*' | head -1 | sed 's#.*/##')
@@ -901,13 +803,12 @@ import "github.com/infrapi/lib/pkg/cluster"
 **leader** ring: its members elect one, which alone acts. This guide uses
 `everybody`; `cache` is there to show the other kind.
 
-### Give the writes to a ring, in the contract
+### Give the writes to a ring
 
-Add one line at the top of `api/bookmarks/v1.yaml`, after `security`:
+Add one line to `api/bookmarks.yaml`, and run `go generate ./...`:
 
 ```yaml
-# Every write runs on every replica of the "everybody" ring.
-x-infrapi-writes: everybody
+writes: everybody    # every write runs on every replica of the "everybody" ring
 ```
 
 That is all the code there is. The library now runs every write — create,
@@ -915,13 +816,11 @@ replace, delete — on the replica that received it, then sends the same request
 to the other members of `everybody`, which run the same handler. Reads stay where
 they arrive: each replica reads its own copy.
 
-One operation can be given another ring of its own, with `x-infrapi-ring` next to
-its `operationId`:
+One operation can be given another ring of its own:
 
 ```yaml
-    delete:
-      operationId: deleteBookmark
-      x-infrapi-ring: cache    # this one: on the leader of "cache" only, relayed there from the others
+rings:
+  delete: cache      # a delete: on the leader of "cache" only, relayed there from the others
 ```
 
 | The operation's ring | It runs |
@@ -1021,10 +920,12 @@ By default the caller waits for every replica, and when one did not take the
 write it gets `502 broadcast_incomplete`, retryable, naming it. Send the same
 request again **with the same `Idempotency-Key` header**: the write's id comes
 from the key, so every replica writes the same bookmark again, and the one that
-missed it catches up. To choose otherwise, per contract or per operation:
+missed it catches up. To choose otherwise, for every write or per operation:
 
 ```yaml
-x-infrapi-broadcast: async   # strict (the default), tolerant or async
+broadcast: async        # strict (the default), tolerant or async
+broadcasts:
+  create: tolerant      # this one otherwise
 ```
 
 | | The caller waits | A replica that failed |
@@ -1082,13 +983,14 @@ database:
 
 The loop is always the same:
 
-1. Edit `api/bookmarks/v1.yaml`: a new field, a new operation.
+1. Edit `api/bookmarks.yaml`: a new field, a new operation.
 2. `go generate ./...`
 3. `go build ./...`: the compiler lists what the handlers must now do — a missing
    method, a renamed field.
 4. Write it, test it.
 
 A change that would break existing callers — a field removed or renamed, a
-required field added — belongs in a new version: a `v2.yaml`, its own generated
-package, and a second entry in the list `API` returns. Both versions are then
+required field added — belongs in a new version: a second resource file with
+`version: 2`, its own generated contract and package, and a second entry in the
+list `API` returns. Both versions are then
 served side by side.
