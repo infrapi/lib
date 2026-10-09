@@ -108,6 +108,7 @@ func TestBroadcastOutcome(t *testing.T) {
 	assert.Equal(t, outcomeComplete, rec(stateDone, stateDone).outcome())
 	assert.Equal(t, outcomePartial, rec(stateDone, stateFailed).outcome())
 	assert.Equal(t, outcomePending, rec(stateDone, stateFailed, statePending).outcome(), "not over yet")
+	assert.Equal(t, outcomePartial, rec(stateDone, stateMissed).outcome(), "a registered replica that did not get it")
 	w := rec(stateDone)
 	w.Error = "no members"
 	assert.Equal(t, outcomeError, w.outcome())

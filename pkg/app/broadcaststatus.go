@@ -41,6 +41,7 @@ const (
 	statePending = "pending"
 	stateDone    = "done"
 	stateFailed  = "failed"
+	stateMissed  = "missed" // registered in the ring, not healthy: not sent
 )
 
 // broadcastStatus is every recent broadcast write's outcome, by write id.
@@ -78,7 +79,7 @@ func (w *writeRecord) outcome() string {
 		switch r.State {
 		case statePending:
 			return outcomePending
-		case stateFailed:
+		case stateFailed, stateMissed:
 			failed = true
 		}
 	}

@@ -478,7 +478,11 @@ curl http://any-replica:8080/-/broadcast/im3vmkqm3xncm2i4t4zw2e53wd
   when it could not be sent to the others at all (no ring, no members; `error`
   says why) and only the first replica has it.
 - Each replica's `state` is `pending` until it answered, then `done` or
-  `failed`, with the status it answered or why it could not be reached.
+  `failed`, with the status it answered or why it could not be reached; or
+  `missed` for a replica the ring still holds but excludes — stopped and kept in
+  the ring (`keep_instance_in_ring_on_shutdown`), or its heartbeat stale — which
+  the write is not sent to. A missed replica makes the write `partial`, and a
+  `strict` one a `502`: it is one of the ring's, and it does not have the write.
 - The route is documented in `/-/docs`, under **infrapi (replica routes)**, with
   `/-/healthz` and `/-/readyz`: the library serves that contract next to the
   service's.

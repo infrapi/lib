@@ -68,7 +68,10 @@ components:
           additionalProperties:
             type: object
             properties:
-              state: {type: string, enum: [pending, done, failed]}
+              state:
+                type: string
+                enum: [pending, done, failed, missed]
+                description: missed - the replica is registered in the ring but not healthy (stopped, kept in the ring; or its heartbeat is stale), and the write was not sent to it.
               status: {type: integer, description: The HTTP status the replica answered.}
               error: {type: string}
               updated: {type: string, format: date-time}

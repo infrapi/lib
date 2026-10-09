@@ -307,9 +307,21 @@ func (f *fanout) replay(out outgoing) (done, failed []string) {
 
 	self := f.cluster.InstanceID()
 	role, err := f.cluster.Role(f.role)
-	var members []cluster.Member
+	var registered []cluster.Member
 	if err == nil {
-		members, err = role.Members()
+		// Every replica the ring holds, those it excludes too: one that
+		// stopped but stays registered (keep_instance_in_ring_on_shutdown),
+		// or whose heartbeat is stale, is still one of the role's, and its
+		// missing the write is said rather than hidden.
+		registered, err = role.AllMembers(ctx)
+	}
+	var members, missed []cluster.Member
+	for _, m := range registered {
+		if m.Healthy || m.ID == self {
+			members = append(members, m)
+		} else {
+			missed = append(missed, m)
+		}
 	}
 	if err != nil {
 		broadcastLog().ErrorContext(ctx, "broadcast write: not sent to the others", "role", f.role, "err", err)
@@ -329,6 +341,14 @@ func (f *fanout) replay(out outgoing) (done, failed []string) {
 			r.State, r.Status = stateDone, out.status
 		}
 		rec.Replicas[m.ID] = r
+	}
+	for _, m := range missed {
+		rec.Replicas[m.ID] = replicaRecord{State: stateMissed, Updated: now,
+			Error: "not sent: the replica is " + strings.ToLower(m.State) + " in the ring, and not healthy"}
+		failed = append(failed, m.ID)
+		replayed.WithLabelValues(out.method, out.route, "missed").Inc()
+		broadcastLog().WarnContext(ctx, "broadcast write: a replica is registered but not healthy, not sent",
+			"instance", m.ID, "state", m.State, "write_id", out.identity.id, "correlation_id", out.correlation)
 	}
 	record(ctx, f.cluster, out.identity.id, rec)
 
