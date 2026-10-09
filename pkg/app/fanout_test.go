@@ -59,3 +59,16 @@ func TestWriteIDInHandlers(t *testing.T) {
 	assert.True(t, at.IsZero())
 	assert.Empty(t, WriteID(context.Background()))
 }
+
+// The write's UUID is the same wherever its id is, and a well-formed version 4.
+func TestWriteUUID(t *testing.T) {
+	assert.Empty(t, WriteUUID(context.Background()))
+	w := newWriteIdentity(httptest.NewRequest(http.MethodPost, "/x", nil))
+	ctx := context.WithValue(context.Background(), writeKey{}, w)
+	u := WriteUUID(ctx)
+	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, u)
+	assert.Equal(t, u, WriteUUID(context.WithValue(context.Background(), writeKey{}, writeIdentity{id: w.id})),
+		"a replay, which carries the id, gets the same UUID")
+	assert.NotEqual(t, u, WriteUUID(context.WithValue(context.Background(), writeKey{},
+		newWriteIdentity(httptest.NewRequest(http.MethodPost, "/x", nil)))))
+}

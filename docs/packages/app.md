@@ -427,6 +427,9 @@ b.CreatedAt = app.WriteTime(ctx)        // not time.Now()
   lower-case letters and digits. With an `Idempotency-Key`, it is derived from
   the key and the path, so a retry creates the same thing again instead of a
   second one.
+- `app.WriteUUID(ctx)` is the same identity as a UUID (version 4): the id to
+  give what a write creates when ids are UUIDs — unpredictable, and the same on
+  every replica.
 - `app.WriteTime(ctx)` is when the first replica received the write.
 - Both are set on **every** write, whatever its ring: a handler written this way
   runs unchanged on any ring. Both are empty on a read.

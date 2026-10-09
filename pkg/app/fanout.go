@@ -69,9 +69,32 @@ func newWriteIdentity(r *http.Request) writeIdentity {
 		sum := sha256.Sum256([]byte(r.URL.Path + "\n" + key))
 		w.id = strings.ToLower(idEncoding.EncodeToString(sum[:16]))
 	} else {
-		w.id = strings.ToLower(rand.Text())
+		// 128 of rand.Text's random bits, in 16 bytes: a UUID's worth.
+		sum := sha256.Sum256([]byte(rand.Text()))
+		w.id = strings.ToLower(idEncoding.EncodeToString(sum[:16]))
 	}
 	return w
+}
+
+// WriteUUID is WriteID as a UUID: the same on every replica that runs the
+// write, and as unpredictable — 122 random bits, or derived from the
+// Idempotency-Key, which only its caller knows. The id to give what a write
+// creates, when ids are UUIDs. Empty outside a write.
+func WriteUUID(ctx context.Context) string {
+	id := WriteID(ctx)
+	if id == "" {
+		return ""
+	}
+	var raw [16]byte
+	if b, err := idEncoding.DecodeString(strings.ToUpper(id)); err == nil && len(b) == 16 {
+		copy(raw[:], b)
+	} else {
+		sum := sha256.Sum256([]byte(id)) // an id from elsewhere: still the same on every replica
+		copy(raw[:], sum[:16])
+	}
+	raw[6] = raw[6]&0x0f | 0x40 // version 4
+	raw[8] = raw[8]&0x3f | 0x80 // RFC 9562 variant
+	return fmt.Sprintf("%x-%x-%x-%x-%x", raw[0:4], raw[4:6], raw[6:8], raw[8:10], raw[10:16])
 }
 
 // replayed counts the writes a replica replayed on the others, by outcome.
