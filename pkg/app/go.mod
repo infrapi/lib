@@ -18,8 +18,8 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 require (
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/gin-gonic/gin v1.12.0
-	github.com/infrapi/lib v0.4.0
-	github.com/infrapi/lib/pkg/cluster v0.4.0
+	github.com/infrapi/lib v0.4.1
+	github.com/infrapi/lib/pkg/cluster v0.4.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/oapi-codegen/gin-middleware v1.1.0
 	github.com/prometheus/client_golang v1.24.1

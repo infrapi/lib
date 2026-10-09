@@ -3,8 +3,8 @@ module github.com/infrapi/lib/examples/app
 go 1.26.7
 
 require (
-	github.com/infrapi/lib v0.4.0
-	github.com/infrapi/lib/pkg/app v0.4.0
+	github.com/infrapi/lib v0.4.1
+	github.com/infrapi/lib/pkg/app v0.4.1
 	github.com/oapi-codegen/runtime v1.6.0
 )
 
@@ -63,7 +63,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/memberlist v0.7.0 // indirect
 	github.com/hashicorp/serf v0.11.0 // indirect
-	github.com/infrapi/lib/pkg/cluster v0.4.0 // indirect
+	github.com/infrapi/lib/pkg/cluster v0.4.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.11.0 // indirect
