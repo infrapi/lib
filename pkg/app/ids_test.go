@@ -264,7 +264,7 @@ func TestIDsMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, code)
 	code, body = do(http.MethodPost, "/t/v1/acme/folders", `{"name":"x","parent_id":"00000000-0000-4000-8000-999999999999"}`)
 	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Contains(t, body, "parent_id: no folders")
+	assert.Contains(t, body, `parent_id: \"00000000-0000-4000-8000-999999999999\" is not the id of one of the folders`)
 	code, _ = do(http.MethodGet, "/t/v1/other/folders/"+root, "")
 	assert.Equal(t, http.StatusNotFound, code, "another tenant's ids are not this one's")
 

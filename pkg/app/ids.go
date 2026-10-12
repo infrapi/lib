@@ -212,9 +212,9 @@ func idsMiddleware(store idPairs, doc *openapi3.T, broadcast func(route string) 
 			backend, err := store.backend(ctx, key(resource), public)
 			if errors.Is(err, sql.ErrNoRows) {
 				if where == "id" {
-					return "", problem.NotFound("no %s %q", resource, public)
+					return "", problem.NotFound("%q is not the id of one of the %s", public, resource)
 				}
-				return "", problem.Invalid("%s: no %s %q", where, resource, public)
+				return "", problem.Invalid("%s: %q is not the id of one of the %s", where, public, resource)
 			}
 			if err != nil {
 				return "", problem.Unavailable("the ids could not be read: %v", err)
