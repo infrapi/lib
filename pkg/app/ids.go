@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -18,11 +20,22 @@ import (
 	"github.com/infrapi/lib/pkg/app/problem"
 )
 
-// IDsExtension, at the root of a contract, names the resource whose ids the
-// library keeps for the service: the API answers and takes its own UUIDs, the
-// handlers see only the ids of the system behind the service, and the two are
-// kept apart, in the service's database.
-const IDsExtension = "x-infrapi-ids"
+// The extensions with which a contract has the library keep its ids: the API
+// answers and takes its own UUIDs, the handlers see only the ids of the
+// system behind the service, and the two are kept apart, in the service's
+// database.
+const (
+	// IDsExtension, at the root of a contract, turns it on. Its value names
+	// the resource of a contract that marks nothing else: its {id} and the id
+	// of its objects are that resource's.
+	IDsExtension = "x-infrapi-ids"
+	// IDExtension, on a schema or a path parameter's schema, says the value is
+	// the id of an item of the named resource: its own.
+	IDExtension = "x-infrapi-id"
+	// RefExtension, on a schema, says the value — or each item of the list —
+	// is the id of an item of the named resource: a reference to it.
+	RefExtension = "x-infrapi-ref"
+)
 
 // idStore is the table that pairs the API's ids with the backend's.
 type idStore struct{ db *sql.DB }
@@ -78,44 +91,100 @@ WHERE resource = $1 AND scope = $2 AND instance = $3 AND public_id = $4`, k.reso
 	return err
 }
 
-// idRoute is what the ids middleware knows of one route.
-type idRoute struct {
-	idParam   int      // the {id} segment's index in the path, -1 for none
-	scope     []string // the path's other parameters
-	create    bool     // a POST on the collection
-	broadcast bool     // the resource's writes run on every replica: each pairs its own ids
+// idPairs is where the pairs are kept: the database's table, or a test's.
+type idPairs interface {
+	backend(ctx context.Context, k idKey, public string) (string, error)
+	public(ctx context.Context, k idKey, backend, proposed string) (string, error)
+	forget(ctx context.Context, k idKey, public string) error
 }
 
-// idsMiddleware swaps the API's ids for the backend's on the way in, and back
-// on the way out, for a contract with x-infrapi-ids. When the resource's
-// writes are broadcast, every replica has its own backend, and its own pairs:
-// all the resource's routes, reads too, use this replica's.
-func idsMiddleware(store *idStore, resource string, doc *openapi3.T, broadcast func(route string) bool,
-	instance func() string) gin.HandlerFunc {
+// idRoute is what the ids middleware knows of one route.
+type idRoute struct {
+	resource string   // the {id}'s resource; empty for none
+	idParam  int      // the {id} segment's index in the path, -1 for none
+	scope    []string // the path's other parameters
+	create   bool     // a POST on a collection
+	query    map[string]string
+	body     *openapi3.Schema
+	answers  map[int]*openapi3.Schema // the JSON answers, by status
+	item     *openapi3.Schema         // the item the route answers: a problem's current is one
+	// created is the resource a create makes: the one its answer's id is.
+	created string
+	// goneIsDone: a delete whose contract answers 204 and never 404 — gone or
+	// already gone — answers 204 for an id it does not know: one it
+	// forgot when it deleted it, for a retried delete.
+	goneIsDone bool
+}
+
+// idsMiddleware swaps the API's ids for the backend's on the way in — the
+// path's {id}, the filters, the body — and back on the way out, wherever the
+// contract marks an id (x-infrapi-id) or a reference (x-infrapi-ref). When
+// the writes are broadcast, every replica has its own backend, and its own
+// pairs: all the routes, reads too, use this replica's.
+func idsMiddleware(store idPairs, doc *openapi3.T, broadcast func(route string) bool,
+	instance func() string) (gin.HandlerFunc, error) {
+	if err := markLegacy(doc); err != nil {
+		return nil, err
+	}
 	routes := map[string]idRoute{}
 	perReplica := false
 	for _, path := range doc.Paths.InMatchingOrder() {
+		item := doc.Paths.Value(path)
 		segs := strings.Split(ginPath(path), "/")
-		r := idRoute{idParam: -1}
-		for i, s := range segs {
-			switch {
-			case s == ":id":
-				r.idParam = i
-			case strings.HasPrefix(s, ":"):
-				r.scope = append(r.scope, s[1:])
+		for method, op := range item.Operations() {
+			r := idRoute{idParam: -1, query: map[string]string{}, answers: map[int]*openapi3.Schema{}}
+			params := append(paramsOf(item.Parameters), paramsOf(op.Parameters)...)
+			for i, s := range segs {
+				switch {
+				case s == ":id":
+					r.idParam = i
+				case strings.HasPrefix(s, ":"):
+					r.scope = append(r.scope, s[1:])
+				}
 			}
-		}
-		for method := range doc.Paths.Value(path).Operations() {
-			rr := r
-			rr.create = method == http.MethodPost && r.idParam < 0
+			for _, p := range params {
+				if p == nil || p.Schema == nil || p.Schema.Value == nil {
+					continue
+				}
+				switch {
+				case p.In == openapi3.ParameterInPath && p.Name == "id":
+					r.resource = marked(p.Schema.Value, IDExtension)
+				case p.In == openapi3.ParameterInQuery:
+					if res := marked(p.Schema.Value, RefExtension, IDExtension); res != "" {
+						r.query[p.Name] = res
+					}
+				}
+			}
+			if r.idParam >= 0 && r.resource == "" {
+				return nil, fmt.Errorf("app: %s %s: the {id} names no resource (%s on its schema)", method, path, IDExtension)
+			}
+			r.create = method == http.MethodPost && r.idParam < 0
+			if op.RequestBody != nil && op.RequestBody.Value != nil {
+				r.body = jsonSchema(op.RequestBody.Value.Content)
+			}
+			if op.Responses != nil {
+				r.goneIsDone = method == http.MethodDelete && op.Responses.Value("204") != nil &&
+					op.Responses.Value("404") == nil
+				for code, resp := range op.Responses.Map() {
+					status, err := strconv.Atoi(code)
+					if err != nil || resp.Value == nil {
+						continue
+					}
+					if s := jsonSchema(resp.Value.Content); s != nil {
+						r.answers[status] = s
+						if status < 300 && r.item == nil {
+							r.item = s
+						}
+					}
+				}
+			}
+			if r.create {
+				r.created = marked(property(r.item, "id"), IDExtension)
+			}
 			key := method + " " + ginPath(path)
 			perReplica = perReplica || broadcast(key)
-			routes[key] = rr
+			routes[key] = r
 		}
-	}
-	for key, r := range routes {
-		r.broadcast = perReplica
-		routes[key] = r
 	}
 
 	return func(c *gin.Context) {
@@ -125,34 +194,77 @@ func idsMiddleware(store *idStore, resource string, doc *openapi3.T, broadcast f
 			return
 		}
 		ctx := c.Request.Context()
-		k := idKey{resource: resource}
 		values := make([]string, 0, len(route.scope))
 		for _, p := range route.scope {
 			values = append(values, c.Param(p))
 		}
-		k.scope = strings.Join(values, "/")
-		if route.broadcast {
-			k.instance = instance()
+		scope, inst := strings.Join(values, "/"), ""
+		if perReplica {
+			inst = instance()
 		}
+		key := func(resource string) idKey { return idKey{resource: resource, scope: scope, instance: inst} }
 
-		// In: the API's id becomes the backend's.
+		// In: the API's ids become the backend's.
+		in := func(where, resource, public string) (string, error) {
+			if _, err := uuid.Parse(public); err != nil {
+				return "", problem.Invalid("%s: %q is not a UUID", where, public)
+			}
+			backend, err := store.backend(ctx, key(resource), public)
+			if errors.Is(err, sql.ErrNoRows) {
+				if where == "id" {
+					return "", problem.NotFound("%q is not the id of one of the %s", public, resource)
+				}
+				return "", problem.Invalid("%s: %q is not the id of one of the %s", where, public, resource)
+			}
+			if err != nil {
+				return "", problem.Unavailable("the ids could not be read: %v", err)
+			}
+			return backend, nil
+		}
 		public := ""
 		if route.idParam >= 0 {
 			public = c.Param("id")
-			if _, err := uuid.Parse(public); err != nil {
-				problem.Abort(c, problem.Invalid("the id %q is not a UUID", public))
-				return
-			}
-			backend, err := store.backend(ctx, k, public)
-			if errors.Is(err, sql.ErrNoRows) {
-				problem.Abort(c, problem.NotFound("no %s %q", resource, public))
+			backend, err := in("id", route.resource, public)
+			var pe *problem.Error
+			if route.goneIsDone && errors.As(err, &pe) && pe.Status == http.StatusNotFound {
+				c.AbortWithStatus(http.StatusNoContent) // already gone
 				return
 			}
 			if err != nil {
-				problem.Abort(c, problem.Unavailable("the ids could not be read: %v", err))
+				problem.Abort(c, err)
 				return
 			}
 			setPathParam(c, route.idParam, "id", backend)
+		}
+		if len(route.query) > 0 {
+			q := c.Request.URL.Query()
+			for name, resource := range route.query {
+				for i, v := range q[name] {
+					backend, err := in(name, resource, v)
+					if err != nil {
+						problem.Abort(c, err)
+						return
+					}
+					q[name][i] = backend
+				}
+			}
+			c.Request.URL.RawQuery = q.Encode()
+		}
+		if route.body != nil && c.Request.Body != nil {
+			raw, err := io.ReadAll(c.Request.Body)
+			if err != nil {
+				problem.Abort(c, problem.Invalid("the body could not be read: %v", err))
+				return
+			}
+			out, err := mapJSON(raw, route.body, func(where, resource, v string) (string, error) {
+				return in(where, resource, v)
+			})
+			if err != nil {
+				problem.Abort(c, err)
+				return
+			}
+			c.Request.Body = io.NopCloser(bytes.NewReader(out))
+			c.Request.ContentLength = int64(len(out))
 		}
 
 		held := &heldResponse{ResponseWriter: c.Writer, status: http.StatusOK}
@@ -161,19 +273,29 @@ func idsMiddleware(store *idStore, resource string, doc *openapi3.T, broadcast f
 		c.Writer = held.ResponseWriter
 
 		// Out: the backend's ids become the API's.
-		if held.status < http.StatusBadRequest {
-			if c.Request.Method == http.MethodDelete && public != "" {
-				if err := store.forget(ctx, k, public); err != nil {
-					slog.WarnContext(ctx, "ids: a deleted item's id is kept", "resource", resource, "id", public, "err", err)
-				}
+		if held.status < http.StatusBadRequest && c.Request.Method == http.MethodDelete && public != "" {
+			if err := store.forget(ctx, key(route.resource), public); err != nil {
+				slog.WarnContext(ctx, "ids: a deleted item's id is kept", "resource", route.resource, "id", public, "err", err)
 			}
-			proposed := ""
-			if route.create {
-				proposed = BroadcastUUID(ctx)
+		}
+		proposed := ""
+		if route.create && held.status < http.StatusBadRequest {
+			proposed = BroadcastUUID(ctx)
+		}
+		out := func(where, resource, backend string) (string, error) {
+			p := ""
+			if where == "id" && resource == route.created {
+				p = proposed // what the create made: its id is the write's
 			}
-			body, err := swapIDs(held.body.Bytes(), func(backend string) (string, error) {
-				return store.public(ctx, k, backend, proposed)
-			})
+			return store.public(ctx, key(resource), backend, p)
+		}
+		schema := route.answers[held.status]
+		if held.status >= http.StatusBadRequest && route.item != nil {
+			// A problem may carry the item as it is: a conflict's current.
+			schema = &openapi3.Schema{Properties: openapi3.Schemas{"current": {Value: route.item}}}
+		}
+		if schema != nil {
+			body, err := mapJSON(held.body.Bytes(), schema, out)
 			if err != nil {
 				problem.Write(c.Writer, c.Request, problem.Unavailable("the ids could not be kept: %v", err))
 				return
@@ -183,7 +305,245 @@ func idsMiddleware(store *idStore, resource string, doc *openapi3.T, broadcast f
 			held.Header().Del("Content-Length")
 		}
 		held.send()
+	}, nil
+}
+
+// paramsOf turns OpenAPI's parameter references into the parameters.
+func paramsOf(ps openapi3.Parameters) []*openapi3.Parameter {
+	out := make([]*openapi3.Parameter, 0, len(ps))
+	for _, p := range ps {
+		if p != nil {
+			out = append(out, p.Value)
+		}
 	}
+	return out
+}
+
+// jsonSchema is the schema of a body's JSON, nil for none.
+func jsonSchema(content openapi3.Content) *openapi3.Schema {
+	for _, mt := range []string{"application/json", "application/problem+json"} {
+		if m := content.Get(mt); m != nil && m.Schema != nil {
+			return m.Schema.Value
+		}
+	}
+	return nil
+}
+
+// marked is the resource a schema names in the first of the extensions it
+// has, its allOf's too; empty for none.
+func marked(s *openapi3.Schema, extensions ...string) string {
+	if s == nil {
+		return ""
+	}
+	for _, ext := range extensions {
+		if v, ok := s.Extensions[ext].(string); ok && v != "" {
+			return v
+		}
+	}
+	for _, sub := range s.AllOf {
+		if res := marked(sub.Value, extensions...); res != "" {
+			return res
+		}
+	}
+	return ""
+}
+
+// property is an object schema's property, its allOf's too.
+func property(s *openapi3.Schema, name string) *openapi3.Schema {
+	if s == nil {
+		return nil
+	}
+	if p, ok := s.Properties[name]; ok && p != nil {
+		return p.Value
+	}
+	for _, sub := range s.AllOf {
+		if p := property(sub.Value, name); p != nil {
+			return p
+		}
+	}
+	return nil
+}
+
+// items is a list schema's items, its allOf's too.
+func items(s *openapi3.Schema) *openapi3.Schema {
+	if s == nil {
+		return nil
+	}
+	if s.Items != nil {
+		return s.Items.Value
+	}
+	for _, sub := range s.AllOf {
+		if it := items(sub.Value); it != nil {
+			return it
+		}
+	}
+	return nil
+}
+
+// idMapper turns one id of the named resource into the other side's; where
+// is the field, for the caller's sake.
+type idMapper func(where, resource, id string) (string, error)
+
+// mapJSON turns every id the schema marks in a JSON body. A body that is not
+// JSON is left as it is.
+func mapJSON(body []byte, s *openapi3.Schema, to idMapper) ([]byte, error) {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 || (trimmed[0] != '{' && trimmed[0] != '[') {
+		return body, nil
+	}
+	var v any
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	dec.UseNumber()
+	if err := dec.Decode(&v); err != nil {
+		return body, nil //nolint:nilerr // not JSON after all: sent as it is
+	}
+	changed, err := mapIDs(v, s, "", to)
+	if err != nil {
+		return nil, err
+	}
+	out, err := json.Marshal(changed)
+	if err != nil {
+		return nil, err
+	}
+	if body[len(body)-1] == '\n' {
+		out = append(out, '\n')
+	}
+	return out, nil
+}
+
+// mapIDs walks a decoded JSON value with its schema.
+func mapIDs(v any, s *openapi3.Schema, where string, to idMapper) (any, error) {
+	if s == nil {
+		return v, nil
+	}
+	resource := marked(s, IDExtension, RefExtension)
+	switch x := v.(type) {
+	case string:
+		if resource == "" {
+			return x, nil
+		}
+		return to(where, resource, x)
+	case []any:
+		item := items(s)
+		for i, e := range x {
+			// A list marked as a whole: each of its strings is an id.
+			sub := item
+			if resource != "" && marked(item, IDExtension, RefExtension) == "" {
+				sub = &openapi3.Schema{Extensions: map[string]any{RefExtension: resource}}
+			}
+			m, err := mapIDs(e, sub, where, to)
+			if err != nil {
+				return nil, err
+			}
+			x[i] = m
+		}
+		return x, nil
+	case map[string]any:
+		for k, e := range x {
+			name := k
+			if where != "" {
+				name = where + "." + k
+			}
+			m, err := mapIDs(e, property(s, k), name, to)
+			if err != nil {
+				return nil, err
+			}
+			x[k] = m
+		}
+		return x, nil
+	}
+	return v, nil
+}
+
+// markLegacy marks a contract that names its resource at the root alone
+// (x-infrapi-ids: bookmarks) the way a marked one is: its {id}, and the id
+// of every object of its components, are that resource's.
+func markLegacy(doc *openapi3.T) error {
+	root, set, err := extension(doc.Extensions, IDsExtension)
+	if err != nil {
+		return err
+	}
+	if !set || anyMarked(doc) {
+		return nil
+	}
+	mark := func(s *openapi3.Schema) {
+		if s.Extensions == nil {
+			s.Extensions = map[string]any{}
+		}
+		s.Extensions[IDExtension] = root
+	}
+	for _, path := range doc.Paths.InMatchingOrder() {
+		item := doc.Paths.Value(path)
+		ps := paramsOf(item.Parameters)
+		for _, op := range item.Operations() {
+			ps = append(ps, paramsOf(op.Parameters)...)
+		}
+		for _, p := range ps {
+			if p.In == openapi3.ParameterInPath && p.Name == "id" && p.Schema != nil && p.Schema.Value != nil {
+				mark(p.Schema.Value)
+			}
+		}
+	}
+	if doc.Components != nil {
+		for _, s := range doc.Components.Schemas {
+			if s.Value == nil {
+				continue
+			}
+			if id := s.Value.Properties["id"]; id != nil && id.Value != nil {
+				mark(id.Value)
+			}
+		}
+	}
+	return nil
+}
+
+// anyMarked says whether the contract marks an id anywhere.
+func anyMarked(doc *openapi3.T) bool {
+	found := false
+	var walk func(s *openapi3.Schema, seen map[*openapi3.Schema]bool)
+	walk = func(s *openapi3.Schema, seen map[*openapi3.Schema]bool) {
+		if s == nil || seen[s] || found {
+			return
+		}
+		seen[s] = true
+		if marked(s, IDExtension, RefExtension) != "" {
+			found = true
+			return
+		}
+		for _, p := range s.Properties {
+			walk(p.Value, seen)
+		}
+		if s.Items != nil {
+			walk(s.Items.Value, seen)
+		}
+		for _, sub := range s.AllOf {
+			walk(sub.Value, seen)
+		}
+	}
+	seen := map[*openapi3.Schema]bool{}
+	if doc.Components != nil {
+		for _, s := range doc.Components.Schemas {
+			walk(s.Value, seen)
+		}
+		for _, p := range doc.Components.Parameters {
+			if p.Value != nil && p.Value.Schema != nil {
+				walk(p.Value.Schema.Value, seen)
+			}
+		}
+	}
+	for _, path := range doc.Paths.InMatchingOrder() {
+		item := doc.Paths.Value(path)
+		ps := paramsOf(item.Parameters)
+		for _, op := range item.Operations() {
+			ps = append(ps, paramsOf(op.Parameters)...)
+		}
+		for _, p := range ps {
+			if p.Schema != nil {
+				walk(p.Schema.Value, seen)
+			}
+		}
+	}
+	return found
 }
 
 // setPathParam puts the backend's id where the handler reads it: gin's
@@ -200,52 +560,4 @@ func setPathParam(c *gin.Context, index int, name, value string) {
 		c.Request.URL.Path = strings.Join(segs, "/")
 		c.Request.URL.RawPath = ""
 	}
-}
-
-// swapIDs replaces the "id" of a JSON object, or of each object of a JSON
-// list, by what to gives it. Anything else is left as it is.
-func swapIDs(body []byte, to func(string) (string, error)) ([]byte, error) {
-	trimmed := bytes.TrimSpace(body)
-	if len(trimmed) == 0 || (trimmed[0] != '{' && trimmed[0] != '[') {
-		return body, nil
-	}
-	var v any
-	dec := json.NewDecoder(bytes.NewReader(trimmed))
-	dec.UseNumber()
-	if err := dec.Decode(&v); err != nil {
-		return body, nil //nolint:nilerr // not JSON after all: sent as it is
-	}
-	swap := func(o map[string]any) error {
-		id, ok := o["id"].(string)
-		if !ok {
-			return nil
-		}
-		public, err := to(id)
-		if err != nil {
-			return err
-		}
-		o["id"] = public
-		return nil
-	}
-	switch x := v.(type) {
-	case map[string]any:
-		if err := swap(x); err != nil {
-			return nil, err
-		}
-	case []any:
-		for _, item := range x {
-			if o, ok := item.(map[string]any); ok {
-				if err := swap(o); err != nil {
-					return nil, err
-				}
-			}
-		}
-	default:
-		return body, nil
-	}
-	out, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	return append(out, '\n'), nil
 }

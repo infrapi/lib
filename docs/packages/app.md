@@ -599,27 +599,54 @@ A service in front of another system — Grafana, a cloud, a storage — need no
 show that system's ids: the library gives the API its own, **UUIDs**, and
 pairs them with the backend's, which the handlers alone see.
 
+With the [contract](contract.md) format, `id: infrapi` is all it takes: the
+contract it writes marks every id. By hand, three extensions:
+
 ```yaml
-x-infrapi-ids: bookmarks     # at the root of the contract; id: infrapi in a resource description
+x-infrapi-ids: shop                  # at the root: the library keeps the ids
+paths:
+  /shop/v1/products/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, x-infrapi-id: products}}
+components:
+  schemas:
+    Product:
+      properties:
+        id:        {type: string, x-infrapi-id: products}    # a product's own id
+        parent_id: {type: string, x-infrapi-ref: products}   # a reference to one
+        team_ids:  {type: array, items: {type: string}, x-infrapi-ref: teams}   # each item
 ```
 ```yaml
 database:
   dsn: postgres://…          # where the pairs are kept, with the idempotency keys
 ```
 
-- **In**: the UUID in the URL becomes the backend's id before the handler runs.
-  One the API does not know is a `404`; one that is not a UUID, a `400`.
-- **Out**: the `id` of the answer — an object, or each object of a list —
-  becomes its UUID. A creation gets one, the same on every replica that runs it
-  (`app.BroadcastUUID`); an item met for the first time, made outside the API,
-  gets one too. A delete that succeeds forgets the pair.
+A contract of one resource may mark nothing but the root: its value is then
+the resource, and its `{id}` and the `id` of its objects are that resource's.
+
+- **In**: the UUID in the URL becomes the backend's id before the handler runs,
+  and so does every marked id in the body — at any depth, in lists, in lists of
+  objects — and in the query (a filter such as `?parent_id=`). An `{id}` the API
+  does not know is a `404`; an unknown reference, a `400` naming the field; one
+  that is not a UUID, a `400`.
+- **Out**: every marked id of the answer becomes its UUID: an object's, each
+  item's of a list or of `{items: [...]}`, a reference's, and the `current` of a
+  problem — the item as it is, on a conflict. A creation gets one, the same on
+  every replica that runs it (`app.BroadcastUUID`); an item met for the first
+  time — made outside the API, or a reference to it — gets one too.
+- **A delete** that succeeds forgets the pair. When the contract answers `204`
+  and never `404` — gone or already gone — a delete of an id the API does not
+  know is a `204`: a retried delete does not fail.
 - **The handlers** read and answer the backend's ids, as if there were no
   library: the contract's file says `type: string`, and what is served says
-  `format: uuid`.
+  `format: uuid`, references included.
+- **What it does not turn**: ids in free text — a problem's `detail` — and in
+  values the contract does not mark, such as a link to the backend's own page.
+  Name objects by name in messages.
 - **The pairs** are in one table, `infrapi_ids`: resource, scope (the path's other
   parameters, as the tenant), replica, the API's id, the backend's. When the
-  resource's writes are broadcast, every replica has its own backend, and its
-  own pairs: the same UUID, each replica's backend id.
+  writes are broadcast, every replica has its own backend, and its own pairs:
+  the same UUID, each replica's backend id.
 - The idempotency store keeps the answers with the API's ids.
 
 
