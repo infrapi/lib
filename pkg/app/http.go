@@ -154,6 +154,11 @@ func newEngine(ctx context.Context, spec Spec, cfg *loaded, rt *Runtime, version
 	})
 	engine.GET("/", indexHandler(cfg, rt.Cluster, specs))
 	engine.GET(BroadcastStatusPath+"/:id", statusHandler(rt.Cluster))
+	// The broadcast writes the other members publish are applied here,
+	// through the engine, once the replica has joined.
+	if len(writes.fanouts) > 0 {
+		go newApplier(rt.Cluster, engine).run(ctx, ready.joined.Load)
+	}
 	// Read only: evicting a replica from the ring is not offered.
 	if err := rt.Cluster.RegisterGin(engine, cluster.HandlerOptions{}); err != nil {
 		return nil, nil, err
@@ -272,6 +277,12 @@ func authenticate(wantSHA256 string) gin.HandlerFunc {
 		err = errors.New("not a sha256")
 	}
 	return func(c *gin.Context) {
+		// A broadcast write another member published was authenticated
+		// there.
+		if replaying(c.Request.Context()) {
+			c.Next()
+			return
+		}
 		key := c.GetHeader("apikey")
 		sum := sha256.Sum256([]byte(key))
 		if err != nil || key == "" || subtle.ConstantTimeCompare(sum[:], want) != 1 {

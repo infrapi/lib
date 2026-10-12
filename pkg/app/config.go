@@ -38,19 +38,35 @@ import (
 //	  admin_key: …         # or INFRAPI_GATEWAY_ADMIN_KEY
 //	shutdown:
 //	  drain_delay: 3s
+//	broadcast:
+//	  replay_window: 1h
+//	  max_body_bytes: 65536
 //	service:
 //	  …                    # the service's own, decoded into Spec.Service
 //
 // The environment wins over the file: any INFRAPI_APP_* or INFRAPI_CLUSTER_*
 // variable, and the three secrets above, which are better kept out of it.
 type fileConfig struct {
-	App      map[string]any `yaml:"app"`
-	Cluster  map[string]any `yaml:"cluster"`
-	Auth     AuthConfig     `yaml:"auth"`
-	Database DatabaseConfig `yaml:"database"`
-	Gateway  GatewayConfig  `yaml:"gateway"`
-	Shutdown ShutdownConfig `yaml:"shutdown"`
-	Service  yaml.Node      `yaml:"service"`
+	App       map[string]any  `yaml:"app"`
+	Cluster   map[string]any  `yaml:"cluster"`
+	Auth      AuthConfig      `yaml:"auth"`
+	Database  DatabaseConfig  `yaml:"database"`
+	Gateway   GatewayConfig   `yaml:"gateway"`
+	Shutdown  ShutdownConfig  `yaml:"shutdown"`
+	Broadcast BroadcastConfig `yaml:"broadcast"`
+	Service   yaml.Node       `yaml:"service"`
+}
+
+// BroadcastConfig is how the broadcast writes go to the other replicas: in
+// the gossip, which keeps each one for the replicas still to apply it.
+type BroadcastConfig struct {
+	// ReplayWindow is how long a replica that was down when a write was made
+	// can still apply it once back; past it, it has missed it. Default 1h, at
+	// most the 24h the outcomes are kept.
+	ReplayWindow time.Duration `yaml:"replay_window"`
+	// MaxBodyBytes is the largest body of a broadcast write, which the gossip
+	// carries to every replica: 413 beyond. Default 64 KiB.
+	MaxBodyBytes int `yaml:"max_body_bytes"`
 }
 
 // ShutdownConfig is how a replica stops. Nil fields keep their default.
@@ -177,6 +193,7 @@ type loaded struct {
 	Auth       AuthConfig
 	Database   DatabaseConfig
 	Gateway    GatewayConfig
+	Broadcast  BroadcastConfig
 	drainDelay time.Duration
 }
 
@@ -278,7 +295,17 @@ func loadConfig(spec Spec, path string) (*loaded, error) {
 	}
 
 	l := &loaded{app: app, cluster: cl, Auth: file.Auth, Database: file.Database, Gateway: file.Gateway,
-		drainDelay: 3 * time.Second}
+		Broadcast: file.Broadcast, drainDelay: 3 * time.Second}
+	switch b := &l.Broadcast; {
+	case b.ReplayWindow == 0:
+		b.ReplayWindow = DefaultReplayWindow
+	case b.ReplayWindow < 0 || b.ReplayWindow > BroadcastStatusRetention:
+		return nil, fmt.Errorf("app: %s: broadcast.replay_window: %s is not between 0 and %s",
+			path, b.ReplayWindow, BroadcastStatusRetention)
+	}
+	if l.Broadcast.MaxBodyBytes < 0 {
+		return nil, fmt.Errorf("app: %s: broadcast.max_body_bytes: %d is negative", path, l.Broadcast.MaxBodyBytes)
+	}
 	if d := file.Shutdown.DrainDelay; d != nil {
 		l.drainDelay = *d
 	}

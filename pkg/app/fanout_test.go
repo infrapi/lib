@@ -41,7 +41,7 @@ func TestBroadcastIDInHandlers(t *testing.T) {
 	require.NoError(t, err)
 	cl, err := newCluster(cfg) // disabled: identity only
 	require.NoError(t, err)
-	f := newFanout(cl, "", "http", 0)
+	f := newFanout(cl, "", 0)
 	var id string
 	var at time.Time
 	e := gin.New()
