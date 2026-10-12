@@ -12,7 +12,7 @@ const (
 
 	// ModeAll makes every healthy member of the role ring an acting one: a
 	// group of replicas, all of which act. A write a contract gives such a
-	// role is replayed on each member (pkg/app's broadcast writes).
+	// role is replayed on each member (infrapi/app's broadcast writes).
 	ModeAll
 )
 

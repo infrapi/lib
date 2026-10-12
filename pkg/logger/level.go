@@ -53,7 +53,7 @@ func encoderConfig() zapcore.EncoderConfig {
 }
 
 // encodeLevel writes zap's own level names, except warn: pkg/server's JSON
-// access log and pkg/app's slog setup both write logrus's name for it,
+// access log and infrapi/app's slog setup both write logrus's name for it,
 // "warning", so that an operator filtering a collector on level="warning"
 // finds every warning line in the process, not just the ones logrus wrote.
 func encodeLevel(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
