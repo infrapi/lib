@@ -85,3 +85,18 @@ cluster:
 	assert.Equal(t, "/bookmarks/v1/tenants/", commonPrefix(doc), "the gateway routes on it")
 	assert.Equal(t, "cache", doc.Paths.Value("/bookmarks/v1/tenants/{tenant}/bookmarks/{id}").Delete.Extensions[RingExtension])
 }
+
+// With the library keeping the ids, every marked id and reference is a UUID
+// in the contract served.
+func TestCompleteMarksReferencesAsUUIDs(t *testing.T) {
+	out, err := complete(telemetryLike)
+	require.NoError(t, err)
+	doc := loadDoc(t, out)
+	folder := doc.Components.Schemas["Folder"].Value
+	assert.Equal(t, "uuid", folder.Properties["id"].Value.Format)
+	assert.Equal(t, "uuid", folder.Properties["parent_id"].Value.Format)
+	assert.Equal(t, "uuid", folder.Properties["dashboard_ids"].Value.Items.Value.Format)
+	assert.Equal(t, "uuid", doc.Components.Schemas["Grant"].Value.Properties["team_id"].Value.Format)
+	q := doc.Paths.Value("/t/v1/{tenant}/folders").Get.Parameters[0].Value
+	assert.Equal(t, "uuid", q.Schema.Value.Format)
+}

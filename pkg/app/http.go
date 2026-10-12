@@ -124,7 +124,7 @@ func newEngine(ctx context.Context, spec Spec, cfg *loaded, rt *Runtime, version
 		}
 		// Last before the handlers, so that what the idempotency store keeps
 		// is the API's ids.
-		if resource, set, err := extension(docs[i].Extensions, IDsExtension); err != nil {
+		if _, set, err := extension(docs[i].Extensions, IDsExtension); err != nil {
 			return nil, nil, fmt.Errorf("app: version %q: %w", v.OpenAPI.Name, err)
 		} else if set {
 			if db == nil {
@@ -136,7 +136,11 @@ func newEngine(ctx context.Context, spec Spec, cfg *loaded, rt *Runtime, version
 					return nil, nil, err
 				}
 			}
-			chain = append(chain, idsMiddleware(ids, resource, docs[i], writes.broadcasts, rt.Cluster.InstanceID))
+			mw, err := idsMiddleware(ids, docs[i], writes.broadcasts, rt.Cluster.InstanceID)
+			if err != nil {
+				return nil, nil, fmt.Errorf("app: version %q: %w", v.OpenAPI.Name, err)
+			}
+			chain = append(chain, mw)
 		}
 		v.Routes(&router{group: engine.Group("", chain...), doc: docs[i]})
 	}

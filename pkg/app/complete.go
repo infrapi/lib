@@ -122,9 +122,25 @@ func setDefault(m *yaml.Node, key, value string) {
 	m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, v.Content[0])
 }
 
-// uuidIDs says format: uuid on every path parameter called id, and every
-// property called id of the components' schemas.
+// uuidIDs says format: uuid on every path parameter called id, every property
+// called id of the components' schemas, and every schema marked as an id or a
+// reference — a list's items, for a list of references.
 func uuidIDs(doc *yaml.Node) {
+	var walk func(n *yaml.Node)
+	walk = func(n *yaml.Node) {
+		if n.Kind == yaml.MappingNode && (lookup(n, IDExtension) != nil || lookup(n, RefExtension) != nil) {
+			if t := lookup(n, "type"); t != nil && t.Value == "array" {
+				setDefault(child(n, "items"), "format", "uuid")
+			} else {
+				setDefault(n, "format", "uuid")
+			}
+		}
+		for _, c := range n.Content {
+			walk(c)
+		}
+	}
+	walk(doc)
+
 	idParams := func(list *yaml.Node) {
 		if list == nil || list.Kind != yaml.SequenceNode {
 			return
