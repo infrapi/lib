@@ -20,8 +20,8 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/grafana/dskit v0.0.0-20260928073014-b6a53f6bee29
-	github.com/infrapi/lib v0.5.0
-	github.com/infrapi/lib/pkg/cluster v0.5.0
+	github.com/infrapi/lib v0.6.0
+	github.com/infrapi/lib/pkg/cluster v0.6.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/oapi-codegen/gin-middleware v1.1.0
 	github.com/prometheus/client_golang v1.24.1
