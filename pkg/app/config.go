@@ -47,11 +47,11 @@ import (
 // The environment wins over the file: any INFRAPI_APP_* or INFRAPI_CLUSTER_*
 // variable, and the three secrets above, which are better kept out of it.
 type fileConfig struct {
-	App      map[string]any `yaml:"app"`
-	Cluster  map[string]any `yaml:"cluster"`
-	Auth     AuthConfig     `yaml:"auth"`
-	Database DatabaseConfig `yaml:"database"`
-	Gateway  GatewayConfig  `yaml:"gateway"`
+	App       map[string]any  `yaml:"app"`
+	Cluster   map[string]any  `yaml:"cluster"`
+	Auth      AuthConfig      `yaml:"auth"`
+	Database  DatabaseConfig  `yaml:"database"`
+	Gateway   GatewayConfig   `yaml:"gateway"`
 	Shutdown  ShutdownConfig  `yaml:"shutdown"`
 	Broadcast BroadcastConfig `yaml:"broadcast"`
 	Service   yaml.Node       `yaml:"service"`
