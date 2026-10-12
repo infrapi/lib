@@ -123,6 +123,7 @@ Line by line:
 | `path` | what comes between the version and the collection, with its parameters | `/bookmarks/v1/tenants/{tenant}/bookmarks` |
 | `params` | the path parameters' rules; a plain string when not given | a tenant is lower-case, 1 to 40 characters |
 | `resource` | one item, singular: the Go types are named after it | `Bookmark`, `BookmarkSpec` |
+| `id` | who gives the item its id: `service` (the default), `caller`, or `infrapi` (below) | the service |
 | `fields` | the item's fields, in order | |
 | `filters` | the list's query parameters | `?tag=docs` |
 | `operations` | what the API offers, among `list`, `create`, `get`, `replace`, `delete` | all five |
@@ -156,6 +157,13 @@ What the generated contract holds, without your writing it:
 - `Bookmark`, what the API answers: the `id` the service gives it, and every
   field;
 - the answers' codes: `201` for a creation, `204` for a deletion, `200` otherwise.
+
+!!! tip "When the backend's ids must not be seen"
+    With `id: infrapi`, the callers never see the ids of the system behind the
+    service: the library answers its own UUIDs, unpredictable, and keeps each
+    paired with the backend's id in the service's database (`database.dsn`,
+    step 11). The handlers are written as before, with the backend's ids only.
+    [app](../packages/app.md#the-apis-own-ids-x-infrapi-ids) has the details.
 
 And what every contract shares, the library adds when it serves it: the error
 format (every error is a *problem document*, step 5) and the `apikey` header
