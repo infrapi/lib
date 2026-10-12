@@ -173,3 +173,141 @@ func TestLibraryKeptIDs(t *testing.T) {
 	assert.Nil(t, get(t, doc, "components", "schemas", "Bookmark", "properties", "id", "format"))
 	assert.NotContains(t, get(t, doc, "components", "schemas", "BookmarkSpec", "properties"), "id")
 }
+
+// A service of several resources: shared path and errors, a type, references
+// between resources, a paged and summarised list, an operation's own
+// parameter, and its documentation.
+const shop = `
+name: shop
+version: 2
+path: tenants/{tenant}
+id: infrapi
+errors:
+  503: The backend could not be reached. Retryable.
+problem:
+  codes: [not_found, already_exists]
+  fields:
+    current: {type: object}
+types:
+  line:
+    product_id: {type: string, required: true, ref: product}
+    quantity:   {type: integer, required: true, min: 1}
+resources:
+  - name: products
+    resource: product
+    description: What is sold.
+    fields:
+      name:  {type: string, required: true}
+      price: {type: number, required: true}
+      notes: {type: string, omit_empty: true}
+      url:   {type: string, computed: true}
+    list: {paging: true, fields: [name, url]}
+    operations: [list, create, get, delete]
+    query:
+      delete:
+        force: {type: boolean, default: false}
+    docs:
+      create:
+        summary: Add a product
+        description: Its name is unique.
+        errors:
+          409: Already sold under that name.
+  - name: orders
+    resource: order
+    fields:
+      lines:      {type: list, of: line, required: true}
+      product_id: {type: string, ref: product}
+      labels:     {type: map, of: string}
+      extra:      {type: object}
+    filters:
+      product_id: {type: string, ref: product}
+    list: {}
+    operations: [list, create, get]
+`
+
+func TestGenerateSeveralResources(t *testing.T) {
+	doc := generate(t, shop)
+	products, product := "/shop/v2/tenants/{tenant}/products", "/shop/v2/tenants/{tenant}/products/{id}"
+	orders := "/shop/v2/tenants/{tenant}/orders"
+
+	assert.Equal(t, "shop", doc["x-infrapi-ids"])
+	assert.Equal(t, "createProduct", get(t, doc, "paths", products, "post", "operationId"))
+	assert.Equal(t, "listOrders", get(t, doc, "paths", orders, "get", "operationId"))
+	assert.Equal(t, "Add a product", get(t, doc, "paths", products, "post", "summary"))
+	assert.Equal(t, []any{"products"}, get(t, doc, "paths", products, "post", "tags"))
+
+	// Errors: the service's everywhere, written once; 400 where a body or a
+	// parameter can be wrong; 404 on an item; an operation's own.
+	create := get(t, doc, "paths", products, "post", "responses").(map[string]any)
+	assert.Equal(t, "#/components/responses/Problem503", get(t, create, "503", "$ref"))
+	assert.Equal(t, "#/components/responses/Problem400", get(t, create, "400", "$ref"))
+	assert.Equal(t, "Already sold under that name.", get(t, create, "409", "description"))
+	assert.NotContains(t, create, "404")
+	assert.Contains(t, get(t, doc, "paths", product, "get", "responses"), "404")
+
+	// The ids: marked as the library's, a reference too, a list's items' too.
+	assert.Equal(t, "products", get(t, doc, "components", "schemas", "Product", "properties", "id", "x-infrapi-id"))
+	assert.Equal(t, "products", get(t, doc, "components", "schemas", "Line", "properties", "product_id", "x-infrapi-ref"))
+	assert.Equal(t, "#/components/schemas/Line", get(t, doc, "components", "schemas", "OrderSpec", "properties", "lines", "items", "$ref"))
+	var filter map[string]any
+	for _, p := range get(t, doc, "paths", orders, "get", "parameters").([]any) {
+		if m, ok := p.(map[string]any); ok && m["name"] == "product_id" {
+			filter = m
+		}
+	}
+	require.NotNil(t, filter)
+	assert.Equal(t, "products", get(t, filter, "schema", "x-infrapi-ref"))
+
+	// Objects and maps.
+	assert.Equal(t, "string", get(t, doc, "components", "schemas", "OrderSpec", "properties", "labels", "additionalProperties", "type"))
+	assert.Equal(t, "object", get(t, doc, "components", "schemas", "OrderSpec", "properties", "extra", "type"))
+
+	// The lists: paged and summarised, or the items alone.
+	assert.Equal(t, []any{"items", "page", "limit"}, get(t, doc, "components", "schemas", "ProductList", "required"))
+	assert.Equal(t, "#/components/schemas/ProductSummary",
+		get(t, doc, "components", "schemas", "ProductList", "properties", "items", "items", "$ref"))
+	assert.Equal(t, []any{"id", "name", "url"}, get(t, doc, "components", "schemas", "ProductSummary", "required"))
+	assert.Equal(t, []any{"items"}, get(t, doc, "components", "schemas", "OrderList", "required"))
+	assert.Equal(t, []any{"id", "name", "price", "url"}, get(t, doc, "components", "schemas", "Product", "required"),
+		"omit_empty: notes may be absent")
+
+	// An operation's own parameter, and the headers pkg/app reads.
+	names := func(path, method string) []string {
+		var out []string
+		for _, p := range get(t, doc, "paths", path, method, "parameters").([]any) {
+			m := p.(map[string]any)
+			if n, ok := m["name"].(string); ok {
+				out = append(out, n)
+			} else {
+				out = append(out, m["$ref"].(string))
+			}
+		}
+		return out
+	}
+	assert.Equal(t, []string{"force", "#/components/parameters/CorrelationID", "#/components/parameters/IdempotencyKey"},
+		names(product, "delete"))
+	assert.NotContains(t, names(products, "get"), "#/components/parameters/IdempotencyKey", "a read is not a write")
+
+	// The problem: the library's fields, and the service's.
+	assert.Contains(t, get(t, doc, "components", "schemas", "Problem", "properties"), "current")
+	assert.Contains(t, get(t, doc, "components", "schemas", "Problem", "properties", "code", "description"), "already_exists")
+}
+
+func TestParseRefusesSeveralResources(t *testing.T) {
+	for name, c := range map[string]struct{ src, want string }{
+		"a resource key at the top": {strings.Replace(shop, "resources:", "fields: {}\nresources:", 1), `"fields" belongs to a resource`},
+		"an unknown resource key":   {strings.Replace(shop, "    description: What is sold.", "    descrption: x", 1), `"descrption" is not a key of a resource`},
+		"a ref to nothing":          {strings.Replace(shop, "ref: product}\n    quantity", "ref: produce}\n    quantity", 1), `ref "produce"`},
+		"a ref on a number":         {strings.Replace(shop, "price: {type: number, required: true}", "price: {type: number, required: true, ref: product}", 1), "an id is a string"},
+		"an unknown type":           {strings.Replace(shop, "of: line", "of: lien", 1), "a list needs of"},
+		"a summary of no field":     {strings.Replace(shop, "fields: [name, url]", "fields: [name, colour]", 1), `list.fields: "colour"`},
+		"a query on no operation":   {strings.Replace(shop, "      delete:\n        force", "      replace:\n        force", 1), `query: "replace"`},
+		"docs on no operation":      {strings.Replace(shop, "      create:\n        summary", "      update:\n        summary", 1), `docs: "update"`},
+		"an object filter":          {strings.Replace(shop, "      product_id: {type: string, ref: product}\n    list", "      product_id: {type: object}\n    list", 1), "an object is for a body"},
+		"a doc key":                 {strings.Replace(shop, "        summary: Add a product", "        sumary: Add a product", 1), `"sumary"`},
+		"rings at the top":          {strings.Replace(shop, "errors:\n  503", "cluster: {rings: {get: cache}}\nerrors:\n  503", 1), `cluster: "rings"`},
+	} {
+		_, err := Parse([]byte(c.src))
+		assert.ErrorContains(t, err, c.want, name)
+	}
+}
