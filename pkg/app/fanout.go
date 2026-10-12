@@ -6,16 +6,12 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base32"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/url"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,12 +24,9 @@ import (
 	"github.com/infrapi/lib/pkg/app/problem"
 )
 
-// Headers a replayed write carries: the broadcast id and time the first
-// replica gave it.
-const (
-	BroadcastIDHeader   = "X-Infrapi-Broadcast-ID"
-	BroadcastTimeHeader = "X-Infrapi-Broadcast-Time"
-)
+// BroadcastIDHeader is on every write's answer: the broadcast id, under which
+// BroadcastStatusPath says how a broadcast write went.
+const BroadcastIDHeader = "X-Infrapi-Broadcast-ID"
 
 type broadcastKey struct{}
 
@@ -100,54 +93,48 @@ func BroadcastUUID(ctx context.Context) string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", raw[0:4], raw[4:6], raw[6:8], raw[8:10], raw[10:16])
 }
 
-// replayed counts the writes a replica replayed on the others, by outcome.
+// replayed counts the broadcast writes this replica applied for another one,
+// by outcome.
 var replayed = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: "infrapi_app_broadcast_writes_total",
-	Help: "Writes this replica replayed on another member of the all-mode role, by method, route and outcome.",
+	Help: "Broadcast writes this replica applied, received from another member of the all-mode role, by method, route and outcome.",
 }, []string{"method", "route", "outcome"})
 
-// fanout gives every write its identity and, with cluster.broadcast_writes,
-// replays it on every other member of the role once it succeeded here.
+// DefaultBroadcastMaxBody is the largest body of a broadcast write when
+// broadcast.max_body_bytes is not set: the body goes into the gossip.
+const DefaultBroadcastMaxBody = 64 << 10
+
+// BroadcastWait is how long a strict or tolerant write waits for the other
+// replicas' outcomes.
+const BroadcastWait = time.Minute
+
+// fanout gives every write its identity and, for a role's broadcast writes,
+// publishes each one that succeeded here for the other members to apply.
 type fanout struct {
 	cluster *cluster.Cluster
-	role    string // empty: identity only, no replay
-	scheme  string
+	role    string // empty: identity only, nothing published
 	maxBody int64
-	client  *http.Client
+	wait    time.Duration
 }
 
-func newFanout(cl *cluster.Cluster, role, scheme string, maxBody int64) *fanout {
+func newFanout(cl *cluster.Cluster, role string, maxBody int64) *fanout {
 	if maxBody <= 0 {
-		maxBody = idempotency.DefaultMaxBody
+		maxBody = DefaultBroadcastMaxBody
 	}
-	// Sent from the address this replica advertises in the ring: the
-	// receiver recognises a member by it, whatever route the system picks.
-	dialer := &net.Dialer{Timeout: 5 * time.Second}
-	if cl.Enabled() {
-		if host, _, err := net.SplitHostPort(cl.InstanceAddr()); err == nil {
-			if ip := net.ParseIP(host); ip != nil && !ip.IsUnspecified() {
-				dialer.LocalAddr = &net.TCPAddr{IP: ip}
-			}
-		}
-	}
-	return &fanout{cluster: cl, role: role, scheme: scheme, maxBody: maxBody, client: &http.Client{Transport: &http.Transport{
-		Proxy:                 nil, // replicas talk directly, never through an egress proxy
-		DialContext:           dialer.DialContext,
-		ResponseHeaderTimeout: 2 * time.Minute,
-		MaxIdleConnsPerHost:   4,
-	}}}
+	return &fanout{cluster: cl, role: role, maxBody: maxBody, wait: BroadcastWait}
 }
 
-// How the caller of a broadcast write learns of its replays, set by the
-// contract's x-infrapi-broadcast.
+// How the caller of a broadcast write learns of the other replicas, set by
+// the contract's x-infrapi-broadcast.
 const (
 	// BroadcastStrict waits for every replica, and answers 502 when one did
 	// not take the write: the caller retries with the same Idempotency-Key.
 	BroadcastStrict = "strict"
 	// BroadcastTolerant waits for every replica, and answers what the first
-	// one did; a replica that failed is in the logs and the metrics only.
+	// one did; a replica that failed is in the status and the logs.
 	BroadcastTolerant = "tolerant"
-	// BroadcastAsync answers at once, and replays in the background.
+	// BroadcastAsync answers at once; the other replicas apply the write as
+	// the gossip brings it.
 	BroadcastAsync = "async"
 )
 
@@ -162,20 +149,11 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 		return
 	}
 
-	// A replay from another member: its identity, and no replay of our own.
-	if by := r.Header.Get(ForwardedHeader); by != "" && r.Header.Get(BroadcastIDHeader) != "" && f.role != "" {
-		at, err := time.Parse(time.RFC3339Nano, r.Header.Get(BroadcastTimeHeader))
-		if err != nil {
-			problem.Abort(c, problem.Invalid("%s: %v", BroadcastTimeHeader, err))
-			return
-		}
-		if !f.fromMember(r) {
-			problem.Abort(c, &problem.Error{Status: http.StatusForbidden, Code: "not_a_member", Title: "Not a member",
-				Detail: "replayed writes are taken from the members of the " + f.role + " ring only"})
-			return
-		}
-		server.LogField(c, "broadcast_from", by)
-		f.run(c, broadcastIdentity{id: r.Header.Get(BroadcastIDHeader), at: at})
+	// A write another member published, applied here: its identity, and
+	// nothing published again.
+	if rp, ok := r.Context().Value(replayKey{}).(replayOf); ok {
+		server.LogField(c, "broadcast_from", rp.by)
+		f.run(c, rp.identity)
 		return
 	}
 
@@ -185,14 +163,15 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 		return
 	}
 
-	// Kept for the replays: the handler reads the body.
+	// Kept for the others: the handler reads the body.
 	body, err := io.ReadAll(io.LimitReader(r.Body, f.maxBody+1))
 	if err != nil {
 		problem.Abort(c, problem.Invalid("the body could not be read: %v", err))
 		return
 	}
 	if int64(len(body)) > f.maxBody {
-		problem.Abort(c, problem.TooLarge("the body is over %d bytes", f.maxBody))
+		problem.Abort(c, problem.TooLarge("the body of a broadcast write is over %d bytes "+
+			"(broadcast.max_body_bytes): it goes to every replica through the gossip", f.maxBody))
 		return
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
@@ -207,7 +186,12 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 	// The request as the caller sent it: what follows may rewrite it — the
 	// library's ids become the backend's — and the replicas take the
 	// caller's.
-	path, query := c.Request.URL.Path, c.Request.URL.RawQuery
+	req := replayRequest{Route: c.FullPath(), Query: r.URL.RawQuery, Body: body,
+		Correlation: problem.CorrelationID(r.Context())}
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		req.Header = map[string]string{"Content-Type": ct}
+	}
+	method, path := r.Method, r.URL.Path
 	f.run(c, w)
 	if held != nil {
 		c.Writer = held.ResponseWriter
@@ -221,14 +205,22 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 		return
 	}
 
-	out := snapshot(c, w, body, status)
-	out.path, out.query = path, query
-	if policy == BroadcastAsync {
-		server.LogField(c, "broadcast", "async")
-		go f.replay(out) // c is gin's again once this returns: the snapshot is all it reads
+	ctx := context.WithoutCancel(r.Context())
+	waitFor, down, err := f.publish(ctx, w, method, path, &req, status)
+	if err != nil {
+		server.LogField(c, "broadcast_failed", "("+f.role+")")
+		if held != nil {
+			f.incomplete(c, nil, []string{"(" + f.role + ": " + err.Error() + ")"})
+		}
 		return
 	}
-	done, failed := f.replay(out)
+	if policy == BroadcastAsync {
+		server.LogField(c, "broadcast", "async")
+		return
+	}
+	done, failed := f.await(ctx, w.id, waitFor)
+	failed = append(failed, down...)
+	slices.Sort(failed)
 	server.LogField(c, "broadcast_to", strings.Join(done, ","))
 	if len(failed) > 0 {
 		server.LogField(c, "broadcast_failed", strings.Join(failed, ","))
@@ -240,9 +232,13 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 		held.send()
 		return
 	}
-	// The write is done here and on the others: a retry with the same
-	// Idempotency-Key does it again everywhere, the same, and reaches the
-	// replicas that missed it.
+	f.incomplete(c, done, failed)
+}
+
+// incomplete answers a strict write that not every replica took. The write
+// is done here and on the others: a retry with the same Idempotency-Key asks
+// again those that failed, and those that were down apply it when back.
+func (f *fanout) incomplete(c *gin.Context, done, failed []string) {
 	for k := range c.Writer.Header() {
 		if k != "X-Correlation-Id" && k != http.CanonicalHeaderKey(BroadcastIDHeader) {
 			c.Writer.Header().Del(k)
@@ -251,7 +247,8 @@ func (f *fanout) handle(c *gin.Context, policy string) {
 	problem.Write(c.Writer, c.Request, &problem.Error{Status: http.StatusBadGateway, Code: "broadcast_incomplete",
 		Title: "Not every replica took the write", Retryable: true,
 		Detail: "done here and on " + listOr(done, "no other replica") + "; not on " + strings.Join(failed, ", ") +
-			". Retry with the same Idempotency-Key: the write is done again, the same, everywhere"})
+			". A replica that was down applies it when back, within " + window().String() +
+			"; retry with the same Idempotency-Key to ask again those that failed"})
 }
 
 func listOr(list []string, none string) string {
@@ -299,23 +296,6 @@ func (h *heldResponse) send() {
 	}
 }
 
-// outgoing is what a replay needs of the request, copied: an async replay
-// outlives it.
-type outgoing struct {
-	method, path, query, host, route, correlation string
-	header                                        http.Header
-	identity                                      broadcastIdentity
-	body                                          []byte
-	status                                        int // this replica's answer
-}
-
-func snapshot(c *gin.Context, w broadcastIdentity, body []byte, status int) outgoing {
-	r := c.Request
-	return outgoing{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery, host: r.Host, route: c.FullPath(),
-		correlation: problem.CorrelationID(r.Context()), header: r.Header.Clone(), identity: w, body: body,
-		status: status}
-}
-
 // run handles the write here, with its identity in the request's context.
 func (f *fanout) run(c *gin.Context, w broadcastIdentity) {
 	f.identify(c, w)
@@ -330,162 +310,142 @@ func (f *fanout) identify(c *gin.Context, w broadcastIdentity) {
 	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), broadcastKey{}, w))
 }
 
-// replay sends the write to every other member of the role, at the same time,
-// waits for them, and says which took it and which did not.
-func (f *fanout) replay(out outgoing) (done, failed []string) {
-	ctx, cancel := context.WithTimeout(problem.WithCorrelationID(context.Background(), out.correlation), 2*time.Minute)
-	defer cancel()
-
+// publish puts the write, done here, in the shared status, for every other
+// member of the role to apply: those registered in the ring, a replica that
+// is down too, which applies it when back. It returns the members that are
+// up, whose outcome a strict or tolerant write waits for, and those that are
+// not. The same write published again — a retry, with the same
+// Idempotency-Key — asks again the replicas that failed it.
+func (f *fanout) publish(ctx context.Context, w broadcastIdentity, method, path string, req *replayRequest,
+	status int) (up, down []string, err error) {
 	self := f.cluster.InstanceID()
 	role, err := f.cluster.Role(f.role)
 	var registered []cluster.Member
 	if err == nil {
 		// Every replica the ring holds, those it excludes too: one that
 		// stopped but stays registered (keep_instance_in_ring_on_shutdown),
-		// or whose heartbeat is stale, is still one of the role's, and its
-		// missing the write is said rather than hidden.
+		// or whose heartbeat is stale, is still one of the role's.
 		registered, err = role.AllMembers(ctx)
 	}
-	var members, missed []cluster.Member
-	for _, m := range registered {
-		if m.Healthy || m.ID == self {
-			members = append(members, m)
-		} else {
-			missed = append(missed, m)
-		}
-	}
 	if err != nil {
-		broadcastLog().ErrorContext(ctx, "broadcast write: not sent to the others", "role", f.role, "err", err)
-		record(ctx, f.cluster, out.identity.id, writeRecord{At: out.identity.at, By: self, Method: out.method,
-			Path: out.path, Error: err.Error(), Replicas: map[string]replicaRecord{
-				self: {State: stateDone, Status: out.status, Updated: time.Now().UTC()}}})
-		return nil, []string{"(" + f.role + ")"}
+		broadcastLog().ErrorContext(ctx, "broadcast write: not published", "role", f.role, "err", err)
+		record(ctx, f.cluster, w.id, writeRecord{At: w.at, By: self, Method: method, Path: path, Error: err.Error(),
+			Replicas: map[string]replicaRecord{self: {State: stateDone, Status: status, Updated: time.Now().UTC()}}})
+		return nil, nil, err
 	}
 
-	// What every replica can read back: this one done, the others pending.
-	rec := writeRecord{At: out.identity.at, By: self, Method: out.method, Path: out.path,
-		Replicas: map[string]replicaRecord{}}
+	client, err := f.cluster.KVClient(statusCodecID)
+	if err != nil {
+		return nil, nil, err
+	}
 	now := time.Now().UTC()
-	for _, m := range members {
-		r := replicaRecord{State: statePending, Updated: now}
-		if m.ID == self {
-			r.State, r.Status = stateDone, out.status
+	err = client.CAS(ctx, statusKey, func(in interface{}) (interface{}, bool, error) {
+		current, ok := in.(*broadcastStatus)
+		if !ok || current == nil {
+			current = newBroadcastStatus()
 		}
-		rec.Replicas[m.ID] = r
-	}
-	for _, m := range missed {
-		rec.Replicas[m.ID] = replicaRecord{State: stateMissed, Updated: now,
-			Error: "not sent: the replica is " + strings.ToLower(m.State) + " in the ring, and not healthy"}
-		failed = append(failed, m.ID)
-		replayed.WithLabelValues(out.method, out.route, "missed").Inc()
-		broadcastLog().WarnContext(ctx, "broadcast write: a replica is registered but not healthy, not sent",
-			"instance", m.ID, "state", m.State, "broadcast_id", out.identity.id, "correlation_id", out.correlation)
-	}
-	record(ctx, f.cluster, out.identity.id, rec)
-
-	var (
-		wg sync.WaitGroup
-		mu sync.Mutex
-	)
-	for _, m := range members {
-		if m.ID == self {
-			continue
+		before := current.Writes[w.id]
+		rec := &writeRecord{At: w.at, By: self, Method: method, Path: path, Request: req,
+			Replicas: map[string]replicaRecord{}}
+		if before != nil {
+			rec.At, rec.By = before.At, before.By
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			start := time.Now()
-			status, err := f.send(ctx, out, m.Addr)
-			attrs := []any{"instance", m.ID, "addr", m.Addr, "method", out.method, "path", out.path,
-				"status", status, "duration", time.Since(start), "broadcast_id", out.identity.id,
-				"correlation_id", out.correlation}
-			outcome := "ok"
-			if err != nil {
-				outcome = "failed"
-				broadcastLog().ErrorContext(ctx, "broadcast write: a replica did not take it", append(attrs, "err", err)...)
-			} else {
-				broadcastLog().InfoContext(ctx, "broadcast write: replayed", attrs...)
+		for _, m := range registered {
+			prev, seen := replicaRecord{}, false
+			if before != nil {
+				prev, seen = before.Replicas[m.ID]
 			}
-			replayed.WithLabelValues(out.method, out.route, outcome).Inc()
-			r := replicaRecord{State: stateDone, Status: status, Updated: time.Now().UTC()}
-			if err != nil {
-				r.State, r.Error = stateFailed, err.Error()
+			switch {
+			case m.ID == self:
+				attempt := prev.Attempt
+				if seen && prev.State != stateDone {
+					attempt++
+				}
+				rec.Replicas[self] = replicaRecord{Attempt: attempt, State: stateDone, Status: status, Updated: now}
+			case !seen:
+				rec.Replicas[m.ID] = replicaRecord{State: statePending, Updated: now}
+			case prev.State == stateFailed || prev.State == stateMissed:
+				rec.Replicas[m.ID] = replicaRecord{Attempt: prev.Attempt + 1, State: statePending, Updated: now}
 			}
-			record(ctx, f.cluster, out.identity.id, writeRecord{At: out.identity.at, By: self, Method: out.method,
-				Path: out.path, Replicas: map[string]replicaRecord{m.ID: r}})
-			mu.Lock()
-			if err != nil {
-				failed = append(failed, m.ID)
-			} else {
-				done = append(done, m.ID)
-			}
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
-	slices.Sort(done)
-	slices.Sort(failed)
-	return done, failed
-}
-
-// send replays the write on one replica: same method, path, query, headers
-// and body, plus its identity.
-// It returns the replica's status, 0 when it did not answer.
-func (f *fanout) send(ctx context.Context, out outgoing, addr string) (int, error) {
-	target := url.URL{Scheme: f.scheme, Host: addr, Path: out.path, RawQuery: out.query}
-	req, err := http.NewRequestWithContext(ctx, out.method, target.String(), bytes.NewReader(out.body))
+		}
+		if _, err := current.Merge(&broadcastStatus{Writes: map[string]*writeRecord{w.id: rec}}, true); err != nil {
+			return nil, false, err
+		}
+		return current, true, nil
+	})
 	if err != nil {
-		return 0, err
+		broadcastLog().ErrorContext(ctx, "broadcast write: not published", "broadcast_id", w.id, "err", err)
+		return nil, nil, err
 	}
-	req.Header = out.header.Clone()
-	req.Host = out.host
-	// The idempotency store would answer the replay with this replica's
-	// response instead of running it: the broadcast id does that job.
-	req.Header.Del(idempotency.Header)
-	req.Header.Set(ForwardedHeader, f.cluster.InstanceID())
-	req.Header.Set(BroadcastIDHeader, out.identity.id)
-	req.Header.Set(BroadcastTimeHeader, out.identity.at.Format(time.RFC3339Nano))
-	req.Header.Set("X-Correlation-ID", out.correlation)
-
-	// The host is a member's address, read from the ring; the path is the
-	// route the request already matched.
-	resp, err := f.client.Do(req) // #nosec G704 -- not the caller's URL
-	if err != nil {
-		return 0, fmt.Errorf("unreachable: %w", err)
-	}
-	answer, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	closeErr := resp.Body.Close()
-	if resp.StatusCode < http.StatusBadRequest {
-		return resp.StatusCode, errors.Join(readErr, closeErr)
-	}
-	return resp.StatusCode, errors.Join(fmt.Errorf("answered %d: %s", resp.StatusCode, bytes.TrimSpace(answer)),
-		readErr, closeErr)
-}
-
-// fromMember says whether the request comes from the host of a member of the
-// role's ring: each replica sends from the address it advertises there.
-func (f *fanout) fromMember(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false
-	}
-	role, err := f.cluster.Role(f.role)
-	if err != nil {
-		return false
-	}
-	members, err := role.Members()
-	if err != nil {
-		return false
-	}
-	for _, m := range members {
-		if h, _, err := net.SplitHostPort(m.Addr); err == nil && h == host {
-			return true
+	for _, m := range registered {
+		switch {
+		case m.ID == self:
+		case m.Healthy:
+			up = append(up, m.ID)
+		default:
+			down = append(down, m.ID)
+			broadcastLog().WarnContext(ctx, "broadcast write: a replica is registered but not healthy: "+
+				"it applies the write when back", "instance", m.ID, "state", m.State, "broadcast_id", w.id,
+				"window", window().String())
 		}
 	}
-	return false
+	return up, down, nil
 }
 
-// broadcastLog is the logger of the replays, tagged like the cluster's own
+// await waits until each of the replicas has applied the write, or failed
+// it, or the wait is over, and says which took it and which did not.
+func (f *fanout) await(ctx context.Context, id string, replicas []string) (done, failed []string) {
+	if len(replicas) == 0 {
+		return nil, nil
+	}
+	client, err := f.cluster.KVClient(statusCodecID)
+	if err != nil {
+		return nil, replicas
+	}
+	ctx, cancel := context.WithTimeout(ctx, f.wait)
+	defer cancel()
+	settled := func() (done, failed []string, all bool) {
+		v, err := client.Get(ctx, statusKey)
+		s, _ := v.(*broadcastStatus)
+		var w *writeRecord
+		if err == nil && s != nil {
+			w = s.Writes[id]
+		}
+		all = true
+		for _, node := range replicas {
+			var r replicaRecord
+			if w != nil {
+				r = w.Replicas[node]
+			}
+			switch r.State {
+			case stateDone:
+				done = append(done, node)
+			case stateFailed, stateMissed:
+				failed = append(failed, node)
+			default:
+				all = false
+				failed = append(failed, node) // so far
+			}
+		}
+		return done, failed, all
+	}
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		done, failed, all := settled()
+		if all || ctx.Err() != nil {
+			slices.Sort(done)
+			slices.Sort(failed)
+			return done, failed
+		}
+		select {
+		case <-ctx.Done():
+		case <-tick.C:
+		}
+	}
+}
+
+// broadcastLog is the logger of the broadcast writes, tagged like the cluster's own
 // lines. Taken at each call: the default logger is the service's only once it
 // has started.
 func broadcastLog() *slog.Logger { return slog.Default().With("component", "broadcast") }

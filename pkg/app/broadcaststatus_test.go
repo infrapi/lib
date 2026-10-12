@@ -121,3 +121,66 @@ func TestBroadcastOutcome(t *testing.T) {
 	assert.Equal(t, "no members", s.Writes["w1"].Error)
 	assert.Contains(t, s.MergeContent(), "w1/error")
 }
+
+// Past the replay window, the request is dropped and the replicas that had
+// not applied it have missed it; what they answered is kept.
+func TestBroadcastReplayWindow(t *testing.T) {
+	now := time.Now()
+	at := now.Add(-DefaultReplayWindow - time.Minute)
+	s := newBroadcastStatus()
+	_, err := s.Merge(&broadcastStatus{Writes: map[string]*writeRecord{"w1": {At: at, By: "a", Method: "POST",
+		Path: "/x", Request: &replayRequest{Body: []byte(`{}`)}, Replicas: map[string]replicaRecord{
+			"a": {State: stateDone, Status: 201, Updated: at},
+			"b": {State: statePending, Updated: at},
+		}}}}, false)
+	require.NoError(t, err)
+	w := s.Writes["w1"]
+	assert.Nil(t, w.Request, "too old to be taken in")
+
+	s.Writes["w1"].Request = &replayRequest{Body: []byte(`{}`)}
+	s.expire(now)
+	assert.Nil(t, w.Request)
+	assert.Equal(t, stateMissed, w.Replicas["b"].State)
+	assert.Equal(t, at.Add(DefaultReplayWindow), w.Replicas["b"].Updated, "the same on every replica")
+	assert.Equal(t, stateDone, w.Replicas["a"].State)
+	assert.Equal(t, outcomePartial, w.outcome())
+
+	// Within the window, the request is kept and taken in.
+	fresh := newBroadcastStatus()
+	_, err = fresh.Merge(&broadcastStatus{Writes: map[string]*writeRecord{"w2": {At: now, Request: &replayRequest{
+		Body: []byte(`{}`)}, Replicas: map[string]replicaRecord{"b": {State: statePending, Updated: now}}}}}, false)
+	require.NoError(t, err)
+	assert.NotNil(t, fresh.Writes["w2"].Request)
+}
+
+// A later attempt supersedes an earlier one, whatever its state; within one
+// attempt, the replica's own answer supersedes a missed one, which supersedes
+// a pending one.
+func TestBroadcastAttempts(t *testing.T) {
+	now := time.Now()
+	failed := replicaRecord{Attempt: 0, State: stateFailed, Updated: now}
+	retry := replicaRecord{Attempt: 1, State: statePending, Updated: now.Add(-time.Hour)}
+	assert.True(t, retry.after(failed))
+	assert.False(t, failed.after(retry))
+
+	missed := replicaRecord{State: stateMissed, Updated: now.Add(time.Hour)}
+	done := replicaRecord{State: stateDone, Updated: now}
+	pending := replicaRecord{State: statePending, Updated: now.Add(2 * time.Hour)}
+	assert.True(t, done.after(missed))
+	assert.True(t, missed.after(pending))
+}
+
+// Beyond BroadcastRequestsMax, the oldest requests go first.
+func TestBroadcastRequestsCap(t *testing.T) {
+	now := time.Now()
+	s := newBroadcastStatus()
+	big := make([]byte, BroadcastRequestsMax/2)
+	for i := range 3 {
+		s.Writes[fmt.Sprint("w", i)] = &writeRecord{At: now.Add(time.Duration(i) * time.Second),
+			Request: &replayRequest{Body: big}, Replicas: map[string]replicaRecord{}}
+	}
+	s.expire(now.Add(3 * time.Second))
+	assert.Nil(t, s.Writes["w0"].Request)
+	assert.NotNil(t, s.Writes["w1"].Request)
+	assert.NotNil(t, s.Writes["w2"].Request)
+}

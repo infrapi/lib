@@ -207,6 +207,9 @@ gateway:
   max_body_bytes: 1048576
 shutdown:
   drain_delay: 3s
+broadcast:
+  replay_window: 1h      # how long a replica that was down can catch up a broadcast write
+  max_body_bytes: 65536  # a broadcast write's body, which the gossip carries
 service:
   max_quantity: 10       # the service's own
 ```
@@ -349,7 +352,7 @@ operation**: which ring a write runs on. The ring's mode, declared in
 | The write's ring | It runs |
 |---|---|
 | a leader role | on that role's leader; relayed there from any other replica |
-| an all-mode role | here, then replayed on every member of that role |
+| an all-mode role | here, then on every member of that role, through the gossip |
 | `local` | on the replica that received it |
 
 Two extensions, written in the contract next to what they govern:
@@ -402,15 +405,19 @@ cluster:
 
 A write given to a **broadcast** ring is performed **by every replica**, each on
 what it keeps for itself — a local disk, a local cache, a process on its host.
-The replica that receives it runs it, then replays it on the other members of
-the ring, through the same handler.
+The replica that receives it runs it, then **publishes it in the gossip**: every
+other member of the ring applies it, through the same handler.
 
 ```text
 POST …/bookmarks ──► node-1: handler runs, 201
-                       ├─ replay ─► node-2: same request, same handler ─► 201
-                       └─ replay ─► node-3: same request, same handler ─► 201
-                     ◄── 201 to the caller, once every replica has answered
+                       └─ publishes the write in the cluster's store (gossip)
+                            ├─► node-2: sees it, runs the same request, same handler ─► done
+                            └─► node-3: sees it, runs the same request, same handler ─► done
+                     ◄── 201 to the caller, once every replica has applied it (strict)
 ```
+
+No replica calls another: the write travels in the cluster's own gossip, the
+way the ring does, and each replica records in it how the write went there.
 
 ### The handlers must give the same answer everywhere
 
@@ -434,18 +441,42 @@ b.CreatedAt = app.BroadcastTime(ctx)        // not time.Now()
 - Both are set on **every** write, whatever its ring: a handler written this way
   runs unchanged on any ring. Both are empty on a read.
 
-### What is replayed, and how
+### What is published, and how it is applied
 
 - Only a write that **succeeded** on the first replica (status below 400) is
-  replayed: a refused or failed one never reaches the others.
-- The replay is the same request — method, path, query, headers, body — plus
-  `X-Infrapi-Forwarded-By`, `X-Infrapi-Broadcast-ID`, `X-Infrapi-Broadcast-Time` and the
-  call's `X-Correlation-ID`. Without its `Idempotency-Key`: the broadcast id
-  does that job, and a shared idempotency store would otherwise answer the
-  replay instead of running it.
-- The replicas are called at the same time, directly, on their API port.
-- A replay is accepted from the host of a member of the role only
-  (`403 not_a_member` otherwise), and is not replayed again.
+  published: a refused or failed one never reaches the others.
+- What is published is the request as the caller sent it — method, path, query,
+  `Content-Type`, body — with its broadcast id, its time and its
+  `X-Correlation-ID`; its other headers stay where it came in. It goes to the
+  members the ring holds at that moment, a replica that is down too.
+- Each replica applies the writes meant for it **in process**, oldest first, one
+  at a time: the request goes through the engine as if it had come in there — the
+  same validation, the same handler, the same ids (`x-infrapi-ids`) — without
+  the API key, checked where it came in, and without the `Idempotency-Key`: the
+  broadcast id does that job. Nothing outside the process can pass for such a
+  write.
+- The body of a broadcast write is at most **64 KiB** (`broadcast.max_body_bytes`):
+  it goes to every replica through the gossip. Beyond, `413`.
+
+### A replica that was down catches up
+
+A replica that is down when a write is made — crashed, or stopped and kept in the
+ring (`keep_instance_in_ring_on_shutdown: true`) — applies it **when it is back**:
+the gossip gives it the writes it has not applied, as it joins.
+
+- Within the **replay window**, one hour by default: the request is kept that
+  long. Past it, the request is dropped, and a replica that had not applied it
+  has `missed` it.
+- A replica that **left** the ring when it stopped
+  (`keep_instance_in_ring_on_shutdown: false`, the default under `app`) was not
+  one of the ring's when the write was made: it does not get it. Nor does a
+  replica that joins for the first time: it starts from what it has.
+
+```yaml
+broadcast:
+  replay_window: 1h        # at most 24h, the time the outcomes are kept
+  max_body_bytes: 65536
+```
 
 ### What the caller is answered: `x-infrapi-broadcast`
 
@@ -462,17 +493,18 @@ paths:
 
 | Value | The caller waits | When a replica did not take the write |
 |---|---|---|
-| `strict` | for every replica | `502 broadcast_incomplete`, `retryable: true`, naming the replicas that missed it |
-| `tolerant` | for every replica | the first replica's answer; the failure is in the logs and the metrics |
-| `async` | for nobody: answered at once, replayed in the background | the first replica's answer; the failure is in the logs, the metrics and the status |
+| `strict` | for every replica that is up, a minute at most | `502 broadcast_incomplete`, `retryable: true`, naming the replicas that do not have it yet |
+| `tolerant` | for every replica that is up, a minute at most | the first replica's answer; the failure is in the logs, the metrics and the status |
+| `async` | for nobody: answered once the write is published | the first replica's answer; the failure is in the logs, the metrics and the status |
 
-- `strict` holds the first replica's answer until the others have answered, and
-  sends it only when all took the write: a success means every replica has it.
+- `strict` holds the first replica's answer until the others have applied the
+  write, and sends it only when all did: a success means every replica has it.
+  A replica that is down counts as not having it — it will, when back.
 - After a `502`, **retry with the same `Idempotency-Key`**: the broadcast id
-  comes from the key, so every replica does the same write again, the same, and
-  the one that missed it catches up. The write was done on the others already.
-- `async` is the fastest, and the loosest: a replica that stops before its
-  replays are sent leaves the others without the write.
+  comes from the key, so the write is the same one, and the replicas that
+  **failed** it are asked again — those alone. The others have it already.
+- The write is published before the caller is answered, whatever the value: a
+  replica that stops right after answering does not take the write with it.
 - On a write that is not broadcast, or on a read, `x-infrapi-broadcast` is
   refused at start.
 
@@ -488,29 +520,29 @@ curl http://any-replica:8080/-/broadcast/im3vmkqm3xncm2i4t4zw2e53wd
 {"broadcast_id":"2wz5qmemf3emfd6heriefwhnsq","status":"partial","by":"node1","method":"POST",
  "path":"/bookmarks/v1/tenants/demo/bookmarks",
  "replicas":{"node1":{"state":"done","status":201},
-             "node2":{"state":"failed","error":"unreachable: … connect: connection refused"}}}
+             "node2":{"state":"failed","status":503,"error":"answered 503: …"}}}
 ```
 
-- `status` sums the write up: `pending` while a replica has not answered,
-  `complete` when every replica took it, `partial` when one did not, `error`
-  when it could not be sent to the others at all (no ring, no members; `error`
-  says why) and only the first replica has it.
-- Each replica's `state` is `pending` until it answered, then `done` or
-  `failed`, with the status it answered or why it could not be reached; or
-  `missed` for a replica the ring still holds but excludes — stopped and kept in
-  the ring (`keep_instance_in_ring_on_shutdown`), or its heartbeat stale — which
-  the write is not sent to. A missed replica makes the write `partial`, and a
-  `strict` one a `502`: it is one of the ring's, and it does not have the write.
+- `status` sums the write up: `pending` while a replica has not applied it — one
+  that is down, until it is back or the replay window closes —, `complete` when
+  every replica took it, `partial` when one did not, `error` when it could not be
+  published at all (no ring, no members; `error` says why) and only the first
+  replica has it.
+- Each replica's `state` is `pending` until it applied the write, then `done` or
+  `failed`, with the status its handler answered; or `missed`, when the replay
+  window closed before it applied it. `attempt` counts the retries that asked it
+  again.
 - The route is documented in `/-/docs`, under **infrapi (replica routes)**, with
   `/-/healthz` and `/-/readyz`: the library serves that contract next to the
   service's.
-- The outcomes live in **one key** of the cluster's store, `broadcast-status`,
-  which the replica that received the write updates as its replays answer, and
-  which every replica reads locally: no call to answer.
-- Kept **24 hours**, and at most the **10 000** most recent writes: the old ones
-  are dropped from the value itself, so there is nothing to delete. The cap
-  bounds the key, which every full gossip exchange sends whole, whatever the
-  write rate.
+- The writes and their outcomes live in **one key** of the cluster's store,
+  `broadcast-status`, which every replica updates as it applies a write, and
+  reads locally: no call to answer.
+- Kept **24 hours**, and at most the **10 000** most recent writes; their
+  requests, for the replay window only, and at most **8 MiB** of them, the
+  oldest dropped first. Everything old is dropped from the value itself, so
+  there is nothing to delete; the caps bound the key, which every full gossip
+  exchange sends whole, whatever the write rate.
 - `404` for a write that is not broadcast, unknown, or older than that.
 
 ### In the logs
@@ -518,36 +550,44 @@ curl http://any-replica:8080/-/broadcast/im3vmkqm3xncm2i4t4zw2e53wd
 One write, followed across replicas by its `broadcast_id` and `correlation_id`:
 
 ```json
-// node-2, which received the call: one line per replay, then its access line
-{"msg":"broadcast write: replayed","component":"broadcast","instance":"node-1","addr":"10.0.0.1:8080","method":"POST","path":"/bookmarks/v1/tenants/acme/bookmarks","status":201,"duration":"1.7ms","broadcast_id":"ukolazloc2zg7umkpikknl3ezv","correlation_id":"OGN7YXV7…"}
+// node-2, which received the call: its access line
 {"msg":"request","method":"POST","status":201,"broadcast_to":"node-1","broadcast_id":"ukolazloc2zg7umkpikknl3ezv","correlation_id":"OGN7YXV7…"}
-// node-1, which took the replay
+// node-1, which applied it: one line for the write, then its access line
+{"msg":"broadcast write: applied","component":"broadcast","from":"node-2","method":"POST","path":"/bookmarks/v1/tenants/acme/bookmarks","status":201,"duration":"1.7ms","broadcast_id":"ukolazloc2zg7umkpikknl3ezv","correlation_id":"OGN7YXV7…"}
 {"msg":"request","method":"POST","status":201,"broadcast_from":"node-2","broadcast_id":"ukolazloc2zg7umkpikknl3ezv","correlation_id":"OGN7YXV7…"}
 ```
 
-- `broadcast write: replayed` (info) or `broadcast write: a replica did not take
-  it` (error, with `err`): one per replica, with its status and how long it
-  took.
+- `broadcast write: applied` (info) or `broadcast write: not applied here`
+  (error, with `err`), on the replica that applied it, with the status and how
+  long it took; `broadcast write: a replica is registered but not healthy`
+  (warning) on the one that received it, for each replica that is down.
 - On the access line: `broadcast_to` and `broadcast_failed`, the replicas that
-  took the write and those that did not; `broadcast_from` on a replica that ran a
-  replay. In the text format they follow gin's line as `key=value`:
+  took the write and those that did not (`strict` and `tolerant`), or
+  `broadcast=async`; `broadcast_from` on a replica that applied a write. In the
+  text format they follow gin's line as `key=value`:
 
   ```text
   [GIN] 2026/10/08 - 16:38:25 | 201 | 650µs | 127.0.0.1 | POST "/bookmarks/v1/tenants/demo/bookmarks" broadcast_from=node1 correlation_id=TPQYR6P2… tenant=demo broadcast_id=go3ouhwv…
   ```
-- The replays' own lines carry `component=broadcast`, as the cluster's carry
+- These lines carry `component=broadcast`, as the cluster's carry
   `component=cluster`.
+- `infrapi_app_broadcast_writes_total{method,route,outcome}` counts the writes
+  each replica applied for another, `ok` or `failed`.
 
 ### What it does not do
 
-- **No catching up.** A replica that is down, or joins later, does not get the
-  writes it missed. What every replica must eventually hold belongs in a shared
+- **No catching up past the window**, nor for a replica that left the ring or
+  joins later. What every replica must eventually hold belongs in a shared
   store, or is rebuilt in `Background` as a replica starts.
-- **No undo.** A replica that fails a replay leaves the others with the write:
-  `strict` says so to the caller, who retries; `tolerant` and `async` only log it
-  (`broadcast write: a replica did not take it`), count it in
-  `infrapi_app_broadcast_writes_total{method,route,outcome="failed"}` and keep
-  it in the status.
+- **No undo.** A replica that fails a write leaves the others with it: `strict`
+  says so to the caller, who retries; `tolerant` and `async` log it, count it
+  and keep it in the status.
+- **No order between replicas.** Each replica applies the writes oldest first;
+  two writes to the same item, received at the same time by two replicas, may be
+  applied in either order.
+- **The bodies travel in the gossip.** Between hosts, encrypt it
+  (`cluster.gossip_tls_enabled` and its certificates, in [cluster](cluster.md))
+  when they hold what must not be read on the network.
 
 When every replica must see the same data, a store they share — a database, a
 shared volume, the backend the service fronts — is simpler than keeping copies

@@ -877,8 +877,9 @@ cluster:
 `node2.yaml` is the same with `127.0.0.2` in `url` and `listen_address`,
 `data_dir: ./data2` and `instance_id: node-2`.
 
-Each replica gossips with the others on port 7946 of its own address, and calls
-their API on its port: both must be open between replicas.
+Each replica gossips with the others on port 7946 of its own address: the
+broadcast writes travel there too. A write relayed to a leader goes to the
+leader's API port: open both between replicas.
 
 ### Try it
 
@@ -928,16 +929,16 @@ curl -s http://127.0.0.1:8080/-/broadcast/bujkubzpvqcxv24co3oxuortcq
 ```
 
 `status` is `complete` when every replica took the write, `partial` when one did
-not, `pending` while one has not answered, and `error` when the write could not
-be sent to the others at all.
+not, `pending` while one has not applied it yet — one that is down, until it is
+back —, and `error` when the write could not be published at all.
 
 ### When a replica fails
 
-By default the caller waits for every replica, and when one did not take the
-write it gets `502 broadcast_incomplete`, retryable, naming it. Send the same
-request again **with the same `Idempotency-Key` header**: the write's id comes
-from the key, so every replica writes the same bookmark again, and the one that
-missed it catches up. To choose otherwise, for every write or per operation:
+By default the caller waits for every replica that is up, and when one did not
+take the write it gets `502 broadcast_incomplete`, retryable, naming it. Send
+the same request again **with the same `Idempotency-Key` header**: the write's id
+comes from the key, so it is the same write, and the replicas that failed it are
+asked again. To choose otherwise, for every write or per operation:
 
 ```yaml
 cluster:
@@ -949,15 +950,20 @@ cluster:
 
 | | The caller waits | A replica that failed |
 |---|---|---|
-| `strict` | for every replica | `502`: retry with the same key |
-| `tolerant` | for every replica | the first replica's answer; the failure is in the status and the logs |
+| `strict` | for every replica that is up | `502`: retry with the same key |
+| `tolerant` | for every replica that is up | the first replica's answer; the failure is in the status and the logs |
 | `async` | for nobody | the first replica's answer; the failure is in the status and the logs |
 
 ### What to know
 
-- A replica that is stopped when a write happens does not get it later. When
-  every replica must hold the same data whatever happens, a store they share — a
-  database, a shared volume — is simpler than keeping copies in step.
+- The writes go from replica to replica in the gossip, not by calling each
+  other: no address to open beyond port 7946.
+- A replica that is down when a write happens — crashed, or stopped with
+  `keep_instance_in_ring_on_shutdown: true` — applies it when it is back, within
+  an hour (`broadcast.replay_window`). One that left the ring, or joins later,
+  does not. When every replica must hold the same data whatever happens, a
+  store they share — a database, a shared volume — is simpler than keeping
+  copies in step.
 - The logs follow a write across replicas by its `broadcast_id`: `broadcast_to` on the
   replica that received it, `broadcast_from` on the others.
 - [app](../packages/app.md) has the details: rings per operation, the three

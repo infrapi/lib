@@ -125,6 +125,7 @@ func Run(ctx context.Context, spec Spec, configFile string) error {
 		return err
 	}
 	setupLogging(cfg.app)
+	replayWindow.Store(int64(cfg.Broadcast.ReplayWindow))
 
 	var store idempotency.Store
 	var db *sql.DB

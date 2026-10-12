@@ -52,17 +52,18 @@ components:
       properties:
         broadcast_id: {type: string}
         at: {type: string, format: date-time, description: When the first replica received the write.}
-        by: {type: string, description: The replica that received it and replayed it.}
+        by: {type: string, description: The replica that received it and published it.}
         method: {type: string}
         path: {type: string}
         status:
           type: string
           enum: [pending, complete, partial, error]
           description: |
-            pending: a replica has not answered yet; complete: every replica
+            pending: a replica has not applied it yet (one that is down, until
+            it is back or the replay window closes); complete: every replica
             took the write; partial: a replica did not; error: it could not be
-            sent to the others at all, and only the first replica has it.
-        error: {type: string, description: Why it could not be sent, with status error.}
+            published at all, and only the first replica has it.
+        error: {type: string, description: Why it could not be published, with status error.}
         replicas:
           type: object
           additionalProperties:
@@ -71,8 +72,9 @@ components:
               state:
                 type: string
                 enum: [pending, done, failed, missed]
-                description: missed - the replica is registered in the ring but not healthy (stopped, kept in the ring; or its heartbeat is stale), and the write was not sent to it.
-              status: {type: integer, description: The HTTP status the replica answered.}
+                description: missed - the replay window closed before the replica applied the write (it was down all along).
+              attempt: {type: integer, description: The retries that asked the replica again, after it failed the write.}
+              status: {type: integer, description: The HTTP status the replica's handler answered.}
               error: {type: string}
               updated: {type: string, format: date-time}
       example:

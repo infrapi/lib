@@ -28,7 +28,7 @@ const (
 const (
 	writeLocal     = "local"     // on the replica that received it
 	writeLeader    = "leader"    // on the leader of a leader-mode ring, relayed there
-	writeBroadcast = "broadcast" // here, then replayed on every member of an all-mode ring
+	writeBroadcast = "broadcast" // here, then applied by every member of an all-mode ring, through the gossip
 )
 
 // writeMode is one write's way of running: its kind, and the ring it runs on.
@@ -64,10 +64,10 @@ type dispatcher struct {
 // with cluster.leader_writes, else local. The ring's mode, from Spec.Roles,
 // says how the write runs there.
 func newDispatcher(cfg *loaded, cl *cluster.Cluster, docs []*openapi3.T) (*dispatcher, error) {
-	scheme, maxBody := peerScheme(cfg), int64(cfg.Gateway.MaxBodyBytes)
+	scheme, maxBody := peerScheme(cfg), int64(cfg.Broadcast.MaxBodyBytes)
 	d := &dispatcher{
 		byRoute: map[string]writeMode{}, reads: map[string]writeMode{},
-		local:   newFanout(cl, "", scheme, maxBody),
+		local:   newFanout(cl, "", maxBody),
 		fanouts: map[string]*fanout{}, leaders: map[string]gin.HandlerFunc{},
 		readLeaders: map[string]gin.HandlerFunc{},
 	}
@@ -161,7 +161,7 @@ func newDispatcher(cfg *loaded, cl *cluster.Cluster, docs []*openapi3.T) (*dispa
 		switch m.kind {
 		case writeBroadcast:
 			if d.fanouts[m.role] == nil {
-				d.fanouts[m.role] = newFanout(cl, m.role, scheme, maxBody)
+				d.fanouts[m.role] = newFanout(cl, m.role, maxBody)
 			}
 		case writeLeader:
 			if d.leaders[m.role] == nil {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -29,8 +30,25 @@ const BroadcastStatusRetention = 24 * time.Hour
 // bounded whatever the write rate.
 const BroadcastStatusMax = 10000
 
-// Where the outcomes live: one key of the cluster's store, every write in it,
-// the old ones dropped from the value itself.
+// DefaultReplayWindow is how long a broadcast write can still be applied by a
+// replica that was down when it was made: its request is kept that long, in
+// the same key as the outcomes (broadcast.replay_window).
+const DefaultReplayWindow = time.Hour
+
+// BroadcastRequestsMax caps the bytes of the requests kept for the replicas
+// still to apply them, the oldest dropped first: they go whole with every
+// full gossip exchange.
+const BroadcastRequestsMax = 8 << 20
+
+// replayWindow is the configured window, read by the merges the gossip runs.
+var replayWindow atomic.Int64
+
+func init() { replayWindow.Store(int64(DefaultReplayWindow)) }
+
+func window() time.Duration { return time.Duration(replayWindow.Load()) }
+
+// Where the writes and their outcomes live: one key of the cluster's store,
+// every write in it, the old ones dropped from the value itself.
 const (
 	statusCodecID = "infrapi-broadcast-status"
 	statusKey     = "broadcast-status"
@@ -41,7 +59,7 @@ const (
 	statePending = "pending"
 	stateDone    = "done"
 	stateFailed  = "failed"
-	stateMissed  = "missed" // registered in the ring, not healthy: not sent
+	stateMissed  = "missed" // not applied within the replay window
 )
 
 // broadcastStatus is every recent broadcast write's outcome, by broadcast id.
@@ -59,6 +77,29 @@ type writeRecord struct {
 	Replicas map[string]replicaRecord `json:"replicas"`
 	// Error is why the write could not be sent to the others at all.
 	Error string `json:"error,omitempty"`
+	// Request is what the replicas replay, kept for the replay window.
+	Request *replayRequest `json:"request,omitempty"`
+}
+
+// replayRequest is the write as the caller sent it: every replica runs it
+// again, in process, from this.
+type replayRequest struct {
+	Route       string            `json:"route"` // the contract's, for the metrics
+	Query       string            `json:"query,omitempty"`
+	Header      map[string]string `json:"header,omitempty"`
+	Body        []byte            `json:"body,omitempty"`
+	Correlation string            `json:"correlation,omitempty"`
+}
+
+func (r *replayRequest) size() int {
+	if r == nil {
+		return 0
+	}
+	n := len(r.Route) + len(r.Query) + len(r.Body) + len(r.Correlation)
+	for k, v := range r.Header {
+		n += len(k) + len(v)
+	}
+	return n
 }
 
 // The outcome of a broadcast write as a whole.
@@ -90,18 +131,33 @@ func (w *writeRecord) outcome() string {
 }
 
 type replicaRecord struct {
+	// Attempt counts the times the write was asked of the replica: a retry
+	// asks again those that failed.
+	Attempt int       `json:"attempt,omitempty"`
 	State   string    `json:"state"`
 	Status  int       `json:"status,omitempty"`
 	Error   string    `json:"error,omitempty"`
 	Updated time.Time `json:"updated"`
 }
 
-// after says whether r supersedes o: a settled state over a pending one,
-// then the later, then a fixed order — so that every replica keeps the same.
+// after says whether r supersedes o: the later attempt, then the replica's
+// own answer over a missed one over a pending one, then the later, then a
+// fixed order — so that every replica keeps the same.
 func (r replicaRecord) after(o replicaRecord) bool {
-	settled := func(s string) bool { return s != statePending }
-	if settled(r.State) != settled(o.State) {
-		return settled(r.State)
+	if r.Attempt != o.Attempt {
+		return r.Attempt > o.Attempt
+	}
+	rank := func(s string) int {
+		switch s {
+		case statePending:
+			return 0
+		case stateMissed:
+			return 1
+		}
+		return 2
+	}
+	if rank(r.State) != rank(o.State) {
+		return rank(r.State) > rank(o.State)
 	}
 	if !r.Updated.Equal(o.Updated) {
 		return r.Updated.After(o.Updated)
@@ -120,9 +176,20 @@ func newBroadcastStatus() *broadcastStatus {
 }
 
 // expire drops the writes older than the retention, from now, then the
-// oldest beyond BroadcastStatusMax.
+// oldest beyond BroadcastStatusMax. A request older than the replay window is
+// dropped, and the replicas that had not applied it have missed it: every
+// replica concludes the same, at the same time. Beyond BroadcastRequestsMax,
+// the oldest requests are dropped too, without concluding anything.
 func (s *broadcastStatus) expire(now time.Time) int {
 	removed := 0
+	win := window()
+	for _, w := range s.Writes {
+		if w.Request == nil || now.Sub(w.At) <= win {
+			continue
+		}
+		w.Request = nil
+		missed(w, win)
+	}
 	for id, w := range s.Writes {
 		if now.Sub(w.At) > BroadcastStatusRetention {
 			delete(s.Writes, id)
@@ -146,7 +213,44 @@ func (s *broadcastStatus) expire(now time.Time) int {
 		}
 		removed += over
 	}
+	total := 0
+	for _, w := range s.Writes {
+		total += w.Request.size()
+	}
+	if total > BroadcastRequestsMax {
+		ids := make([]string, 0, len(s.Writes))
+		for id, w := range s.Writes {
+			if w.Request != nil {
+				ids = append(ids, id)
+			}
+		}
+		sort.Slice(ids, func(i, j int) bool {
+			a, b := s.Writes[ids[i]].At, s.Writes[ids[j]].At
+			if !a.Equal(b) {
+				return a.Before(b)
+			}
+			return ids[i] < ids[j]
+		})
+		for _, id := range ids {
+			if total <= BroadcastRequestsMax {
+				break
+			}
+			total -= s.Writes[id].Request.size()
+			s.Writes[id].Request = nil
+		}
+	}
 	return removed
+}
+
+// missed settles the replicas that had not applied a write when its replay
+// window closed.
+func missed(w *writeRecord, win time.Duration) {
+	for node, r := range w.Replicas {
+		if r.State == statePending {
+			w.Replicas[node] = replicaRecord{Attempt: r.Attempt, State: stateMissed, Updated: w.At.Add(win),
+				Error: "not applied within the replay window (" + win.String() + ")"}
+		}
+	}
 }
 
 // Merge keeps, for each replica of each write, the record that supersedes
@@ -174,28 +278,20 @@ func (s *broadcastStatus) Merge(other memberlist.Mergeable, _ bool) (memberlist.
 			mine = &writeRecord{At: ow.At, By: ow.By, Method: ow.Method, Path: ow.Path, Replicas: map[string]replicaRecord{}}
 			s.Writes[id] = mine
 		}
+		if mine.Request == nil && ow.Request != nil && now.Sub(ow.At) <= window() {
+			mine.Request = ow.Request
+			change.entry(id, mine).Request = ow.Request
+		}
 		if ow.Error > mine.Error { // the same on every replica, whatever the order
 			mine.Error = ow.Error
-			c := change.Writes[id]
-			if c == nil {
-				c = &writeRecord{At: mine.At, By: mine.By, Method: mine.Method, Path: mine.Path,
-					Replicas: map[string]replicaRecord{}}
-				change.Writes[id] = c
-			}
-			c.Error = mine.Error
+			change.entry(id, mine).Error = mine.Error
 		}
 		for node, or := range ow.Replicas {
 			if m, ok := mine.Replicas[node]; ok && !or.after(m) {
 				continue
 			}
 			mine.Replicas[node] = or
-			c, ok := change.Writes[id]
-			if !ok {
-				c = &writeRecord{At: mine.At, By: mine.By, Method: mine.Method, Path: mine.Path,
-					Replicas: map[string]replicaRecord{}}
-				change.Writes[id] = c
-			}
-			c.Replicas[node] = or
+			change.entry(id, mine).Replicas[node] = or
 		}
 	}
 	s.expire(now)
@@ -203,6 +299,16 @@ func (s *broadcastStatus) Merge(other memberlist.Mergeable, _ bool) (memberlist.
 		return nil, nil
 	}
 	return change, nil
+}
+
+// entry is the change's record of a write, added when absent.
+func (s *broadcastStatus) entry(id string, of *writeRecord) *writeRecord {
+	c, ok := s.Writes[id]
+	if !ok {
+		c = &writeRecord{At: of.At, By: of.By, Method: of.Method, Path: of.Path, Replicas: map[string]replicaRecord{}}
+		s.Writes[id] = c
+	}
+	return c
 }
 
 // MergeContent names each replica of each write: the gossip drops a queued
@@ -216,6 +322,9 @@ func (s *broadcastStatus) MergeContent() []string {
 		}
 		if w.Error != "" {
 			out = append(out, id+"/error")
+		}
+		if w.Request != nil {
+			out = append(out, id+"/request")
 		}
 	}
 	sort.Strings(out)
