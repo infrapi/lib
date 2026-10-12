@@ -8,7 +8,7 @@
 // [Err] and friends below.
 //
 // Lines keep the field names the rest of the system already writes - time,
-// level, msg - and the same level names logrus and the pkg/app slog setup
+// level, msg - and the same level names logrus and the infrapi/app slog setup
 // use, warning included, so a collector parses a line from this package the
 // same way it parses the engine's access log or a logrus line. See the
 // unexported parseLevel for the level names [Options.Level] accepts.
@@ -49,7 +49,7 @@ import (
 const (
 	// FormatJSON is one JSON object per line: time, level, msg, plus whatever
 	// fields the call site added. This is the schema pkg/server's access log
-	// and pkg/app's slog setup already write with INFRAPI_APP_LOG_FORMAT=json,
+	// and infrapi/app's slog setup already write with INFRAPI_APP_LOG_FORMAT=json,
 	// so a collector reads a line from this package, a logrus line and the
 	// engine's own access log the same way.
 	FormatJSON = "json"
@@ -79,7 +79,7 @@ type Options struct {
 	Name string
 
 	// Output is where lines are written. Nil means os.Stdout, the same
-	// destination pkg/server's access log and pkg/app's slog setup use.
+	// destination pkg/server's access log and infrapi/app's slog setup use.
 	Output io.Writer
 
 	// Development adds the call site and a stacktrace to error-and-above

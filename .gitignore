@@ -47,5 +47,3 @@ site/
 go.work
 go.work.sum
 
-# the example built in place by `go build ./...`
-/examples/app/app

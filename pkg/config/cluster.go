@@ -190,7 +190,7 @@ func newClusterDefaultConfig(hostname string) *ClusterDefaultConfig {
 			Default: "[]",
 		},
 
-		// Read by pkg/app: whether a service's writes go through the leader
+		// Read by infrapi/app: whether a service's writes go through the leader
 		// of its writer ring. An operator's choice, not the code's: a backend
 		// that takes concurrent writes needs no single writer.
 		LeaderWrites: &VariableOpts{

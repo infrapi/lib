@@ -34,7 +34,7 @@ fields with the constructors this package exports instead.
 
 ## Why one more logger
 
-`pkg/app` already wires logrus and `log/slog` together so that every line -
+infrapi/app already wires logrus and `log/slog` together so that every line -
 whichever of the two wrote it - carries the same `time`, `level` and `msg`
 members, and [pkg/server](server.md)'s JSON access log follows the same
 schema. `pkg/logger` extends that convention to zap's typed fields and lower
@@ -42,7 +42,7 @@ allocation cost, for a service's own log statements, without breaking the
 schema a collector already parses.
 
 It does not replace `pkg/cluster`'s go-kit/logrus bridge - dskit's own logging
-stays on logrus - or `pkg/app`'s slog setup. Pick it for a service's
+stays on logrus - or infrapi/app's slog setup. Pick it for a service's
 application-level logging; the libraries underneath keep what they already
 use.
 
@@ -63,7 +63,7 @@ A JSON line looks like:
 ```
 
 `warn` is written as `"warning"`, matching the name logrus and the `slog`
-setup in `pkg/app` already use - so filtering a collector on `level="warning"`
+setup in infrapi/app already use - so filtering a collector on `level="warning"`
 finds every warning line in the process, not just the ones logrus wrote.
 
 ## Writing a line

@@ -1,11 +1,11 @@
 # infrapi/lib
 
-Opinionated Go building blocks shared by InfraPI services. Nine small packages, and one,
-`app`, that assembles them into a service:
+Opinionated Go building blocks shared by InfraPI services. The framework that
+assembles them into a service — a contract, its handlers, and everything else in
+one call — is [infrapi/app](https://github.com/infrapi/app).
 
 | Package | Import path | What it does |
 |---------|-------------|--------------|
-| [`app`](https://infrapi.github.io/lib/packages/app/) | `github.com/infrapi/lib/pkg/app` | Runs a service in one call: its contracts and handlers, with everything an API shares wired from one config file. Its own module. |
 | [`cluster`](https://infrapi.github.io/lib/packages/cluster/) | `github.com/infrapi/lib/pkg/cluster` | Runs a service as coordinated replicas: a ring per role, leader or broadcast. Its own module. |
 | [`config`](https://infrapi.github.io/lib/packages/config/) | `github.com/infrapi/lib/pkg/config` | Reads a dotenv file, validates values, exposes a typed `AppConfig`. |
 | [`errors`](https://infrapi.github.io/lib/packages/errors/) | `github.com/infrapi/lib/pkg/errors` | RFC 9457 application error with an HTTP status, a cause and a remediation hint. |

@@ -171,7 +171,7 @@ INFRAPI_CLUSTER_LEADER_CHECKS=["!file:///etc/infrapi/maintenance", "tcp://db.dc1
 |-----|---------|-------|
 | `INFRAPI_CLUSTER_LEADER_CHECKS` | `[]` | The checks of every leader-mode role, all of which must pass. Empty: no common rule. |
 | `INFRAPI_CLUSTER_ROLE_LEADER_CHECKS` | `{}` | More checks for one role, as a JSON object: `{"role": ["check", …]}`. |
-| `INFRAPI_CLUSTER_LEADER_WRITES` | `false` | Read by [`app`](app.md): a service's writes go through the leader of its writer ring. |
+| `INFRAPI_CLUSTER_LEADER_WRITES` | `false` | Read by [infrapi/app](https://github.com/infrapi/app): a service's writes go through the leader of its writer ring. |
 | `INFRAPI_CLUSTER_LEADER_CHECK_INTERVAL` | `10s` | How often they run. |
 | `INFRAPI_CLUSTER_LEADER_CHECK_TIMEOUT` | `5s` | Each check's budget. |
 | `INFRAPI_CLUSTER_LEADER_CHECK_THRESHOLD` | `2` | Identical results in a row before the published answer changes: one blip does not move the leadership. The first answer, at start, is published at once. |

@@ -61,13 +61,9 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
-  - Guides:
-      - Build a new service: guides/new-service.md
   - Packages:
-      - app: packages/app.md
       - cluster: packages/cluster.md
       - config: packages/config.md
-      - contract: packages/contract.md
       - errors: packages/errors.md
       - gateway: packages/gateway.md
       - http: packages/http.md

@@ -57,7 +57,7 @@ func example1() {
 }
 
 // Example 2: One JSON line per record, the schema pkg/server's access log and
-// pkg/app's slog setup already write - time, level, msg, plus fields.
+// infrapi/app's slog setup already write - time, level, msg, plus fields.
 func example2() {
 	fmt.Println("--- Example 2: JSON Output ---")
 
