@@ -36,7 +36,7 @@ type Spec struct {
 
 	// Roles are the service's own rings, for work of its own: a periodic job
 	// on one replica (cluster.ModeLeader, with Role.Run), an action on every
-	// one (cluster.ModeBroadcast). cluster.roles chooses which of them a
+	// one (cluster.ModeAll). cluster.roles chooses which of them a
 	// replica joins, all by default; rt.Cluster.Role reaches them. "writer"
 	// is the library's own ring, joined when something needs a leader.
 	Roles []cluster.RoleSpec

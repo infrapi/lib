@@ -169,7 +169,7 @@ cluster:
 func TestTheServicesRoles(t *testing.T) {
 	spec := Spec{Name: "orders-api", Roles: []cluster.RoleSpec{
 		{Name: "purger", Mode: cluster.ModeLeader},
-		{Name: "cache", Mode: cluster.ModeBroadcast},
+		{Name: "cache", Mode: cluster.ModeAll},
 	}}
 	const clustered = `
 cluster:

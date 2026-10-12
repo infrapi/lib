@@ -44,7 +44,7 @@ Mimir's `-target` flag does:
 INFRAPI_CLUSTER_ROLES=["scheduler"]
 ```
 
-| | `ModeLeader` | `ModeBroadcast` |
+| | `ModeLeader` | `ModeAll` |
 |---|---|---|
 | `ShouldRun` is true on | the leader: the member that may lead with the smallest token | every healthy member |
 | Ring states accepted | `ACTIVE`, `LEAVING` | `ACTIVE` |
@@ -64,7 +64,7 @@ cd roles && go run .
 joined roles, in declaration order: [scheduler collector]
 
 scheduler  mode leader    ring key "scheduler"  acting true  leader replica-1
-collector  mode broadcast ring key "collector"  acting true  leader n/a in this mode
+collector  mode all-mode ring key "collector"  acting true  leader n/a in this mode
 
 compactor  cluster: role not joined by this instance: "compactor"
 ```
@@ -366,8 +366,8 @@ ring address becomes useless.
 Each replica prints what it believes once a second:
 
 ```text
-node-1 | scheduler(leader): members=2 leader=node-1 -> ACTING  | collector(broadcast): members=2 -> ACTING
-node-2 | scheduler(leader): members=2 leader=node-1 -> passive | collector(broadcast): members=2 -> ACTING
+node-1 | scheduler(leader): members=2 leader=node-1 -> ACTING  | collector(all): members=2 -> ACTING
+node-2 | scheduler(leader): members=2 leader=node-1 -> passive | collector(all): members=2 -> ACTING
 ```
 
 The leader also runs the scheduler's periodic job, through `Role.Run`, every
@@ -391,16 +391,16 @@ compare-and-swap, a conditional write, a unique constraint.
 Now interrupt the leader with `Ctrl+C` and watch the two modes part company:
 
 ```text
-node-2 | scheduler(leader): members=2 leader=node-1 -> passive | collector(broadcast): members=1 -> ACTING
+node-2 | scheduler(leader): members=2 leader=node-1 -> passive | collector(all): members=1 -> ACTING
 ```
 
-The broadcast role dropped the departing replica immediately. The leader role
+The all-mode role dropped the departing replica immediately. The leader role
 still counts it and still calls it the leader, because it is `LEAVING` and a
 leader role treats that as eligible. A few seconds later its heartbeat goes
 stale and the survivor takes the token:
 
 ```text
-node-2 | scheduler(leader): members=1 leader=node-2 -> ACTING | collector(broadcast): members=1 -> ACTING
+node-2 | scheduler(leader): members=1 leader=node-2 -> ACTING | collector(all): members=1 -> ACTING
 ```
 
 **That delay is the deliberate trade**, and it is bounded by

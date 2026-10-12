@@ -20,7 +20,7 @@ import (
 
 func TestMode_String(t *testing.T) {
 	assert.Equal(t, "leader", ModeLeader.String())
-	assert.Equal(t, "broadcast", ModeBroadcast.String())
+	assert.Equal(t, "all", ModeAll.String())
 	assert.Equal(t, "unknown", Mode(99).String())
 }
 
@@ -55,7 +55,7 @@ func TestNew_rejects_bad_role_declarations(t *testing.T) {
 		"duplicate name": {
 			roles: []RoleSpec{
 				{Name: "scheduler", Mode: ModeLeader},
-				{Name: "scheduler", Mode: ModeBroadcast},
+				{Name: "scheduler", Mode: ModeAll},
 			},
 			wantErr: ErrDuplicateRole,
 			wantMsg: "declared twice",
@@ -63,7 +63,7 @@ func TestNew_rejects_bad_role_declarations(t *testing.T) {
 		"duplicate ring key": {
 			roles: []RoleSpec{
 				{Name: "scheduler", Mode: ModeLeader, Key: "shared"},
-				{Name: "collector", Mode: ModeBroadcast, Key: "shared"},
+				{Name: "collector", Mode: ModeAll, Key: "shared"},
 			},
 			wantErr: ErrDuplicateRole,
 			wantMsg: `under key "shared"`,
@@ -71,7 +71,7 @@ func TestNew_rejects_bad_role_declarations(t *testing.T) {
 		"a name colliding with another role's key": {
 			roles: []RoleSpec{
 				{Name: "scheduler", Mode: ModeLeader},
-				{Name: "collector", Mode: ModeBroadcast, Key: "scheduler"},
+				{Name: "collector", Mode: ModeAll, Key: "scheduler"},
 			},
 			wantErr: ErrDuplicateRole,
 			wantMsg: `under key "scheduler"`,
@@ -252,7 +252,7 @@ func TestStop_without_start(t *testing.T) {
 // A binary may know more roles than a deployment runs.
 func TestRole_declared_but_not_selected(t *testing.T) {
 	joined := uniqueRole(t, "joined", ModeLeader)
-	idle := uniqueRole(t, "idle", ModeBroadcast)
+	idle := uniqueRole(t, "idle", ModeAll)
 
 	c := startTestCluster(t, map[string]string{
 		"INFRAPI_CLUSTER_ROLES": `["` + joined.Name + `"]`,
@@ -268,7 +268,7 @@ func TestRole_declared_but_not_selected(t *testing.T) {
 // to list them.
 func TestRoles_are_in_declaration_order(t *testing.T) {
 	first := uniqueRole(t, "aaa", ModeLeader)
-	second := uniqueRole(t, "bbb", ModeBroadcast)
+	second := uniqueRole(t, "bbb", ModeAll)
 
 	c := startTestCluster(t, map[string]string{
 		"INFRAPI_CLUSTER_ROLES": `["` + second.Name + `","` + first.Name + `"]`,
@@ -343,7 +343,7 @@ func TestKVClient_round_trip(t *testing.T) {
 // there is a panic, not an error.
 func TestTwoRoles_have_distinct_rings_and_metrics(t *testing.T) {
 	leader := uniqueRole(t, "sched", ModeLeader)
-	broadcast := uniqueRole(t, "coll", ModeBroadcast)
+	broadcast := uniqueRole(t, "coll", ModeAll)
 
 	registry := prometheus.NewRegistry()
 	cfg := testClusterConfig(t, map[string]string{
@@ -367,7 +367,7 @@ func TestTwoRoles_have_distinct_rings_and_metrics(t *testing.T) {
 	assert.NotSame(t, leaderRole.Ring(), broadcastRole.Ring())
 	assert.NotEqual(t, leaderRole.Key(), broadcastRole.Key())
 	assert.Equal(t, ModeLeader, leaderRole.Mode())
-	assert.Equal(t, ModeBroadcast, broadcastRole.Mode())
+	assert.Equal(t, ModeAll, broadcastRole.Mode())
 
 	families, err := registry.Gather()
 	require.NoError(t, err)
@@ -396,7 +396,7 @@ func TestTwoRoles_have_distinct_rings_and_metrics(t *testing.T) {
 	}
 
 	assert.True(t, ringNames[leader.Name], "the leader ring must label its metrics with its own name")
-	assert.True(t, ringNames[broadcast.Name], "the broadcast ring must label its metrics with its own name")
+	assert.True(t, ringNames[broadcast.Name], "the all-mode ring must label its metrics with its own name")
 
 	// One client for the ring and one for the lifecycler, per role.
 	for _, want := range []string{
@@ -502,7 +502,7 @@ func TestValidateDskitConfig(t *testing.T) {
 func TestJoinedRoles_declaration_order_is_stable(t *testing.T) {
 	specs := []RoleSpec{
 		{Name: "zeta", Mode: ModeLeader},
-		{Name: "alpha", Mode: ModeBroadcast},
+		{Name: "alpha", Mode: ModeAll},
 	}
 	declared, err := declaredRoles(specs)
 	require.NoError(t, err)
@@ -515,7 +515,7 @@ func TestJoinedRoles_declaration_order_is_stable(t *testing.T) {
 func TestSortedNames(t *testing.T) {
 	declared, err := declaredRoles([]RoleSpec{
 		{Name: "zeta", Mode: ModeLeader},
-		{Name: "alpha", Mode: ModeBroadcast},
+		{Name: "alpha", Mode: ModeAll},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"alpha", "zeta"}, sortedNames(declared))
@@ -619,7 +619,7 @@ func TestRoleSpec_replication_factor_override(t *testing.T) {
 	// The modes shipped here both use one replica, so zone awareness has
 	// nothing to spread until a role asks for more.
 	assert.Equal(t, 1, d.ringConfigFor(modeSpecs[ModeLeader]).ReplicationFactor)
-	assert.Equal(t, 1, d.ringConfigFor(modeSpecs[ModeBroadcast]).ReplicationFactor)
+	assert.Equal(t, 1, d.ringConfigFor(modeSpecs[ModeAll]).ReplicationFactor)
 }
 
 // A startup failure is almost always the store being out of reach, and the

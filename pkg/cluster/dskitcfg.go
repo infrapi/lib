@@ -63,7 +63,7 @@ func newDskitConfig(app *config.AppConfig, cfg *config.ClusterConfig, codecs []c
 	ringCfg.ZoneAwarenessEnabled = cfg.ZoneAwarenessEnabled
 	ringCfg.ExcludedZones = flagext.StringSliceCSV(cfg.ExcludedZones)
 
-	// The shuffle-sharding subring cache buys nothing for a leader or broadcast
+	// The shuffle-sharding subring cache buys nothing for a leader or all-mode
 	// role, which never asks for a subring.
 	ringCfg.SubringCacheDisabled = true
 

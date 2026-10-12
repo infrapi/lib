@@ -103,7 +103,7 @@ func BroadcastUUID(ctx context.Context) string {
 // replayed counts the writes a replica replayed on the others, by outcome.
 var replayed = promauto.NewCounterVec(prometheus.CounterOpts{
 	Name: "infrapi_app_broadcast_writes_total",
-	Help: "Writes this replica replayed on another member of the broadcast role, by method, route and outcome.",
+	Help: "Writes this replica replayed on another member of the all-mode role, by method, route and outcome.",
 }, []string{"method", "route", "outcome"})
 
 // fanout gives every write its identity and, with cluster.broadcast_writes,

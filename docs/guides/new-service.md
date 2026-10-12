@@ -799,7 +799,7 @@ import "github.com/infrapi/lib/pkg/cluster"
 		Service: &cfg,
 		// The service's rings: the contract gives its writes to them.
 		Roles: []cluster.RoleSpec{
-			{Name: "everybody", Mode: cluster.ModeBroadcast}, // every replica acts
+			{Name: "everybody", Mode: cluster.ModeAll}, // every replica acts
 			{Name: "cache", Mode: cluster.ModeLeader},        // one replica acts: the leader
 		},
 		API: ...
@@ -834,7 +834,7 @@ cluster:
 
 | The operation's ring | It runs |
 |---|---|
-| a broadcast ring | here, then on every other member of the ring |
+| an all-mode ring | here, then on every other member of the ring |
 | a leader ring | on that ring's leader; relayed there from the other replicas — reads too |
 | `local` | on the replica that received it |
 

@@ -34,7 +34,7 @@ func main() {
 	c, stop := demo.Start(appConfig, clusterConfig, cluster.Options{
 		Roles: []cluster.RoleSpec{
 			{Name: "scheduler", Mode: cluster.ModeLeader},
-			{Name: "collector", Mode: cluster.ModeBroadcast},
+			{Name: "collector", Mode: cluster.ModeAll},
 		},
 	})
 
@@ -163,7 +163,7 @@ func describe(c *cluster.Cluster, name string) string {
 	}
 
 	// A leader role counts a LEAVING replica as a member, which is what keeps a
-	// rolling restart from changing leader at every step. A broadcast role does
+	// rolling restart from changing leader at every step. An all-mode role does
 	// not: a draining replica must stop working. Interrupt the leader and watch
 	// the two member counts diverge.
 	if role.Mode() == cluster.ModeLeader {
@@ -174,5 +174,5 @@ func describe(c *cluster.Cluster, name string) string {
 		return fmt.Sprintf("%s(leader): members=%d leader=%s -> %s", name, len(members), leader, verdict)
 	}
 
-	return fmt.Sprintf("%s(broadcast): members=%d -> %s", name, len(members), verdict)
+	return fmt.Sprintf("%s(all): members=%d -> %s", name, len(members), verdict)
 }

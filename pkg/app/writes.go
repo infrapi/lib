@@ -28,7 +28,7 @@ const (
 const (
 	writeLocal     = "local"     // on the replica that received it
 	writeLeader    = "leader"    // on the leader of a leader-mode ring, relayed there
-	writeBroadcast = "broadcast" // here, then replayed on every member of a broadcast ring
+	writeBroadcast = "broadcast" // here, then replayed on every member of an all-mode ring
 )
 
 // writeMode is one write's way of running: its kind, and the ring it runs on.
@@ -117,7 +117,7 @@ func newDispatcher(cfg *loaded, cl *cluster.Cluster, docs []*openapi3.T) (*dispa
 						return nil, fmt.Errorf("app: %s: %s: %w", op.OperationID, RingExtension, err)
 					}
 					if m.kind == writeBroadcast {
-						return nil, fmt.Errorf("app: %s: %s: %q is a broadcast ring; a read has one answer, "+
+						return nil, fmt.Errorf("app: %s: %s: %q is an all-mode ring; a read has one answer, "+
 							"from one replica", op.OperationID, RingExtension, name)
 					}
 					if cl.Enabled() && m.kind == writeLeader {

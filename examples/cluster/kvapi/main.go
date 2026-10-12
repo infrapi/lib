@@ -59,7 +59,7 @@ func main() {
 	itemsCodec := codec.NewProtoCodec(codecID, func() proto.Message { return NewItems() })
 
 	c, stop := demo.Start(appConfig, clusterConfig, cluster.Options{
-		Roles:  []cluster.RoleSpec{{Name: "api", Mode: cluster.ModeBroadcast}},
+		Roles:  []cluster.RoleSpec{{Name: "api", Mode: cluster.ModeAll}},
 		Codecs: []codec.Codec{itemsCodec},
 	})
 

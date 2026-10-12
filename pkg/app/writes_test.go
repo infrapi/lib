@@ -24,7 +24,7 @@ paths:
 `
 
 var ringsSpec = Spec{Name: "orders-api", Roles: []cluster.RoleSpec{
-	{Name: "everybody", Mode: cluster.ModeBroadcast},
+	{Name: "everybody", Mode: cluster.ModeAll},
 	{Name: "purger", Mode: cluster.ModeLeader},
 }}
 
@@ -97,7 +97,7 @@ func TestRingMistakesStopTheService(t *testing.T) {
 			contract: `x-infrapi-ring: compactor`, want: `"compactor" is not one of Spec.Roles`},
 		"a ring this replica does not join": {
 			contract: `x-infrapi-ring: purger`, extra: "  roles: [everybody]\n", want: "not a role this replica joins"},
-		"a broadcast ring on a read": {
+		"an all-mode ring on a read": {
 			contract: `x-infrapi-ring: everybody`, want: "a read has one answer"},
 		"a contract default with leader_writes": {
 			extra: "  leader_writes: true\n", want: "keep one"},
@@ -107,7 +107,7 @@ func TestRingMistakesStopTheService(t *testing.T) {
 		doc := ringsContract
 		if c.contract != "" {
 			op := "delete: {operationId: cancelOrder, " + c.contract + ","
-			if name == "a broadcast ring on a read" {
+			if name == "an all-mode ring on a read" {
 				doc = strings.Replace(doc, "get: {operationId: listOrders,", "get: {operationId: listOrders, "+c.contract+",", 1)
 			} else {
 				doc = strings.Replace(doc, "delete: {operationId: cancelOrder, x-infrapi-ring: purger,", op, 1)

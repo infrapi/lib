@@ -10,9 +10,10 @@ const (
 	// token. Every other member stays passive.
 	ModeLeader Mode = iota + 1
 
-	// ModeBroadcast has every healthy member of the role ring run the same
-	// action.
-	ModeBroadcast
+	// ModeAll makes every healthy member of the role ring an acting one: a
+	// group of replicas, all of which act. A write a contract gives such a
+	// role is replayed on each member (pkg/app's broadcast writes).
+	ModeAll
 )
 
 // String returns the name the mode is known by in logs and on the status page.
@@ -20,8 +21,8 @@ func (m Mode) String() string {
 	switch m {
 	case ModeLeader:
 		return "leader"
-	case ModeBroadcast:
-		return "broadcast"
+	case ModeAll:
+		return "all"
 	default:
 		return "unknown"
 	}
@@ -46,10 +47,10 @@ type modeSpec struct {
 //
 // ModeLeader counts LEAVING members as eligible, which is what keeps a rolling
 // restart from changing leader at every step: a draining replica keeps the
-// token until its heartbeat goes stale. ModeBroadcast deliberately does not,
+// token until its heartbeat goes stale. ModeAll deliberately does not,
 // because a replica that is draining must stop working.
 //
-// Both register a single token. A broadcast role never looks up a token, but a
+// Both register a single token. An all-mode role never looks up a token, but a
 // member with none renders as an oddity on the status page and could not be
 // switched to leader mode without rewriting the ring.
 var modeSpecs = map[Mode]modeSpec{
@@ -58,7 +59,7 @@ var modeSpecs = map[Mode]modeSpec{
 		replicationFactor: 1,
 		op:                ring.NewOp([]ring.InstanceState{ring.ACTIVE, ring.LEAVING}, nil),
 	},
-	ModeBroadcast: {
+	ModeAll: {
 		numTokens:         1,
 		replicationFactor: 1,
 		op:                ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil),

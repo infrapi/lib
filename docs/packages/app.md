@@ -349,7 +349,7 @@ operation**: which ring a write runs on. The ring's mode, declared in
 | The write's ring | It runs |
 |---|---|
 | a leader role | on that role's leader; relayed there from any other replica |
-| a broadcast role | here, then replayed on every member of that role |
+| an all-mode role | here, then replayed on every member of that role |
 | `local` | on the replica that received it |
 
 Two extensions, written in the contract next to what they govern:
@@ -371,7 +371,7 @@ paths:
 
 ```go
 Roles: []cluster.RoleSpec{
-	{Name: "everybody", Mode: cluster.ModeBroadcast},
+	{Name: "everybody", Mode: cluster.ModeAll},
 	{Name: "cache", Mode: cluster.ModeLeader},
 },
 ```
@@ -388,7 +388,7 @@ cluster:
   the leader holds. `x-infrapi-writes` never applies to reads, and a broadcast
   ring on a read is refused: a read has one answer.
 - A ring must be one of `Spec.Roles`, and one this replica joins: its writes
-  would otherwise have nowhere to go. A broadcast ring on a read, or
+  would otherwise have nowhere to go. An all-mode ring on a read, or
   `x-infrapi-writes` together with `cluster.leader_writes`, is refused at start.
 - Without a cluster, every write is local.
 - Every write gets its `BroadcastID` and `BroadcastTime`, whatever its ring.
@@ -591,7 +591,7 @@ app.Main(app.Spec{
 	Name: "orders-api",
 	Roles: []cluster.RoleSpec{
 		{Name: "purger", Mode: cluster.ModeLeader},   // one replica acts
-		{Name: "cache", Mode: cluster.ModeBroadcast}, // every replica acts
+		{Name: "cache", Mode: cluster.ModeAll}, // every replica acts
 	},
 	Background: func(ctx context.Context, rt *app.Runtime) error {
 		purger, err := rt.Cluster.Role("purger")

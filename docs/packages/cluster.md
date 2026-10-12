@@ -42,7 +42,7 @@ clusterConfig, _ := vars.GetClusterConfig()
 c, err := cluster.New(appConfig, clusterConfig, cluster.Options{
 	Roles: []cluster.RoleSpec{
 		{Name: "scheduler", Mode: cluster.ModeLeader},
-		{Name: "collector", Mode: cluster.ModeBroadcast},
+		{Name: "collector", Mode: cluster.ModeAll},
 	},
 })
 if err != nil {
@@ -75,11 +75,11 @@ returning an error.
 ```go
 const (
 	cluster.ModeLeader    // only the leader acts
-	cluster.ModeBroadcast // every healthy member acts
+	cluster.ModeAll // every healthy member acts
 )
 ```
 
-| | `ModeLeader` | `ModeBroadcast` |
+| | `ModeLeader` | `ModeAll` |
 |---|---|---|
 | `ShouldRun` is true on | the leader: the member [that may lead](#choosing-who-may-lead) with the smallest token | every healthy member |
 | Ring states accepted | `ACTIVE`, `LEAVING` | `ACTIVE` |
@@ -120,7 +120,7 @@ Nothing chooses *who* leads, only who **may not**: to prefer a data centre or a
 node, make the others fail a [leader check](#choosing-who-may-lead).
 
 `ModeLeader` counts a `LEAVING` replica as eligible, which is what keeps a
-rolling restart from changing leader at every step. `ModeBroadcast` does not: a
+rolling restart from changing leader at every step. `ModeAll` does not: a
 replica that is draining must stop working.
 
 A non-nil error from `ShouldRun` means **do not act**. It says the ring view is
@@ -229,7 +229,7 @@ and a compactor ring over one cluster.
 ```text
 gossip mesh, label "prod-eu-west-1"
   collectors/scheduler  -> the ring of role "scheduler" (leader)
-  collectors/collector  -> the ring of role "collector" (broadcast)
+  collectors/collector  -> the ring of role "collector" (all)
   collectors/state      -> whatever a caller codec writes
 ```
 
@@ -823,11 +823,11 @@ INFRAPI_CONFIG_DOTENV_FILE=node2.env go run .
 the seed node it joins. Each replica prints what it believes once a second:
 
 ```text
-node-1 | scheduler(leader): members=2 leader=node-1 -> ACTING  | collector(broadcast): members=2 -> ACTING
-node-2 | scheduler(leader): members=2 leader=node-1 -> passive | collector(broadcast): members=2 -> ACTING
+node-1 | scheduler(leader): members=2 leader=node-1 -> ACTING  | collector(all): members=2 -> ACTING
+node-2 | scheduler(leader): members=2 leader=node-1 -> passive | collector(all): members=2 -> ACTING
 ```
 
-Interrupt the leader and watch the two modes part company. The broadcast role
+Interrupt the leader and watch the two modes part company. The all-mode role
 drops it from its membership immediately; the leader role keeps counting it,
 because it is `LEAVING` and a leader role treats that as eligible, until its
 heartbeat goes stale and the survivor takes the token. The status pages are on

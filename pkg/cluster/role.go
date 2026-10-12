@@ -33,7 +33,7 @@ type RoleSpec struct {
 	Key string
 
 	// NumTokens overrides how many ring tokens this replica registers. Zero
-	// takes the mode's own count, which is what a leader or broadcast role
+	// takes the mode's own count, which is what a leader or all-mode role
 	// wants.
 	NumTokens int
 
@@ -181,7 +181,7 @@ func (r *Role) Lifecycler() *ring.BasicLifecycler { return r.lifecycler }
 
 // ShouldRun reports whether this replica must act right now.
 //
-// In ModeLeader that means being the leader; in ModeBroadcast it means
+// In ModeLeader that means being the leader; in ModeAll it means
 // being a healthy member of the role ring. A non-nil error must be read as "do
 // not act": it means the ring view is unusable, not that this replica was
 // excluded.
@@ -189,7 +189,7 @@ func (r *Role) ShouldRun() (bool, error) {
 	switch r.spec.Mode {
 	case ModeLeader:
 		return r.IsLeader()
-	case ModeBroadcast:
+	case ModeAll:
 		members, err := r.Members()
 		if err != nil {
 			return false, err
@@ -207,7 +207,7 @@ func (r *Role) ShouldRun() (bool, error) {
 
 // ShouldRunKey reports whether this replica must act on one particular key.
 //
-// The leader and broadcast modes ignore the key and answer like ShouldRun. It
+// The leader and all modes ignore the key and answer like ShouldRun. It
 // exists so that a sharded mode, where the answer does depend on the key, can
 // be added without changing any of these signatures.
 func (r *Role) ShouldRunKey(_ string) (bool, error) {

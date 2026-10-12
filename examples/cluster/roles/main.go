@@ -25,7 +25,7 @@ func main() {
 	c, stop := demo.Start(appConfig, clusterConfig, cluster.Options{
 		Roles: []cluster.RoleSpec{
 			{Name: "scheduler", Mode: cluster.ModeLeader},
-			{Name: "collector", Mode: cluster.ModeBroadcast},
+			{Name: "collector", Mode: cluster.ModeAll},
 
 			// Declared but not selected by the dotenv: a binary legitimately
 			// knows more roles than a deployment runs.

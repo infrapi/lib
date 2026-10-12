@@ -61,7 +61,7 @@ func TestSingleNode_leader_role(t *testing.T) {
 }
 
 func TestSingleNode_broadcast_role(t *testing.T) {
-	spec := uniqueRole(t, "coll", ModeBroadcast)
+	spec := uniqueRole(t, "coll", ModeAll)
 	c := startTestCluster(t, nil, spec)
 
 	role, err := c.Role(spec.Name)
@@ -69,7 +69,7 @@ func TestSingleNode_broadcast_role(t *testing.T) {
 
 	should, err := role.ShouldRun()
 	require.NoError(t, err)
-	assert.True(t, should, "a healthy member of a broadcast ring always acts")
+	assert.True(t, should, "a healthy member of an all-mode ring always acts")
 
 	// There is no leader to speak of, and saying so is better than inventing
 	// one.
@@ -156,10 +156,10 @@ func TestTwoNodes_elect_exactly_one_leader(t *testing.T) {
 	assert.Equal(t, leaderA.ID, leaderB.ID)
 }
 
-// Every healthy member of a broadcast ring acts, which is the whole point of
+// Every healthy member of an all-mode ring acts, which is the whole point of
 // the mode.
 func TestTwoNodes_broadcast_runs_everywhere(t *testing.T) {
-	spec := uniqueRole(t, "coll", ModeBroadcast)
+	spec := uniqueRole(t, "coll", ModeAll)
 
 	first := startTestCluster(t, nil, spec)
 	second := startTestCluster(t, nil, spec)
@@ -173,7 +173,7 @@ func TestTwoNodes_broadcast_runs_everywhere(t *testing.T) {
 		a, errA := firstRole.ShouldRun()
 		b, errB := secondRole.ShouldRun()
 		return errA == nil && errB == nil && a && b
-	}, 10*time.Second, 50*time.Millisecond, "both replicas of a broadcast role should act")
+	}, 10*time.Second, 50*time.Millisecond, "both replicas of an all-mode role should act")
 }
 
 // Leaving the ring on shutdown hands leadership over. Unregistering rather than
@@ -481,9 +481,9 @@ func TestLeader_reports_no_leader_when_nobody_is_eligible(t *testing.T) {
 	assert.False(t, should)
 }
 
-// A broadcast role whose membership cannot be read must also refuse to act.
+// An all-mode role whose membership cannot be read must also refuse to act.
 func TestShouldRun_broadcast_refuses_on_an_unreadable_ring(t *testing.T) {
-	spec := uniqueRole(t, "coll", ModeBroadcast)
+	spec := uniqueRole(t, "coll", ModeAll)
 	c := startTestCluster(t, nil, spec)
 
 	role, err := c.Role(spec.Name)
@@ -498,7 +498,7 @@ func TestShouldRun_broadcast_refuses_on_an_unreadable_ring(t *testing.T) {
 // A member the mode does not accept is absent from the membership a broadcast
 // role reasons about, so a draining replica stops working.
 func TestShouldRun_broadcast_excludes_an_ineligible_member(t *testing.T) {
-	spec := uniqueRole(t, "coll", ModeBroadcast)
+	spec := uniqueRole(t, "coll", ModeAll)
 	c := startTestCluster(t, nil, spec)
 
 	role, err := c.Role(spec.Name)
@@ -511,7 +511,7 @@ func TestShouldRun_broadcast_excludes_an_ineligible_member(t *testing.T) {
 	require.Eventually(t, func() bool {
 		should, err := role.ShouldRun()
 		return err == nil && !should
-	}, 10*time.Second, 50*time.Millisecond, "a leaving replica of a broadcast role must stop acting")
+	}, 10*time.Second, 50*time.Millisecond, "a leaving replica of an all-mode role must stop acting")
 }
 
 // AllMembers is the status page's view: it lists a replica the mode excludes,

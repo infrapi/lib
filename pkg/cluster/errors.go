@@ -38,7 +38,7 @@ var (
 	ErrBadMode = errors.New("cluster: unknown coordination mode")
 
 	// ErrWrongMode is returned by a query that does not apply to the role's
-	// coordination mode, such as Leader on a broadcast role.
+	// coordination mode, such as Leader on an all-mode role.
 	ErrWrongMode = errors.New("cluster: operation does not apply to this coordination mode")
 
 	// ErrWrongStore is returned by an accessor specific to another key-value

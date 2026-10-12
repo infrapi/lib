@@ -13,7 +13,7 @@ paths:
       summary: How a broadcast write went, replica by replica
       description: |
         Every write is answered with `X-Infrapi-Broadcast-ID`. For a write the
-        contract gives a broadcast ring, any replica tells how each replica
+        contract gives an all-mode ring, any replica tells how each replica
         took it. Kept 24 hours, and at most the 10 000 most recent writes.
       parameters:
         - name: id

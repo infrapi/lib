@@ -15,7 +15,7 @@
 //	c, err := cluster.New(appCfg, clusterCfg, cluster.Options{
 //		Roles: []cluster.RoleSpec{
 //			{Name: "scheduler", Mode: cluster.ModeLeader},
-//			{Name: "collector", Mode: cluster.ModeBroadcast},
+//			{Name: "collector", Mode: cluster.ModeAll},
 //		},
 //	})
 //

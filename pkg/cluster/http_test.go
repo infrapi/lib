@@ -52,7 +52,7 @@ func TestRegisterGin_rejects_a_nil_engine(t *testing.T) {
 
 func TestStatusHandler(t *testing.T) {
 	leader := uniqueRole(t, "sched", ModeLeader)
-	broadcast := uniqueRole(t, "coll", ModeBroadcast)
+	broadcast := uniqueRole(t, "coll", ModeAll)
 	c := startTestCluster(t, nil, leader, broadcast)
 
 	recorder := get(mount(t, c, HandlerOptions{}), http.MethodGet, StatusPath, asJSON)
@@ -93,10 +93,10 @@ func TestStatusHandler(t *testing.T) {
 	assert.Empty(t, schedStatus.Error)
 
 	collStatus := byName[broadcast.Name]
-	assert.Equal(t, "broadcast", collStatus.Mode)
+	assert.Equal(t, "all", collStatus.Mode)
 	assert.True(t, collStatus.ShouldRun)
 
-	// A broadcast role has no leader, and the page says nothing rather than
+	// An all-mode role has no leader, and the page says nothing rather than
 	// inventing one.
 	assert.Empty(t, collStatus.Leader)
 }
@@ -391,7 +391,7 @@ func TestRegisterGin_rejects_a_bad_prefix(t *testing.T) {
 
 func TestStatusHandler_renders_a_page(t *testing.T) {
 	leader := uniqueRole(t, "sched", ModeLeader)
-	broadcast := uniqueRole(t, "coll", ModeBroadcast)
+	broadcast := uniqueRole(t, "coll", ModeAll)
 	c := startTestCluster(t, nil, leader, broadcast)
 
 	recorder := get(mount(t, c, HandlerOptions{}), http.MethodGet, StatusPath, nil)
@@ -499,14 +499,14 @@ func TestRole_RingHandler_omits_the_crumb_when_unmounted(t *testing.T) {
 	assert.NotContains(t, body, "&larr; cluster")
 }
 
-// The broadcast ring page has no leader to report, and says nothing rather than
+// The all-mode ring page has no leader to report, and says nothing rather than
 // nominating one.
 func TestRingHandler_broadcast_has_no_leader_row(t *testing.T) {
-	spec := uniqueRole(t, "coll", ModeBroadcast)
+	spec := uniqueRole(t, "coll", ModeAll)
 	c := startTestCluster(t, nil, spec)
 
 	body := get(mount(t, c, HandlerOptions{}), http.MethodGet, StatusPath+"/ring/"+spec.Name, nil).Body.String()
-	assert.Contains(t, body, "broadcast")
+	assert.Contains(t, body, `<span class="badge badge-mode">all</span>`)
 	assert.NotContains(t, body, ">Leader<")
 }
 

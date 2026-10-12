@@ -57,7 +57,7 @@ func main() {
 		Service: &cfg,
 		// The ring the contract gives its writes to (x-infrapi-writes): a
 		// broadcast one, every member performs every write.
-		Roles: []cluster.RoleSpec{{Name: "everybody", Mode: cluster.ModeBroadcast}},
+		Roles: []cluster.RoleSpec{{Name: "everybody", Mode: cluster.ModeAll}},
 		API: func(_ context.Context, _ *app.Runtime) ([]app.Version, error) {
 			return []app.Version{{
 				OpenAPI: server.OpenAPISpec{Name: "orders v1", Path: "orders/v1.yaml", Content: ordersV1},

@@ -216,7 +216,7 @@ func TestLeaderChecks_of_one_role(t *testing.T) {
 }
 
 func TestLeaderChecks_of_one_role_name_a_leader_role_it_joins(t *testing.T) {
-	leader, broadcast := RoleSpec{Name: "purger", Mode: ModeLeader}, RoleSpec{Name: "cache", Mode: ModeBroadcast}
+	leader, broadcast := RoleSpec{Name: "purger", Mode: ModeLeader}, RoleSpec{Name: "cache", Mode: ModeAll}
 	for checks, want := range map[string]string{
 		`{"compactor": ["tcp://db:5432"]}`: `"compactor"`,
 		`{"cache": ["tcp://db:5432"]}`:     "nobody leads it",
