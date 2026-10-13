@@ -153,6 +153,50 @@ value with a space, a quote or an `=` is quoted:
 
 The engine leaves the global logrus logger alone: a service that wants its own
 lines in JSON sets `logrus.SetFormatter(&logrus.JSONFormatter{})` itself.
+
+## Answering with an error
+
+`server.WriteError` renders an [`*errors.Error`](errors.md) as
+`application/problem+json`; `server.AbortError` does the same and stops the
+gin chain, which is what a middleware does when it refuses a request:
+
+```go
+func getUser(c *gin.Context) {
+	user, err := store.Get(c.Param("id"))
+	if err != nil {
+		server.AbortError(c, err) // *errors.Error as it says, anything else a 500
+		return
+	}
+	c.JSON(http.StatusOK, user)
+}
+```
+
+Anything that is not an `*errors.Error` is treated as a bug on this side: it is
+logged in full, with the request's correlation id, and answered as an
+`internal_error` 500 that does not repeat its text - a database DSN or a stack
+trace has no business reaching the caller.
+
+`server.WithCorrelationID`/`server.CorrelationID` carry the id every response
+and log line of one call shares, usually set once by a middleware from a
+header the gateway or the caller sent:
+
+```go
+func correlate(c *gin.Context) {
+	id := c.GetHeader("X-Correlation-ID")
+	if id == "" {
+		id = rand.Text()
+	}
+	c.Header("X-Correlation-ID", id)
+	c.Request = c.Request.WithContext(server.WithCorrelationID(c.Request.Context(), id))
+	server.LogField(c, "correlation_id", id)
+	c.Next()
+}
+```
+
+`WriteError` reads it from the request's context and puts it in the payload's
+`correlation_id`, so every error answer carries the same id the access log
+line does.
+
 ## Metrics
 
 Two collectors are recorded for every request, carrying the service FQDN in a `name`

@@ -19,6 +19,14 @@
 //		WithType("https://infrapi.example.com/errors/duplicate-subscription", "Duplicate subscription")
 //
 // Codes are the net/http constants; this package does not redefine them.
+//
+// For the common shapes — a malformed request, a missing resource, a
+// conflict with what already exists, the system behind the API failing or
+// not answering — the constructors in helpers.go (Invalid, NotFound,
+// AlreadyExists, Upstream, Unavailable and so on) build one with a stable
+// Slug and an explicit Retryable already set, so a caller — often a
+// workflow engine retrying activities — can branch on them without parsing
+// Message.
 package errors
 
 import (
@@ -64,6 +72,25 @@ type Error struct {
 	// Extension member.
 	Solution string `json:"solution,omitempty"`
 
+	// Slug is a stable, machine-readable code for this problem TYPE, the same
+	// on every occurrence, e.g. "already_exists". Unlike Type it is never a
+	// URI: a client branches on it directly rather than dereferencing it.
+	// Extension member.
+	Slug string `json:"code,omitempty"`
+
+	// Retryable says whether the same call may succeed later with no change
+	// to the request — the detail a status code alone cannot carry: a 409 for
+	// "already exists" never resolves itself, one for "another call with this
+	// key is still running" will, soon. nil means unspecified: New and Wrap
+	// leave it so, and it is left out of the payload; the constructors below
+	// always set it. Extension member.
+	Retryable *bool `json:"retryable,omitempty"`
+
+	// Current is what exists already, on a 409 from AlreadyExists: the caller
+	// decides whether it is theirs, and needs to see it to decide. Extension
+	// member.
+	Current any `json:"current,omitempty"`
+
 	// Err is the wrapped cause. It stays out of the payload and is reachable
 	// with errors.Is and errors.As.
 	Err error `json:"-"`
@@ -89,10 +116,14 @@ func (e *Error) Error() string {
 		{"detail", e.Message},
 		{"instance", e.Instance},
 		{"solution", e.Solution},
+		{"code", e.Slug},
 	} {
 		if member[1] != "" {
 			parts = append(parts, member[0]+"="+member[1])
 		}
+	}
+	if e.Retryable != nil {
+		parts = append(parts, fmt.Sprintf("retryable=%t", *e.Retryable))
 	}
 
 	// the cause is already the detail when Wrap was called without a format
@@ -131,6 +162,34 @@ func (e *Error) WithType(uri string, title string) *Error {
 // on New or Wrap.
 func (e *Error) WithSolution(format string, args ...any) *Error {
 	e.Solution = fmt.Sprintf(format, args...)
+	return e
+}
+
+// WithTitle sets the summary sent to clients, without the URI WithType also
+// sets: for a title that is not backed by a documented problem type.
+func (e *Error) WithTitle(title string) *Error {
+	e.Title = title
+	return e
+}
+
+// WithSlug sets the stable, machine-readable code and returns the error, to
+// be chained on New or Wrap.
+func (e *Error) WithSlug(slug string) *Error {
+	e.Slug = slug
+	return e
+}
+
+// WithRetryable sets whether the same call may succeed later with no change
+// to the request, and returns the error, to be chained on New or Wrap.
+func (e *Error) WithRetryable(retryable bool) *Error {
+	e.Retryable = &retryable
+	return e
+}
+
+// WithCurrent sets what exists already, meaningful on a 409 from
+// AlreadyExists, and returns the error, to be chained on New or Wrap.
+func (e *Error) WithCurrent(current any) *Error {
+	e.Current = current
 	return e
 }
 

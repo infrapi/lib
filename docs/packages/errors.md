@@ -10,13 +10,16 @@ served as `application/problem+json`.
 
 ```go
 type Error struct {
-	Type     string `json:"type,omitempty"`
-	Code     int    `json:"status"`
-	Title    string `json:"title"`
-	Message  string `json:"detail"`
-	Instance string `json:"instance,omitempty"`
-	Origin   string `json:"origin,omitempty"`
-	Solution string `json:"solution,omitempty"`
+	Type      string `json:"type,omitempty"`
+	Code      int    `json:"status"`
+	Title     string `json:"title"`
+	Message   string `json:"detail"`
+	Instance  string `json:"instance,omitempty"`
+	Origin    string `json:"origin,omitempty"`
+	Solution  string `json:"solution,omitempty"`
+	Slug      string `json:"code,omitempty"`
+	Retryable *bool  `json:"retryable,omitempty"`
+	Current   any    `json:"current,omitempty"`
 
 	Err error `json:"-"`
 }
@@ -31,8 +34,49 @@ type Error struct {
 | `instance` | URI identifying this occurrence: a request path, or an opaque id. |
 | `origin` | Extension member: the failing call path, `MyPackage.MyFunc.MyCall`. For your operators. |
 | `solution` | Extension member: how to fix it. |
+| `code` | Extension member: a stable, machine-readable code for the problem *type*, e.g. `"already_exists"`. Unlike `type` it is never a URI - a client branches on it directly. |
+| `retryable` | Extension member: whether the same call may succeed later with no change to the request. A `*bool` so a bare `New`/`Wrap` can leave it unset (omitted) rather than implying "definitely not" - see the constructors below. |
+| `current` | Extension member: what exists already, on a 409 from `AlreadyExists`. |
 
 `Err` is the wrapped cause. It is never serialised.
+
+## The common shapes
+
+For a malformed request, a missing resource, a conflict with what already
+exists, or the system behind the API failing or not answering, use the
+constructor that names it instead of `New`: it sets `Slug` and `Retryable` for
+you.
+
+```go
+return infraerrors.NotFound("no user with id %d", id)
+return infraerrors.AlreadyExists(existing, "a user named %q already exists", name)
+return infraerrors.Unavailable("the database could not be reached: %v", err)
+```
+
+| Constructor | Status | Slug | Retryable |
+|-------------|--------|------|-----------|
+| `Invalid` | 400 | `invalid_request` | `false` |
+| `NotFound` | 404 | `not_found` | `false` |
+| `AlreadyExists(current, ...)` | 409 | `already_exists` | `false` |
+| `NotEmpty` | 409 | `folder_not_empty` | `false` |
+| `Protected` | 409 | `protected` | `false` |
+| `NotOnboarded` | 422 | `tenant_not_onboarded` | `false` |
+| `TooLarge` | 413 | `too_large` | `false` |
+| `UpstreamAuth` | 502 | `upstream_auth` | `false` |
+| `Upstream(retryable, ...)` | 502 | `upstream_error` | as given |
+| `Unavailable` | 503 | `upstream_unavailable` | `true` |
+
+A one-off error nobody else needs to branch on - `New` or `Wrap` - leaves
+`Slug` unset and `Retryable` nil; both are then left out of the payload.
+`WithSlug`, `WithRetryable` and `WithCurrent` chain on either, the same way
+`WithType` and `WithSolution` do, for an ad hoc error that still needs one of
+these:
+
+```go
+return infraerrors.New(http.StatusServiceUnavailable, "relay.Forward",
+	"no replica is the leader right now; retry (%v)", err).
+	WithTitle("No leader").WithSlug("no_leader").WithRetryable(true)
+```
 
 ## Raising an error
 
@@ -160,3 +204,9 @@ func handle(c *gin.Context) {
     live in your logs.
 
 `examples/errors` runs all of it, payloads included.
+
+!!! note "Writing one to an HTTP response"
+    This package only builds the value. Rendering it - `application/problem+json`,
+    the correlation id, logging an error nobody identified without leaking its
+    text to the caller - is [`server.WriteError`/`server.AbortError`](server.md),
+    which is gin-aware; this package is not.

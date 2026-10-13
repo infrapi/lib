@@ -64,9 +64,12 @@ nav:
   - Packages:
       - cluster: packages/cluster.md
       - config: packages/config.md
+      - contract: packages/contract.md
       - errors: packages/errors.md
       - gateway: packages/gateway.md
+      - gatewaysync: packages/gatewaysync.md
       - http: packages/http.md
+      - idempotency: packages/idempotency.md
       - listener: packages/listener.md
       - logger: packages/logger.md
       - server: packages/server.md
