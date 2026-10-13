@@ -9,7 +9,7 @@ require (
 	github.com/go-kit/log v0.2.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/grafana/dskit v0.0.0-20260928073014-b6a53f6bee29
-	github.com/infrapi/lib v0.9.0
+	github.com/infrapi/lib v0.10.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
