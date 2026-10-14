@@ -1,8 +1,6 @@
 # infrapi/lib
 
-Opinionated Go building blocks shared by InfraPI services. The framework that
-assembles them into a service — a contract, its handlers, and everything else in
-one call — is [infrapi/app](https://github.com/infrapi/app).
+Opinionated Go building blocks shared by InfraPI services.
 
 | Package | Import path | What it does |
 |---------|-------------|--------------|
