@@ -1,5 +1,5 @@
 site_name: infrapi/lib
-site_description: Opinionated Go building blocks for InfraPI services - dotenv configuration, HTTP client, gin server.
+site_description: Opinionated Go building blocks for InfraPI services.
 site_url: https://infrapi.github.io/lib/
 repo_url: https://github.com/infrapi/lib
 repo_name: infrapi/lib

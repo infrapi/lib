@@ -33,14 +33,14 @@ Then:
 ```bash
 make docs         # build into site/
 make docs-serve   # live reload on http://localhost:8000
-make docs-deploy  # push to the gh-pages branch
 ```
 
 Pages live in `docs/` and the navigation is declared in `mkdocs.yml`. A new page must be
 added to `nav:`, otherwise the CI build - which runs `mkdocs build --strict` - fails.
 
-Pushing to the default branch publishes the site through GitHub Pages; `make docs-deploy`
-is only needed for a manual out-of-band publish.
+`.github/workflows/docs.yml` builds the site on every push and PR, and on `main` also
+publishes it through GitHub Pages (Settings > Pages > Source = "GitHub Actions").
+There is no manual deploy step.
 
 ## Layout
 

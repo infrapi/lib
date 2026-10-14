@@ -42,8 +42,3 @@ docs-serve:
 	@echo "Serving documentation at http://localhost:8000"
 	@command -v mkdocs >/dev/null 2>&1 || (echo "Error: mkdocs not found. Install with: pip install mkdocs-material mkdocs-git-revision-date-localized-plugin" && exit 1)
 	@mkdocs serve
-
-docs-deploy:
-	@echo "Deploying documentation to GitHub Pages..."
-	@command -v mkdocs >/dev/null 2>&1 || (echo "Error: mkdocs not found. Install with: pip install mkdocs-material mkdocs-git-revision-date-localized-plugin" && exit 1)
-	@mkdocs gh-deploy --force
