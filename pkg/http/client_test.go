@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -58,7 +59,7 @@ func setup_api_client_server(t *testing.T) {
 	})
 
 	serverMux.HandleFunc("/api/v1/puppet/redirect", func(w nhttp.ResponseWriter, r *nhttp.Request) {
-		nhttp.Redirect(w, r, "/api/v1/puppet/ok", nhttp.StatusPermanentRedirect)
+		nhttp.Redirect(w, r, "/api/v1/puppet/ok", StatusPermanentRedirect)
 	})
 
 	// Handler for retry testing
@@ -66,13 +67,13 @@ func setup_api_client_server(t *testing.T) {
 	serverMux.HandleFunc("/api/v1/puppet/retry", func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		count := atomic.AddInt32(&retryCounter, 1)
 		if count < 3 {
-			w.WriteHeader(nhttp.StatusInternalServerError)
+			w.WriteHeader(StatusInternalServerError)
 			if _, err := w.Write([]byte("Server error")); err != nil {
 				t.Fatalf("client_test.go(WriteRetry): %s", err)
 			}
 			return
 		}
-		w.WriteHeader(nhttp.StatusOK)
+		w.WriteHeader(StatusOK)
 		if _, err := w.Write([]byte("Success after retries")); err != nil {
 			t.Fatalf("client_test.go(WriteRetry): %s", err)
 		}
@@ -84,13 +85,13 @@ func setup_api_client_server(t *testing.T) {
 		count := atomic.AddInt32(&rateLimitCounter, 1)
 		if count < 2 {
 			w.Header().Set("Retry-After", "1")
-			w.WriteHeader(nhttp.StatusTooManyRequests)
+			w.WriteHeader(StatusTooManyRequests)
 			if _, err := w.Write([]byte("Rate limited")); err != nil {
 				t.Fatalf("client_test.go(WriteRateLimit): %s", err)
 			}
 			return
 		}
-		w.WriteHeader(nhttp.StatusOK)
+		w.WriteHeader(StatusOK)
 		if _, err := w.Write([]byte("Success after rate limit")); err != nil {
 			t.Fatalf("client_test.go(WriteRateLimit): %s", err)
 		}
@@ -221,7 +222,7 @@ func TestAPIClient_methods(t *testing.T) {
 		t.Fatalf("client_test.go(NewClient): %s", err)
 	}
 
-	res, err := client.Do("GET", "redirect", nil)
+	res, err := client.Do(MethodGet, "redirect", nil)
 	if err != nil {
 		t.Fatalf("client_test.go(redirect): %s", err)
 	}
@@ -230,7 +231,7 @@ func TestAPIClient_methods(t *testing.T) {
 	}
 
 	/* Verify timeout works */
-	_, err = client.Do("GET", "slow", nil)
+	_, err = client.Do(MethodGet, "slow", nil)
 	if err == nil {
 		t.Fatalf("client_test.go(slow): Timeout did not trigger on slow request")
 	}
@@ -244,23 +245,23 @@ func TestAPIClient_methods(t *testing.T) {
 		t.Fatalf("client_test.go(head): Got back '%#v' but expected empty body\n", res)
 	}
 
-	res, err = client.Do("GET", "ok", nil)
-	checkOk(t, res, err, "GET")
+	res, err = client.Do(MethodGet, "ok", nil)
+	checkOk(t, res, err, MethodGet)
 
 	res, err = client.Get("ok", &RequestOptions{Server: "127.0.0.1"})
-	checkOk(t, res, err, "GET")
+	checkOk(t, res, err, MethodGet)
 
 	res, err = client.Post("ok", &RequestOptions{Data: []byte("hello")})
-	checkOk(t, res, err, "POST")
+	checkOk(t, res, err, MethodPost)
 
 	res, err = client.Delete("ok", &RequestOptions{Headers: map[string]string{"hello": "world"}})
-	checkOk(t, res, err, "DELETE")
+	checkOk(t, res, err, MethodDelete)
 
 	res, err = client.Patch("ok", nil)
-	checkOk(t, res, err, "PATCH")
+	checkOk(t, res, err, MethodPatch)
 
 	res, err = client.Put("ok", nil)
-	checkOk(t, res, err, "PUT")
+	checkOk(t, res, err, MethodPut)
 
 	res, err = client.Get("fail", nil)
 	if err == nil {
@@ -273,6 +274,57 @@ func TestAPIClient_methods(t *testing.T) {
 	_, err = client.Get("fail", &RequestOptions{Server: "bad.local"})
 	if err == nil {
 		t.Fatalf("client_test.go(getFail): should return error")
+	}
+}
+
+func TestAPIClient_NewRequest(t *testing.T) {
+	setup_api_client_server(t)
+	defer shutdown_api_client_server()
+
+	client, err := NewClient(&ClientOptions{
+		Server:           "127.0.0.1",
+		Application:      "puppet",
+		Protocol:         "http",
+		Port:             8080,
+		RetryWaitTime:    10 * time.Millisecond,
+		RetryMaxWaitTime: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("client_test.go(NewClient): %s", err)
+	}
+
+	const okURL = "http://127.0.0.1:8080/api/v1/puppet/ok"
+	ctx := context.Background()
+
+	res, err := client.NewRequest(ctx).Get(okURL)
+	checkOk(t, res, err, MethodGet)
+
+	res, err = client.NewRequest(ctx).SetBody([]byte("hello")).Post(okURL)
+	checkOk(t, res, err, MethodPost)
+
+	res, err = client.NewRequest(ctx).Put(okURL)
+	checkOk(t, res, err, MethodPut)
+
+	res, err = client.NewRequest(ctx).Patch(okURL)
+	checkOk(t, res, err, MethodPatch)
+
+	res, err = client.NewRequest(ctx).Delete(okURL)
+	checkOk(t, res, err, MethodDelete)
+
+	res, err = client.NewRequest(ctx).Get("http://127.0.0.1:8080/api/v1/puppet/fail")
+	if err != nil {
+		t.Fatalf("client_test.go(NewRequest fail): %s", err)
+	}
+	if res.Code != 404 {
+		t.Fatalf("client_test.go(NewRequest fail): expect 404 but got %d", res.Code)
+	}
+
+	res, err = client.NewRequest(ctx).Get("http://127.0.0.1:19999/")
+	if err == nil {
+		t.Fatalf("client_test.go(NewRequest unreachable): expected error")
+	}
+	if res.Code != StatusInternalServerError {
+		t.Fatalf("client_test.go(NewRequest unreachable): expect %d but got %d", StatusInternalServerError, res.Code)
 	}
 }
 
@@ -337,6 +389,15 @@ func checkOk(t *testing.T, res *Response, err error, verb string) {
 	}
 }
 
+func TestStatusText(t *testing.T) {
+	if got := StatusText(nhttp.StatusNotFound); got != nhttp.StatusText(nhttp.StatusNotFound) {
+		t.Fatalf("StatusText(404): expected %q, got %q", nhttp.StatusText(nhttp.StatusNotFound), got)
+	}
+	if StatusBadGateway != nhttp.StatusBadGateway {
+		t.Fatalf("StatusBadGateway: expected %d, got %d", nhttp.StatusBadGateway, StatusBadGateway)
+	}
+}
+
 func TestAPIClient_CustomHeaders(t *testing.T) {
 	client, err := NewClient(&ClientOptions{
 		Server:      "127.0.0.1",
@@ -367,7 +428,7 @@ func TestAPIClient_UnsupportedMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("client_test.go(UnsupportedMethod): %s", err)
 	}
-	_, err = client.Do("CONNECT", "ok", nil)
+	_, err = client.Do(MethodConnect, "ok", nil)
 	if err == nil {
 		t.Fatalf("client_test.go(UnsupportedMethod): expected error for unsupported method")
 	}

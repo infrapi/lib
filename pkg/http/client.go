@@ -1,27 +1,40 @@
+// Package http provides the InfraPI API client: a resty client with TLS,
+// retry and hedging defaults, and helpers to call /api/{version}/{application}.
+// Callers whose target does not fit that URL shape - a third-party API with
+// its own path layout - use [Client.NewRequest] instead, which keeps this
+// client's TLS, retry and header configuration without exposing resty to
+// them.
 package http
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"net/http"
 	"os"
 	"time"
 
 	"resty.dev/v3"
 )
 
+// Client is an InfraPI API client. It carries the options it was built with and
+// exposes the underlying resty client for anything the wrapper does not cover.
 type Client struct {
 	ClientOptions
 
 	RestyClient *resty.Client
 }
 
-// Default and opinionated client for infrapi, but the client expose resty and tls config, to allow customization.
+// ClientOptions configures a Client. Only Server and Application are mandatory;
+// the defaults are opinionated, and resty and the TLS config stay reachable for
+// anything they do not cover.
 type ClientOptions struct {
+	// Scheme of the API endpoint (default: https)
 	Protocol string
-	Server   string
-	Port     int
+	// Host of the API endpoint
+	Server string
+	// Port of the API endpoint (default: 443)
+	Port int
 
 	// InfraPI token, should be set
 	Token string
@@ -79,19 +92,31 @@ type HedgingOptions struct {
 	NonReadOnlyAllowed bool
 }
 
+// RequestOptions carries the per-request overrides of a single call.
 type RequestOptions struct {
-	Server      string
-	Data        []byte
-	Headers     map[string]string
+	// Host to call instead of the client one
+	Server string
+
+	// Raw request body
+	Data []byte
+
+	// Headers added to the request, replacing the JSON defaults when set
+	Headers map[string]string
+
+	// Status codes accepted as a success, both bounds included
+	// (default: DefaultMinHttpCode and DefaultMaxHttpCode)
 	MinHttpCode int
 	MaxHttpCode int
 }
 
+// Response is the outcome of a call. It is always returned, including with an
+// error, so the status code and the payload of a failed call stay readable.
 type Response struct {
 	Code int
 	Body []byte
 }
 
+// Defaults applied to every request when the options leave them unset.
 const (
 	DefaultGlobalTimeout = time.Duration(60) * time.Second
 	DefaultContent       = "application/json"
@@ -99,11 +124,15 @@ const (
 	DefaultMaxHttpCode   = 400
 )
 
+// NewClient returns a Client configured with opts. Server and Application are
+// mandatory.
 func NewClient(opts *ClientOptions) (*Client, error) {
 	c := new(Client)
 	return c.Update(opts)
 }
 
+// Update rebuilds the client in place from opts, replacing its TLS, header,
+// timeout, retry and hedging configuration.
 func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 	if opts == nil {
 		return nil, fmt.Errorf("NewClient(opts *ClientOptions) must set ClientOptions")
@@ -207,16 +236,19 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 				if err != nil {
 					return true
 				}
-				return r.StatusCode() == http.StatusTooManyRequests || r.StatusCode() >= 500
+				return r.StatusCode() == StatusTooManyRequests || r.StatusCode() >= StatusInternalServerError
 			},
 		)
 
 	// Configure hedging
 	if opts.Hedging != nil && opts.Hedging.Enabled {
-		c.RestyClient.EnableHedging(opts.Hedging.Delay, opts.Hedging.UpTo, opts.Hedging.MaxPerSecond)
-		if opts.Hedging.NonReadOnlyAllowed {
-			c.RestyClient.SetHedgingAllowNonReadOnly(true)
-		}
+		c.RestyClient.SetHedging(
+			resty.NewHedging().
+				SetDelay(opts.Hedging.Delay).
+				SetMaxRequest(opts.Hedging.UpTo).
+				SetMaxRequestPerSecond(opts.Hedging.MaxPerSecond).
+				SetNonReadOnlyAllowed(opts.Hedging.NonReadOnlyAllowed),
+		)
 	}
 
 	// Set default values
@@ -244,33 +276,43 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 	return c, nil
 }
 
+// Get performs a GET request on path.
 func (c *Client) Get(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("GET", path, opts)
+	return c.Do(MethodGet, path, opts)
 }
 
+// Post performs a POST request on path.
 func (c *Client) Post(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("POST", path, opts)
+	return c.Do(MethodPost, path, opts)
 }
 
+// Put performs a PUT request on path.
 func (c *Client) Put(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("PUT", path, opts)
+	return c.Do(MethodPut, path, opts)
 }
 
+// Delete performs a DELETE request on path.
 func (c *Client) Delete(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("DELETE", path, opts)
+	return c.Do(MethodDelete, path, opts)
 }
 
+// Patch performs a PATCH request on path.
 func (c *Client) Patch(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("PATCH", path, opts)
+	return c.Do(MethodPatch, path, opts)
 }
 
+// Head performs a HEAD request on path.
 func (c *Client) Head(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do("HEAD", path, opts)
+	return c.Do(MethodHead, path, opts)
 }
 
+// Do sends method to {Protocol}://{Server}:{Port}/api/{APIVersion}/{Application}/{path}
+// and returns the response. A status code outside the accepted range is
+// returned as an error carrying the HTTP status text, with the response filled
+// in. opts may be nil.
 func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response, error) {
 	r := &Response{
-		Code: http.StatusInternalServerError,
+		Code: StatusInternalServerError,
 	}
 	if opts == nil {
 		opts = &RequestOptions{}
@@ -321,17 +363,17 @@ func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response
 	var err error
 
 	switch method {
-	case "GET":
+	case MethodGet:
 		resp, err = req.Get(uri)
-	case "POST":
+	case MethodPost:
 		resp, err = req.Post(uri)
-	case "PUT":
+	case MethodPut:
 		resp, err = req.Put(uri)
-	case "DELETE":
+	case MethodDelete:
 		resp, err = req.Delete(uri)
-	case "PATCH":
+	case MethodPatch:
 		resp, err = req.Patch(uri)
-	case "HEAD":
+	case MethodHead:
 		resp, err = req.Head(uri)
 	default:
 		return r, fmt.Errorf("unsupported HTTP method: %s", method)
@@ -345,8 +387,61 @@ func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response
 	r.Body = resp.Bytes()
 
 	if resp.StatusCode() < opts.MinHttpCode || resp.StatusCode() > opts.MaxHttpCode {
-		return r, fmt.Errorf("%s", http.StatusText(r.Code))
+		return r, fmt.Errorf("%s", StatusText(r.Code))
 	}
 
 	return r, nil
+}
+
+// Request is a single call sharing this client's TLS, retry, header and
+// timeout configuration, built against an arbitrary URL rather than the
+// {Protocol}://{Server}:{Port}/api/{APIVersion}/{Application}/{path} shape Do
+// assumes. Build one with [Client.NewRequest].
+type Request struct {
+	resty *resty.Request
+}
+
+// NewRequest returns a Request bound to ctx, for a call whose URL Do's
+// api/{version}/{application}/{path} shape does not fit.
+func (c *Client) NewRequest(ctx context.Context) *Request {
+	return &Request{resty: c.RestyClient.R().SetContext(ctx)}
+}
+
+// SetBody sets the request body and returns the Request, to be chained on
+// NewRequest. See resty.Request.SetBody for the types accepted: a []byte, a
+// string, or a value json.Marshal can encode.
+func (r *Request) SetBody(body any) *Request {
+	r.resty.SetBody(body)
+	return r
+}
+
+// Get sends the request to url.
+func (r *Request) Get(url string) (*Response, error) { return r.do(r.resty.Get, url) }
+
+// Post sends the request to url.
+func (r *Request) Post(url string) (*Response, error) { return r.do(r.resty.Post, url) }
+
+// Put sends the request to url.
+func (r *Request) Put(url string) (*Response, error) { return r.do(r.resty.Put, url) }
+
+// Patch sends the request to url.
+func (r *Request) Patch(url string) (*Response, error) { return r.do(r.resty.Patch, url) }
+
+// Delete sends the request to url.
+func (r *Request) Delete(url string) (*Response, error) { return r.do(r.resty.Delete, url) }
+
+// do runs call against url and translates resty's response into a Response,
+// the same type Do returns, so callers never see a resty type.
+func (r *Request) do(call func(url string) (*resty.Response, error), url string) (*Response, error) {
+	res := &Response{Code: StatusInternalServerError}
+
+	resp, err := call(url)
+	if err != nil {
+		return res, err
+	}
+
+	res.Code = resp.StatusCode()
+	res.Body = resp.Bytes()
+
+	return res, nil
 }

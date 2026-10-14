@@ -3,6 +3,7 @@ GOFMT_FILES?=$$(find . -name '*.go' | grep -vE './_local')
 GO_CMD ?= go
 SHELL := /bin/bash
 
+.PHONY: setup clean tidy fmt lint security test docs
 all: setup clean tidy fmt lint security test
 
 setup:

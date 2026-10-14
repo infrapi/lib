@@ -1,3 +1,5 @@
+// Package config loads InfraPI service configuration from a dotenv file and
+// exposes it as typed, validated values.
 package config
 
 import (
@@ -11,13 +13,17 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Variables holds the content of a dotenv file together with the rule set used
+// by the INFRAPI_APP_* getters.
 type Variables struct {
 	Values        map[string]string `json:"variables"`
 	Path          string            `json:"path"`
 	DefaultConfig *DefaultConfig    `json:"-"`
 }
 
+// VariableOpts describes how a single dotenv key is read and validated.
 type VariableOpts struct {
+	// Dotenv key to read
 	Key string
 
 	// Default value in string format
@@ -28,6 +34,12 @@ type VariableOpts struct {
 
 	// Hide from error and log messages
 	Sensible bool
+
+	// Optional accepts an absent or empty key that has no Default, in which
+	// case GetString returns the empty string instead of an error. It only
+	// makes sense for keys read with GetString: the parsing getters have no
+	// empty value to return.
+	Optional bool
 }
 
 func getDotEnv() string {
@@ -37,6 +49,9 @@ func getDotEnv() string {
 	return ".env"
 }
 
+// NewConfig reads the dotenv file named by INFRAPI_CONFIG_DOTENV_FILE, or .env
+// when that variable is unset. The process environment is not used as a
+// fallback for the values themselves.
 func NewConfig() (*Variables, error) {
 	// load .env file
 	path := getDotEnv()
@@ -52,7 +67,10 @@ func NewConfig() (*Variables, error) {
 	}, nil
 }
 
-// GetString retrieves a string value from environment variables
+// GetString returns the value of opts.Key. An absent or empty key falls back to
+// opts.Default, and is an error when no default is set unless opts.Optional is
+// true, which returns the empty string. Only values coming from the dotenv file
+// are checked against opts.Validator; defaults are trusted.
 func (v *Variables) GetString(opts *VariableOpts) (string, error) {
 	if opts == nil {
 		return "", fmt.Errorf("opts cannot be nil")
@@ -61,6 +79,9 @@ func (v *Variables) GetString(opts *VariableOpts) (string, error) {
 	value, ok := v.Values[opts.Key]
 	if !ok || value == "" {
 		if opts.Default == "" {
+			if opts.Optional {
+				return "", nil
+			}
 			return "", fmt.Errorf("key %s value is empty and opts.Default not provided, dotenv located at %s", opts.Key, v.Path)
 		}
 		return opts.Default, nil
@@ -80,6 +101,7 @@ func (v *Variables) GetString(opts *VariableOpts) (string, error) {
 	return value, nil
 }
 
+// GetBool returns the value of opts.Key parsed with strconv.ParseBool.
 func (v *Variables) GetBool(opts *VariableOpts) (bool, error) {
 	value, err := v.GetString(opts)
 	if err != nil {
@@ -92,6 +114,7 @@ func (v *Variables) GetBool(opts *VariableOpts) (bool, error) {
 	return r, nil
 }
 
+// GetInt returns the value of opts.Key parsed with strconv.Atoi.
 func (v *Variables) GetInt(opts *VariableOpts) (int, error) {
 	value, err := v.GetString(opts)
 	if err != nil {
@@ -104,6 +127,7 @@ func (v *Variables) GetInt(opts *VariableOpts) (int, error) {
 	return r, nil
 }
 
+// GetInt64 returns the value of opts.Key parsed as a base 10 64 bits integer.
 func (v *Variables) GetInt64(opts *VariableOpts) (int64, error) {
 	value, err := v.GetString(opts)
 	if err != nil {
@@ -116,6 +140,8 @@ func (v *Variables) GetInt64(opts *VariableOpts) (int64, error) {
 	return r, nil
 }
 
+// GetSliceString returns the value of opts.Key decoded as a JSON array of
+// strings, so the dotenv value must be written as ["a", "b"].
 func (v *Variables) GetSliceString(opts *VariableOpts) ([]string, error) {
 	r := []string{}
 	value, err := v.GetString(opts)
@@ -128,6 +154,7 @@ func (v *Variables) GetSliceString(opts *VariableOpts) ([]string, error) {
 	return r, nil
 }
 
+// GetDuration returns the value of opts.Key parsed with time.ParseDuration.
 func (v *Variables) GetDuration(opts *VariableOpts) (time.Duration, error) {
 	value, err := v.GetString(opts)
 	if err != nil {

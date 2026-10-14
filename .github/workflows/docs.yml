@@ -2,36 +2,34 @@ name: Docs
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - mkdocs.yml
+      - README.md
       - docs/**
       - .github/workflows/docs.yml
   pull_request:
     paths:
       - mkdocs.yml
+      - README.md
       - docs/**
       - .github/workflows/docs.yml
 
+# Builds the site to keep the docs valid (--strict fails on a broken link or
+# page). Not deployed: GitHub Pages is not enabled on this repository.
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       # git-revision-date-localized reads the full history to date each page
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -40,18 +38,3 @@ jobs:
 
       - name: Build
         run: mkdocs build --strict --verbose
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-  deploy:
-    needs: build
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4

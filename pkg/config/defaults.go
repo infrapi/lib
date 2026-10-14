@@ -4,11 +4,11 @@ import (
 	"os"
 )
 
-// Default envvars
-
+// DefaultConfig holds the read and validation rules of every INFRAPI_APP_* key.
 type DefaultConfig struct {
 	AppName                 *VariableOpts
 	AppLogLevel             *VariableOpts
+	AppLogFormat            *VariableOpts
 	AppListenType           *VariableOpts
 	AppListenAddress        *VariableOpts
 	AppPlatform             *VariableOpts
@@ -25,7 +25,8 @@ type DefaultConfig struct {
 	AppCorsMaxAge           *VariableOpts
 }
 
-// All validator to use, customizable by enduser
+// NewDefaultConfig returns the rules applied to the INFRAPI_APP_* keys. A
+// service may tighten or relax any of them before reading its configuration.
 func NewDefaultConfig() *DefaultConfig {
 	hostname, _ := os.Hostname()
 
@@ -38,6 +39,11 @@ func NewDefaultConfig() *DefaultConfig {
 			Key:       "INFRAPI_APP_LOG_LEVEL",
 			Validator: "oneof=trace debug info error",
 			Default:   "info",
+		},
+		AppLogFormat: &VariableOpts{
+			Key:       "INFRAPI_APP_LOG_FORMAT",
+			Validator: "oneof=text json",
+			Default:   "text",
 		},
 		AppListenType: &VariableOpts{
 			Key:       "INFRAPI_APP_LISTEN_TYPE",
