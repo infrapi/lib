@@ -12,20 +12,19 @@ anywhere else in the process:
 l, err := logger.New(logger.Options{
 	Level:  appConfig.AppLogLevel.String(),
 	Format: appConfig.AppLogFormat,
-	Name:   "cluster",
+	Name:   "worker",
 })
 if err != nil {
 	return err
 }
 defer func() { _ = l.Sync() }()
 
-l.Info("replica joined", logger.String("role", "scheduler"))
+l.Info("job started", logger.String("queue", "emails"))
 ```
 
 `Level` and `Format` take the same values `INFRAPI_APP_LOG_LEVEL` and
 `INFRAPI_APP_LOG_FORMAT` already carry, so a logger for this package is built
-from the exact same `*config.AppConfig` the [server](server.md) and
-[cluster](cluster.md) packages read.
+from the exact same `*config.AppConfig` the [server](server.md) package reads.
 
 It is built on [uber-go/zap](https://pkg.go.dev/go.uber.org/zap) internally,
 but that is an implementation detail: no function here takes or returns a zap
@@ -41,8 +40,7 @@ schema. `pkg/logger` extends that convention to zap's typed fields and lower
 allocation cost, for a service's own log statements, without breaking the
 schema a collector already parses.
 
-It does not replace `pkg/cluster`'s go-kit/logrus bridge - dskit's own logging
-stays on logrus - or infrapi/app's slog setup. Pick it for a service's
+It does not replace infrapi/app's slog setup. Pick it for a service's
 application-level logging; the libraries underneath keep what they already
 use.
 
@@ -52,14 +50,14 @@ use.
 |-------|---------|
 | `Level` | `trace`, `debug`, `info`, `warn` (or `warning`), `error`. Empty is `info`. There is no separate trace level underneath, so `trace` filters at the same threshold as `debug`. |
 | `Format` | `logger.FormatJSON` for one JSON object per line. Anything else, including empty, writes `logger.FormatConsole`, a human-readable line. |
-| `Name` | Tags every line with a `component` field - `"cluster"`, `"server"` - so a collector tells packages apart in one process. Empty adds nothing. |
+| `Name` | Tags every line with a `component` field - `"worker"`, `"server"` - so a collector tells packages apart in one process. Empty adds nothing. |
 | `Output` | Where lines are written. Nil means `os.Stdout`. |
 | `Development` | Adds the call site and a stacktrace to error-and-above lines. Off by default. |
 
 A JSON line looks like:
 
 ```json
-{"time":"2026-01-01T00:00:00.000000000Z","level":"info","component":"cluster","msg":"replica joined","role":"scheduler"}
+{"time":"2026-01-01T00:00:00.000000000Z","level":"info","component":"worker","msg":"job started","queue":"emails"}
 ```
 
 `warn` is written as `"warning"`, matching the name logrus and the `slog`
@@ -83,7 +81,7 @@ l.Error("call failed", logger.Err(err))
 | `logger.Bool(key string, value bool)` | A boolean. |
 | `logger.Duration(key string, value time.Duration)` | A duration, formatted like `time.Duration.String`. |
 | `logger.Time(key string, value time.Time)` | A timestamp, RFC 3339. |
-| `logger.Err(err error)` | An error, under the key `"err"` - not zap's own default, `"error"` - matching the name `pkg/cluster`'s go-kit bridge and dskit already write it under. |
+| `logger.Err(err error)` | An error, under the key `"err"` - not zap's own default, `"error"`. |
 | `logger.Any(key string, value any)` | Anything else, found by reflection. |
 
 A call site that wants `fmt.Sprintf`-style logging instead of fields has

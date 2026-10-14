@@ -172,8 +172,7 @@ resp, err := client.NewRequest(ctx).
 `NewRequest(ctx)` returns a `*Request` with `Get`, `Post`, `Put`, `Patch` and `Delete`,
 each taking the full URL and returning the same `*Response` as `Do`. Unlike `Do`, a
 `Request` applies no success-range check: any response that comes back, 2xx or not, is
-returned without an error, and the caller decides what counts as a failure. `pkg/gateway`
-is built this way, on top of `NewRequest` rather than resty directly.
+returned without an error, and the caller decides what counts as a failure.
 
 `StatusText(code)` and the `StatusBadGateway` constant are `net/http`'s own, re-exported
 so a caller deciding what counts as a failure - and building an

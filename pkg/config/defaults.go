@@ -4,8 +4,7 @@ import (
 	"os"
 )
 
-// DefaultConfig holds the read and validation rules of every INFRAPI_APP_* key,
-// and of the INFRAPI_CLUSTER_* keys under Cluster.
+// DefaultConfig holds the read and validation rules of every INFRAPI_APP_* key.
 type DefaultConfig struct {
 	AppName                 *VariableOpts
 	AppLogLevel             *VariableOpts
@@ -24,11 +23,6 @@ type DefaultConfig struct {
 	AppCorsExposeHeaders    *VariableOpts
 	AppCorsAllowCredentials *VariableOpts
 	AppCorsMaxAge           *VariableOpts
-
-	// Cluster holds the INFRAPI_CLUSTER_* rules. They are grouped rather than
-	// flattened here because there are enough of them to drown the keys every
-	// service shares.
-	Cluster *ClusterDefaultConfig
 }
 
 // NewDefaultConfig returns the rules applied to the INFRAPI_APP_* keys. A
@@ -110,6 +104,5 @@ func NewDefaultConfig() *DefaultConfig {
 			Key:     "INFRAPI_APP_CORS_MAX_AGE",
 			Default: "12",
 		},
-		Cluster: newClusterDefaultConfig(hostname),
 	}
 }

@@ -36,10 +36,7 @@ func Duration(key string, value time.Duration) Field { return zap.Duration(key, 
 // line already carries - see [New].
 func Time(key string, value time.Time) Field { return zap.Time(key, value) }
 
-// Err attaches err under the key "err" - not zap's own default, "error" -
-// because that is the name dskit and pkg/cluster's go-kit bridge already
-// write it under, so a line this package writes about the same failure names
-// it the same way.
+// Err attaches err under the key "err" - not zap's own default, "error".
 func Err(err error) Field { return zap.NamedError("err", err) }
 
 // Any attaches key=value for a type none of the above fits. Prefer a typed

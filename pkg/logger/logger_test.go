@@ -44,17 +44,17 @@ func TestNew_unknownLevel(t *testing.T) {
 
 func TestNew_jsonFields(t *testing.T) {
 	var buf bytes.Buffer
-	l, err := New(Options{Format: FormatJSON, Output: &buf, Name: "cluster"})
+	l, err := New(Options{Format: FormatJSON, Output: &buf, Name: "worker"})
 	require.NoError(t, err)
 
-	l.Info("replica joined", String("role", "scheduler"))
+	l.Info("job started", String("queue", "emails"))
 
 	var line map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &line))
 	assert.Equal(t, "info", line["level"])
-	assert.Equal(t, "replica joined", line["msg"])
-	assert.Equal(t, "scheduler", line["role"])
-	assert.Equal(t, "cluster", line["component"])
+	assert.Equal(t, "job started", line["msg"])
+	assert.Equal(t, "emails", line["queue"])
+	assert.Equal(t, "worker", line["component"])
 	assert.NotEmpty(t, line["time"])
 }
 

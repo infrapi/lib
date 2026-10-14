@@ -3,12 +3,7 @@ GOFMT_FILES?=$$(find . -name '*.go' | grep -vE './_local')
 GO_CMD ?= go
 SHELL := /bin/bash
 
-# go test, golangci-lint and gosec all stop at a module boundary, so every
-# target below has to walk the modules itself. pkg/cluster and its example are
-# modules of their own to keep dskit out of the root dependency tree.
-MODULES ?= . pkg/cluster examples/cluster
-
-.PHONY: setup clean tidy fmt lint security test verify-submodules docs
+.PHONY: setup clean tidy fmt lint security test docs
 all: setup clean tidy fmt lint security test
 
 setup:
@@ -20,58 +15,21 @@ clean:
 	rm -rf ./dist
 
 tidy:
-	@for module in $(MODULES); do \
-		echo "==> tidy $$module"; \
-		(cd $$module && $(GO_CMD) mod tidy) || exit 1; \
-	done
+	$(GO_CMD) mod tidy
 
 fmt:
 	$(GO_CMD)fmt -w $(GOFMT_FILES)
 
 lint:
-	@for module in $(MODULES); do \
-		echo "==> lint $$module"; \
-		(cd $$module && golangci-lint run) || exit 1; \
-	done
+	golangci-lint run
 
 security:
-	@for module in $(MODULES); do \
-		echo "==> security $$module"; \
-		(cd $$module && gosec -exclude-dir _local -quiet ./...) || exit 1; \
-	done
+	gosec -exclude-dir _local -quiet ./...
 
-# The root module keeps its 60s budget, most of which pkg/http spends on real
-# retry backoff. The cluster module gets its own, because it starts real gossip
-# clusters and waits for them to converge.
 test:
 	$(GO_CMD) test -v -timeout 60s -coverprofile=cover.out -cover $(TEST)
 	$(GO_CMD) tool cover -func=cover.out
 	$(GO_CMD) tool cover -html=cover.out -o coverage.html
-	# The report has to run inside the module that owns the profile: from here,
-	# `go tool cover` cannot resolve the cluster module's packages.
-	cd pkg/cluster && \
-		$(GO_CMD) test -v -timeout 120s -coverprofile=cover.out -cover ./... && \
-		$(GO_CMD) tool cover -func=cover.out && \
-		$(GO_CMD) tool cover -html=cover.out -o ../../coverage-cluster.html
-
-# A replace directive keeps the submodules building against this working tree,
-# which also means a broken require line would never be noticed. This builds
-# them the way a consumer does: without the replace, against the published
-# parent.
-#
-# It is deliberately NOT part of `all`, and not in CI yet: it cannot pass until
-# a tag of the parent carries the INFRAPI_CLUSTER_* keys. Wire it into both once
-# that tag exists, and the require line can never silently rot again.
-verify-submodules:
-	@for module in pkg/cluster examples/cluster; do \
-		echo "==> verify $$module against the published parent"; \
-		rm -rf /tmp/infrapi-verify && mkdir -p /tmp/infrapi-verify; \
-		cp -r $$module/. /tmp/infrapi-verify/; \
-		grep -v '=> \.\.' /tmp/infrapi-verify/go.mod > /tmp/infrapi-verify/go.mod.new; \
-		mv /tmp/infrapi-verify/go.mod.new /tmp/infrapi-verify/go.mod; \
-		(cd /tmp/infrapi-verify && $(GO_CMD) build ./...) || exit 1; \
-	done
-	@rm -rf /tmp/infrapi-verify
 
 docs:
 	@echo "Building documentation with MkDocs..."

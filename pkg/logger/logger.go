@@ -1,6 +1,6 @@
 // Package logger builds the [Logger] every InfraPI package logs structured
-// lines through: cluster, server, app, a service built on them - one shared
-// set of conventions instead of each package picking its own.
+// lines through: server, app, a service built on them - one shared set of
+// conventions instead of each package picking its own.
 //
 // It is built on uber-go/zap, but that is an implementation detail: nothing
 // in this package's API takes or returns a zap type, so a caller never adds
@@ -16,7 +16,7 @@
 //	l, err := logger.New(logger.Options{
 //		Level:  appCfg.AppLogLevel.String(),
 //		Format: appCfg.AppLogFormat,
-//		Name:   "cluster",
+//		Name:   "worker",
 //	})
 //	if err != nil {
 //		return err
@@ -24,7 +24,7 @@
 //	defer func() { _ = l.Sync() }()
 //
 //	logger.SetDefault(l)
-//	logger.L().Info("replica joined", logger.String("role", "scheduler"))
+//	logger.L().Info("job started", logger.String("queue", "emails"))
 //
 // [SetDefault] is how one logger reaches every package that calls [L]
 // afterwards, without threading a *Logger through every constructor. Called
@@ -74,7 +74,7 @@ type Options struct {
 	Format string
 
 	// Name tags every line this logger writes with a "component" field, e.g.
-	// "cluster" or "server", so lines from several packages in one process
+	// "worker" or "server", so lines from several packages in one process
 	// are told apart once they reach a collector. Empty adds nothing.
 	Name string
 
@@ -123,8 +123,8 @@ func New(opts Options) (*Logger, error) {
 		encoder = zapcore.NewJSONEncoder(encoderConfig())
 	}
 
-	// Lock: cluster, server and app all log from several goroutines of their
-	// own, onto what is usually one shared *os.File.
+	// Lock: server and app both log from several goroutines of their own,
+	// onto what is usually one shared *os.File.
 	core := zapcore.NewCore(encoder, zapcore.Lock(zapcore.AddSync(output)), level)
 
 	var zopts []zap.Option
@@ -216,8 +216,8 @@ func buildDefault() *Logger {
 
 // SetDefault replaces the logger [L] returns. Call it once, early in main,
 // once Options is built from the service's own configuration; every package
-// that calls L afterwards - cluster and server included, since neither holds
-// a logger of its own before this call - picks up the replacement.
+// that calls L afterwards - server included, since it holds no logger of its
+// own before this call - picks up the replacement.
 func SetDefault(l *Logger) {
 	if l == nil {
 		return

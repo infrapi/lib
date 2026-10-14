@@ -61,14 +61,14 @@ func example1() {
 func example2() {
 	fmt.Println("--- Example 2: JSON Output ---")
 
-	l, err := logger.New(logger.Options{Format: logger.FormatJSON, Name: "cluster"})
+	l, err := logger.New(logger.Options{Format: logger.FormatJSON, Name: "worker"})
 	if err != nil {
 		log.Fatalf("New: %v", err)
 	}
 
-	l.Info("replica joined", logger.String("role", "scheduler"), logger.Int("members", 3))
-	l.Warn("heartbeat slow", logger.String("role", "scheduler")) // written with level="warning"
-	l.Error("gossip send failed", logger.Err(fmt.Errorf("dial tcp: timeout")))
+	l.Info("job started", logger.String("queue", "emails"), logger.Int("workers", 3))
+	l.Warn("queue backing up", logger.String("queue", "emails")) // written with level="warning"
+	l.Error("job failed", logger.Err(fmt.Errorf("dial tcp: timeout")))
 	fmt.Println()
 }
 
@@ -88,8 +88,8 @@ func example3() {
 
 // Example 4: SetDefault is how one logger, built once in main, reaches every
 // package that calls L afterwards - no logger argument threaded through
-// cluster's or server's own constructors. Infof is the printf-style
-// alternative to typed fields, for a call site that wants it.
+// server's own constructors. Infof is the printf-style alternative to typed
+// fields, for a call site that wants it.
 func example4() {
 	fmt.Println("--- Example 4: The Package-Level Default ---")
 

@@ -154,20 +154,6 @@ func (v *Variables) GetSliceString(opts *VariableOpts) ([]string, error) {
 	return r, nil
 }
 
-// GetMapSliceString returns the value of opts.Key parsed as a JSON object of
-// string arrays: {"a": ["x", "y"]}.
-func (v *Variables) GetMapSliceString(opts *VariableOpts) (map[string][]string, error) {
-	r := map[string][]string{}
-	value, err := v.GetString(opts)
-	if err != nil {
-		return r, err
-	}
-	if err := json.Unmarshal([]byte(value), &r); err != nil {
-		return nil, fmt.Errorf("key %s value is not parsable as an object of string lists, dotenv located at %s", opts.Key, v.Path)
-	}
-	return r, nil
-}
-
 // GetDuration returns the value of opts.Key parsed with time.ParseDuration.
 func (v *Variables) GetDuration(opts *VariableOpts) (time.Duration, error) {
 	value, err := v.GetString(opts)

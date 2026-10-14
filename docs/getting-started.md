@@ -91,14 +91,3 @@ go run ./examples/server
 `examples/config`, `examples/listener` and `examples/server` expect to be run from
 the repository root: they point `INFRAPI_CONFIG_DOTENV_FILE` at dotenv files
 shipped next to the source.
-
-The cluster examples are the exception twice over. They are a Go module of their
-own, so that importing [cluster](packages/cluster.md) does not pull dskit into
-the root module, and there is one directory per use case rather than one program:
-
-```bash
-cd examples/cluster/roles && go run .
-```
-
-`examples/cluster/README.md` lists them all. `examples/cluster/node` is the one
-worth running twice, in two terminals, for a real two-node cluster.
