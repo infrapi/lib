@@ -10,7 +10,8 @@ import (
 type Option func(*options) error
 
 type options struct {
-	specs []OpenAPISpec
+	specs     []OpenAPISpec
+	readiness []ReadinessCheck
 }
 
 // OpenAPISpec is an OpenAPI document a service maintains itself — a contract

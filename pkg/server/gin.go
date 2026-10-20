@@ -14,7 +14,7 @@ import (
 )
 
 // NewServerGin creates a gin.Engine pre-configured from the supplied AppConfig:
-// CORS, recovery, logging, request metrics, and four endpoints every InfraPI
+// CORS, recovery, logging, request metrics, and the endpoints every InfraPI
 // service exposes without asking for them.
 //
 // Access logs and recovered panics go to gin.DefaultWriter, as gin's text
@@ -22,6 +22,8 @@ import (
 // line instead.
 //
 //	GET /-/metadata      the application identity
+//	GET /-/healthz       200 while the process serves
+//	GET /-/readyz        200 when ready for traffic, 503 when a WithReadiness check fails
 //	GET /-/metrics       Prometheus exposition format
 //	GET /-/openapi.json  OpenAPI 3.1, generated from the route table
 //	GET /-/docs          Swagger UI reading that specification
@@ -33,7 +35,8 @@ import (
 //
 // Options adjust it: WithOpenAPI documents the service with its own OpenAPI
 // documents rather than the generated specification, and validates every
-// request against them before any handler runs.
+// request against them before any handler runs; WithReadiness adds the checks
+// /-/readyz runs.
 func NewServerGin(cfg *config.AppConfig, opts ...Option) (*gin.Engine, error) {
 	var o options
 	for _, opt := range opts {
@@ -76,6 +79,7 @@ func NewServerGin(cfg *config.AppConfig, opts ...Option) (*gin.Engine, error) {
 	})
 
 	app.GET(MetricsPath, m.handler())
+	healthHandlers(app, o.readiness)
 
 	if err := openAPIHandlers(app, cfg, o.specs); err != nil {
 		return nil, err

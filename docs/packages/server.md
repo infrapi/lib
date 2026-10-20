@@ -37,17 +37,19 @@ if err := engine.Run(cfg.AppListenAddress); err != nil {
 - **Gin in release mode** — no debug line per route at start — unless
   `INFRAPI_APP_LOG_LEVEL` is `debug` or `trace`, or the mode was chosen already
   (`GIN_MODE`, or `gin.SetMode` before `NewServerGin`, as a test's `gin.TestMode`).
-- **Four endpoints**, with nothing to configure:
+- **Six endpoints**, with nothing to configure:
 
 | Endpoint | Serves |
 |----------|--------|
 | `GET /-/metadata` | The application identity. |
+| `GET /-/healthz` | `200` while the process serves: liveness. |
+| `GET /-/readyz` | `200` when ready for traffic, `503` when a `WithReadiness` check fails: readiness. |
 | `GET /-/metrics` | Prometheus exposition format. |
 | `GET /-/openapi.json` | OpenAPI 3.1, generated from the route table - unless the service passes its own documents with `WithOpenAPI`. |
 | `GET /-/docs` | Swagger UI reading that specification, or the documents passed with `WithOpenAPI`. |
 
-The paths are exported as `server.MetricsPath`, `server.OpenAPIPath` and
-`server.DocsPath`.
+The paths are exported as `server.MetricsPath`, `server.HealthzPath`,
+`server.ReadyzPath`, `server.OpenAPIPath` and `server.DocsPath`.
 
 `/-/metadata` answers with:
 
@@ -215,6 +217,42 @@ The engine puts the request's `X-Request-Id` in its context
 Setting that header — and returning it to the caller — is the job of what
 stands in front of the service, a gateway or a proxy: the engine generates
 none, and a call that reaches it without one has none.
+
+## Health
+
+A gateway or a load balancer checks `/-/readyz` to know whether to send a replica
+traffic, and `/-/healthz` to know it is alive at all. Both answer `{"status":"ok"}`.
+
+`/-/readyz` runs the checks the service passes with `WithReadiness`, in order, each
+bounded by `server.ReadinessTimeout` (2s); the first that fails answers `503` as a
+retryable problem document saying why:
+
+```json
+{"title":"Upstream unavailable","status":503,"code":"upstream_unavailable","retryable":true,
+ "detail":"not ready: draining","correlation_id":"5f0c…"}
+```
+
+A service makes one fail as soon as its shutdown starts, so that the gateway takes it
+out of rotation before it stops serving, and checks there what it cannot serve
+without:
+
+```go
+var draining atomic.Bool
+
+engine, err := server.NewServerGin(cfg, server.WithReadiness(
+	func(context.Context) error {
+		if draining.Load() {
+			return errors.New("draining")
+		}
+		return nil
+	},
+	func(ctx context.Context) error { return backend.Ping(ctx) },
+))
+
+// on SIGTERM: draining.Store(true), wait for the gateway to notice, then srv.Shutdown
+```
+
+Without checks, `/-/readyz` answers `200` like `/-/healthz`.
 
 ## Metrics
 
