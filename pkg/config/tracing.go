@@ -24,6 +24,13 @@ type TracingConfig struct {
 	SampleRatio float64
 	// Headers are sent with every export, e.g. a tenant: X-Scope-OrgID.
 	Headers map[string]string
+	// CACertPath is a PEM file of the CA the collector's certificate is
+	// signed by, trusted besides the system's: a private CA. https only.
+	CACertPath string
+	// ClientCertPath and ClientKeyPath are the PEM certificate and key the
+	// service presents to the collector: mTLS. Both or neither; https only.
+	ClientCertPath string
+	ClientKeyPath  string
 }
 
 // GetTracingEnabled returns INFRAPI_TRACING_ENABLED.
@@ -56,7 +63,7 @@ func (v *Variables) GetTracingSampleRatio() (float64, error) {
 }
 
 // GetTracingHeaders returns INFRAPI_TRACING_HEADERS, a JSON list of
-// "Name=value" strings: ["X-Scope-OrgID=core"].
+// "Name=value" strings: ["X-Scope-OrgID=acme"].
 func (v *Variables) GetTracingHeaders() (map[string]string, error) {
 	list, err := v.GetSliceString(v.DefaultConfig.TracingHeaders)
 	if err != nil {
@@ -102,6 +109,26 @@ func (v *Variables) GetTracingConfig() (*TracingConfig, error) {
 	}
 	if c.Headers, err = v.GetTracingHeaders(); err != nil {
 		return nil, err
+	}
+	d := v.DefaultConfig
+	if c.CACertPath, err = v.GetString(d.TracingCACertPath); err != nil {
+		return nil, err
+	}
+	if c.ClientCertPath, err = v.GetString(d.TracingClientCertPath); err != nil {
+		return nil, err
+	}
+	if c.ClientKeyPath, err = v.GetString(d.TracingClientKeyPath); err != nil {
+		return nil, err
+	}
+	if (c.ClientCertPath == "") != (c.ClientKeyPath == "") {
+		return nil, fmt.Errorf("keys %s and %s go together: set both or neither, dotenv located at %s",
+			d.TracingClientCertPath.Key, d.TracingClientKeyPath.Key, v.Path)
+	}
+	tls := c.CACertPath != "" || c.ClientCertPath != ""
+	if tls && !strings.HasPrefix(strings.ToLower(c.Endpoint), "https://") {
+		return nil, fmt.Errorf("keys %s, %s and %s are for an https:// %s, dotenv located at %s",
+			d.TracingCACertPath.Key, d.TracingClientCertPath.Key, d.TracingClientKeyPath.Key,
+			d.TracingEndpoint.Key, v.Path)
 	}
 	if c.Enabled && c.Endpoint == "" {
 		return nil, fmt.Errorf("key %s is required when %s is true, dotenv located at %s",

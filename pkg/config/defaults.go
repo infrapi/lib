@@ -25,11 +25,14 @@ type DefaultConfig struct {
 	AppCorsAllowCredentials *VariableOpts
 	AppCorsMaxAge           *VariableOpts
 
-	TracingEnabled     *VariableOpts
-	TracingEndpoint    *VariableOpts
-	TracingProtocol    *VariableOpts
-	TracingSampleRatio *VariableOpts
-	TracingHeaders     *VariableOpts
+	TracingEnabled        *VariableOpts
+	TracingEndpoint       *VariableOpts
+	TracingProtocol       *VariableOpts
+	TracingSampleRatio    *VariableOpts
+	TracingHeaders        *VariableOpts
+	TracingCACertPath     *VariableOpts
+	TracingClientCertPath *VariableOpts
+	TracingClientKeyPath  *VariableOpts
 }
 
 // NewDefaultConfig returns the rules applied to the INFRAPI_APP_* keys. A
@@ -135,6 +138,18 @@ func NewDefaultConfig() *DefaultConfig {
 			Key:      "INFRAPI_TRACING_HEADERS",
 			Default:  "[]",
 			Sensible: true,
+		},
+		TracingCACertPath: &VariableOpts{
+			Key:      "INFRAPI_TRACING_CA_CERT_PATH",
+			Optional: true,
+		},
+		TracingClientCertPath: &VariableOpts{
+			Key:      "INFRAPI_TRACING_CLIENT_CERT_PATH",
+			Optional: true,
+		},
+		TracingClientKeyPath: &VariableOpts{
+			Key:      "INFRAPI_TRACING_CLIENT_KEY_PATH",
+			Optional: true,
 		},
 	}
 }

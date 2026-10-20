@@ -18,7 +18,7 @@ import (
 )
 
 var app = &config.AppConfig{AppName: "hello-api", AppPlatform: "sandbox", AppRegion: "eu-west-1",
-	AppFqdn: "hello.example.com", AppLocation: "dc1"}
+	AppFqdn: "hello.example.com", AppLocation: "dc1", AppUrl: "http://hello.example.com"}
 
 // restore puts the global provider and propagators back after a test.
 func restore(t *testing.T) {
@@ -62,7 +62,7 @@ func TestSetup_http(t *testing.T) {
 	defer collector.Close()
 
 	shutdown, err := Setup(context.Background(), app, &config.TracingConfig{Enabled: true,
-		Endpoint: collector.URL, Protocol: "http", SampleRatio: 1, Headers: map[string]string{"X-Scope-OrgID": "core"}})
+		Endpoint: collector.URL, Protocol: "http", SampleRatio: 1, Headers: map[string]string{"X-Scope-OrgID": "acme"}})
 	require.NoError(t, err)
 
 	_, span := otel.Tracer("test").Start(context.Background(), "work")
@@ -73,7 +73,7 @@ func TestSetup_http(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, 1, posts)
-	assert.Equal(t, "core", tenant)
+	assert.Equal(t, "acme", tenant)
 
 	carrier := propagation.MapCarrier{}
 	ctx := trace.ContextWithSpanContext(context.Background(), span.SpanContext())
@@ -94,4 +94,16 @@ func TestSetup_unknownProtocol(t *testing.T) {
 	restore(t)
 	_, err := Setup(context.Background(), app, &config.TracingConfig{Enabled: true, Endpoint: "http://x", Protocol: "udp"})
 	assert.ErrorContains(t, err, `protocol "udp"`)
+}
+
+// The service's identity on every span, under service.*.
+func TestAttributes(t *testing.T) {
+	got := map[string]string{}
+	for _, a := range attributes(app) {
+		got[string(a.Key)] = a.Value.AsString()
+	}
+	assert.Equal(t, map[string]string{
+		"service.name": "hello-api", "service.platform": "sandbox", "service.region": "eu-west-1",
+		"service.location": "dc1", "service.fqdn": "hello.example.com",
+	}, got)
 }

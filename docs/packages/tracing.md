@@ -25,7 +25,6 @@ INFRAPI_TRACING_ENABLED="true"
 INFRAPI_TRACING_ENDPOINT="http://collector:4318"
 INFRAPI_TRACING_PROTOCOL="http"            # or grpc, on the collector's gRPC port (4317)
 INFRAPI_TRACING_SAMPLE_RATIO="1"
-INFRAPI_TRACING_HEADERS=["X-Scope-OrgID=core"]
 ```
 
 | Key | Default | |
@@ -35,11 +34,30 @@ INFRAPI_TRACING_HEADERS=["X-Scope-OrgID=core"]
 | `INFRAPI_TRACING_PROTOCOL` | `http` | `http` (OTLP/HTTP, protobuf) or `grpc`. |
 | `INFRAPI_TRACING_SAMPLE_RATIO` | `1` | The share of new traces kept, `0` to `1`. A trace the caller already sampled is followed whatever the ratio. |
 | `INFRAPI_TRACING_HEADERS` | `[]` | Sent with every export, as a JSON list of `Name=value`: a tenant, a token. Masked in errors. |
+| `INFRAPI_TRACING_CA_CERT_PATH` | - | A PEM file of the CA the collector's certificate is signed by, trusted besides the system's: a private CA. |
+| `INFRAPI_TRACING_CLIENT_CERT_PATH` | - | The PEM certificate the service presents to the collector: mTLS. With its key. |
+| `INFRAPI_TRACING_CLIENT_KEY_PATH` | - | Its PEM private key. |
+
+## TLS
+
+The endpoint's scheme decides: `http://` sends in clear, `https://` over TLS 1.2 or
+later, checking the collector's certificate.
+
+- **A public or system-installed CA**: nothing to set, the system's CAs are trusted.
+- **A private CA**: `INFRAPI_TRACING_CA_CERT_PATH`, trusted besides the system's.
+- **mTLS**: `INFRAPI_TRACING_CLIENT_CERT_PATH` and `INFRAPI_TRACING_CLIENT_KEY_PATH`,
+  both or neither.
+
+The three keys are for an `https://` endpoint: with `http://` they are refused at start
+rather than ignored, and so is a file that cannot be read or holds no certificate.
+There is no way to skip the certificate check. The same applies over OTLP/HTTP and
+gRPC.
 
 ## What a span carries
 
-- **The service**: `service.name` (`INFRAPI_APP_NAME`), `deployment.environment.name`
-  (platform), `cloud.region`, `host.name` (FQDN) and `infrapi.location`, on every span.
+- **The service**, on every span: `service.name` (`INFRAPI_APP_NAME`, the attribute
+  OpenTelemetry requires for a backend to name the service), `service.platform`,
+  `service.region`, `service.location` and `service.fqdn`.
 - **The trace it belongs to**: the W3C `traceparent` and `baggage` headers carry a
   trace into the service and out of it, through any client that propagates them. A
   call that arrives with one continues its caller's trace.
