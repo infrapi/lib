@@ -3,10 +3,12 @@ package server
 
 import (
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/infrapi/lib/pkg/config"
 )
@@ -24,8 +26,13 @@ import (
 //	GET /-/openapi.json  OpenAPI 3.1, generated from the route table
 //	GET /-/docs          Swagger UI reading that specification
 //
+// Every request carries the gateway's X-Request-Id (RequestIDHeader) in its
+// context, for the problem documents. Gin runs in release mode unless the
+// service logs at debug or trace.
+//
 // Options adjust it: WithOpenAPI documents the service with its own OpenAPI
-// documents rather than the generated specification.
+// documents rather than the generated specification, and validates every
+// request against them before any handler runs.
 func NewServerGin(cfg *config.AppConfig, opts ...Option) (*gin.Engine, error) {
 	var o options
 	for _, opt := range opts {
@@ -34,8 +41,10 @@ func NewServerGin(cfg *config.AppConfig, opts ...Option) (*gin.Engine, error) {
 		}
 	}
 
+	ginMode(cfg.AppLogLevel)
 	app := gin.New()
 	app.Use(logMiddlewares(cfg.AppLogFormat, gin.DefaultWriter)...)
+	app.Use(correlate)
 
 	if err := app.SetTrustedProxies(cfg.AppTrustedProxies); err != nil {
 		return nil, err
@@ -71,5 +80,26 @@ func NewServerGin(cfg *config.AppConfig, opts ...Option) (*gin.Engine, error) {
 		return nil, err
 	}
 
+	// The contracts supplied with WithOpenAPI are enforced, not only
+	// documented: on every route the service adds after this.
+	if len(o.specs) > 0 {
+		contracts, err := newContractRouter(o.specs)
+		if err != nil {
+			return nil, err
+		}
+		app.Use(contracts.validate)
+	}
+
 	return app, nil
+}
+
+// ginMode switches gin to release mode — no debug line per route at start,
+// no warning — unless the service logs at debug or trace, or the mode was
+// chosen already: GIN_MODE, or gin.SetMode before NewServerGin (a test's
+// gin.TestMode).
+func ginMode(level log.Level) {
+	if os.Getenv(gin.EnvGinMode) != "" || gin.Mode() != gin.DebugMode || level >= log.DebugLevel {
+		return
+	}
+	gin.SetMode(gin.ReleaseMode)
 }

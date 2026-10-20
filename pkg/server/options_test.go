@@ -24,7 +24,8 @@ func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 // The service's own documents are served as they are, and the documentation
 // page offers them in a selector instead of the generated specification.
 func TestWithOpenAPI_servesTheServicesDocuments(t *testing.T) {
-	ordersV2 := OpenAPISpec{Name: "orders v2", Path: "orders/v2.json", Content: []byte(`{"openapi":"3.1.0"}`)}
+	ordersV2 := OpenAPISpec{Name: "orders v2", Path: "orders/v2.json",
+		Content: []byte(`{"openapi":"3.0.3","info":{"title":"Orders","version":"2"},"paths":{}}`)}
 	app, err := NewServerGin(testAppConfig(t), WithOpenAPI(ordersV1, ordersV2))
 	require.NoError(t, err)
 

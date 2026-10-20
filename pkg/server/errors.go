@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -10,20 +9,6 @@ import (
 
 	infraerrors "github.com/infrapi/lib/pkg/errors"
 )
-
-type correlationIDKey struct{}
-
-// WithCorrelationID stores the id every response and log line of this call
-// carries.
-func WithCorrelationID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, correlationIDKey{}, id)
-}
-
-// CorrelationID returns it, or empty.
-func CorrelationID(ctx context.Context) string {
-	id, _ := ctx.Value(correlationIDKey{}).(string)
-	return id
-}
 
 // errorBody is the RFC 9457 problem document a service answers with. Its
 // own type, rather than infraerrors.Error marshalled directly: the
