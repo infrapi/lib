@@ -130,9 +130,21 @@ too when only one value is needed.
 | `INFRAPI_APP_CORS_EXPOSE_HEADERS` | `["Content-Length"]` | - |
 | `INFRAPI_APP_CORS_ALLOW_CREDENTIALS` | `true` | - |
 | `INFRAPI_APP_CORS_MAX_AGE` | `12` | - |
+| `INFRAPI_TRACING_ENABLED` | `false` | - |
+| `INFRAPI_TRACING_ENDPOINT` | - | `omitempty,url`; required when tracing is enabled |
+| `INFRAPI_TRACING_PROTOCOL` | `http` | `oneof=http grpc` |
+| `INFRAPI_TRACING_SAMPLE_RATIO` | `1` | a number from `0` to `1` |
+| `INFRAPI_TRACING_HEADERS` | `[]` | JSON list of `Name=value`, masked in errors |
+| `INFRAPI_TRACING_CA_CERT_PATH` | - | PEM file; `https://` endpoint only |
+| `INFRAPI_TRACING_CLIENT_CERT_PATH` | - | PEM file, with the key; `https://` endpoint only |
+| `INFRAPI_TRACING_CLIENT_KEY_PATH` | - | PEM file, with the certificate; `https://` endpoint only |
 
 `INFRAPI_APP_CORS_MAX_AGE` is a number of hours. The `*_PROXIES`, `*_ORIGINS`,
 `*_METHODS` and `*_HEADERS` values are JSON arrays.
+
+`GetTracingConfig()` resolves the `INFRAPI_TRACING_*` set into a `TracingConfig`,
+which [`tracing`](tracing.md) sets the OTLP export up from; enabled without an
+endpoint is an error.
 
 ## Overriding the rules
 

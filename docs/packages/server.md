@@ -29,6 +29,11 @@ if err := engine.Run(cfg.AppListenAddress); err != nil {
 - **The call's id**: the request's `X-Request-Id` (`server.RequestIDHeader`), set by
   what stands in front of the service, is put in the request's context, for the
   access log line and every problem document.
+- **A span per call**, named after its route, with OpenTelemetry's global tracer
+  provider — the one [`tracing`](tracing.md) sets up; none, and the spans are not
+  recorded. It continues the trace a `traceparent` header carries in, carries the
+  request id, and puts its `trace_id` and `span_id` in the access log line. The
+  engine's own endpoints, under `/-/`, open none.
 - **Gin in release mode** — no debug line per route at start — unless
   `INFRAPI_APP_LOG_LEVEL` is `debug` or `trace`, or the mode was chosen already
   (`GIN_MODE`, or `gin.SetMode` before `NewServerGin`, as a test's `gin.TestMode`).

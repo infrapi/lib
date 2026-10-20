@@ -69,4 +69,5 @@ nav:
       - logger: packages/logger.md
       - server: packages/server.md
       - tofu: packages/tofu.md
+      - tracing: packages/tracing.md
   - Development: development.md

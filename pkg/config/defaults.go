@@ -4,7 +4,8 @@ import (
 	"os"
 )
 
-// DefaultConfig holds the read and validation rules of every INFRAPI_APP_* key.
+// DefaultConfig holds the read and validation rules of every INFRAPI_APP_* and
+// INFRAPI_TRACING_* key.
 type DefaultConfig struct {
 	AppName                 *VariableOpts
 	AppLogLevel             *VariableOpts
@@ -23,6 +24,15 @@ type DefaultConfig struct {
 	AppCorsExposeHeaders    *VariableOpts
 	AppCorsAllowCredentials *VariableOpts
 	AppCorsMaxAge           *VariableOpts
+
+	TracingEnabled        *VariableOpts
+	TracingEndpoint       *VariableOpts
+	TracingProtocol       *VariableOpts
+	TracingSampleRatio    *VariableOpts
+	TracingHeaders        *VariableOpts
+	TracingCACertPath     *VariableOpts
+	TracingClientCertPath *VariableOpts
+	TracingClientKeyPath  *VariableOpts
 }
 
 // NewDefaultConfig returns the rules applied to the INFRAPI_APP_* keys. A
@@ -103,6 +113,43 @@ func NewDefaultConfig() *DefaultConfig {
 		AppCorsMaxAge: &VariableOpts{
 			Key:     "INFRAPI_APP_CORS_MAX_AGE",
 			Default: "12",
+		},
+
+		TracingEnabled: &VariableOpts{
+			Key:     "INFRAPI_TRACING_ENABLED",
+			Default: "false",
+		},
+		TracingEndpoint: &VariableOpts{
+			Key:       "INFRAPI_TRACING_ENDPOINT",
+			Validator: "omitempty,url",
+			Optional:  true,
+		},
+		TracingProtocol: &VariableOpts{
+			Key:       "INFRAPI_TRACING_PROTOCOL",
+			Validator: "oneof=http grpc",
+			Default:   "http",
+		},
+		TracingSampleRatio: &VariableOpts{
+			Key:       "INFRAPI_TRACING_SAMPLE_RATIO",
+			Validator: "numeric",
+			Default:   "1",
+		},
+		TracingHeaders: &VariableOpts{
+			Key:      "INFRAPI_TRACING_HEADERS",
+			Default:  "[]",
+			Sensible: true,
+		},
+		TracingCACertPath: &VariableOpts{
+			Key:      "INFRAPI_TRACING_CA_CERT_PATH",
+			Optional: true,
+		},
+		TracingClientCertPath: &VariableOpts{
+			Key:      "INFRAPI_TRACING_CLIENT_CERT_PATH",
+			Optional: true,
+		},
+		TracingClientKeyPath: &VariableOpts{
+			Key:      "INFRAPI_TRACING_CLIENT_KEY_PATH",
+			Optional: true,
 		},
 	}
 }
