@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	log "github.com/sirupsen/logrus"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -227,4 +228,20 @@ func TestNewServerGin_docs_escapesAppName(t *testing.T) {
 	page, err := newDocsPage(cfg, nil)
 	require.NoError(t, err)
 	assert.NotContains(t, string(page), "<script>alert(1)</script>")
+}
+
+// Gin goes quiet unless the service logs at debug, or the mode was chosen.
+func TestGinMode(t *testing.T) {
+	defer gin.SetMode(gin.TestMode)
+	for level, want := range map[log.Level]string{
+		log.InfoLevel: gin.ReleaseMode, log.ErrorLevel: gin.ReleaseMode,
+		log.DebugLevel: gin.DebugMode, log.TraceLevel: gin.DebugMode,
+	} {
+		gin.SetMode(gin.DebugMode)
+		ginMode(level)
+		assert.Equal(t, want, gin.Mode(), level.String())
+	}
+	gin.SetMode(gin.TestMode)
+	ginMode(log.InfoLevel)
+	assert.Equal(t, gin.TestMode, gin.Mode(), "a mode chosen before is kept")
 }

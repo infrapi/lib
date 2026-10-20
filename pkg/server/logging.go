@@ -65,10 +65,6 @@ type panicEntry struct {
 	Stack  string `json:"stack"`
 }
 
-// requestIDHeader is read from the request, then from the response, so the
-// line carries the id a gateway or the service itself attached.
-const requestIDHeader = "X-Request-Id"
-
 // logMiddlewares returns the access log and the panic recovery for format,
 // writing to out. Recovery comes second so that a panicking request is still
 // logged, with the 500 it was answered with.
@@ -228,9 +224,9 @@ func jsonAccessLog(out io.Writer) gin.HandlerFunc {
 			level = "warning"
 		}
 
-		requestID := c.Request.Header.Get(requestIDHeader)
+		requestID := c.Request.Header.Get(RequestIDHeader)
 		if requestID == "" {
-			requestID = c.Writer.Header().Get(requestIDHeader)
+			requestID = c.Writer.Header().Get(RequestIDHeader)
 		}
 
 		size := c.Writer.Size()

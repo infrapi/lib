@@ -26,6 +26,12 @@ if err := engine.Run(cfg.AppListenAddress); err != nil {
   follows `AppLogFormat` (`INFRAPI_APP_LOG_FORMAT`): gin's text lines by default, or
   with `json` one JSON object per line, as below.
 - **Request metrics**, recorded for every route.
+- **The call's id**: the request's `X-Request-Id` (`server.RequestIDHeader`), set by
+  what stands in front of the service, is put in the request's context, for the
+  access log line and every problem document.
+- **Gin in release mode** — no debug line per route at start — unless
+  `INFRAPI_APP_LOG_LEVEL` is `debug` or `trace`, or the mode was chosen already
+  (`GIN_MODE`, or `gin.SetMode` before `NewServerGin`, as a test's `gin.TestMode`).
 - **Four endpoints**, with nothing to configure:
 
 | Endpoint | Serves |
@@ -83,7 +89,29 @@ engine, err := server.NewServerGin(cfg, server.WithOpenAPI(
 - They replace the generated specification: `/-/openapi.json` is no longer served, so
   the API has one description, not two.
 - `NewServerGin` refuses a document without a name or content, a path that is absolute,
-  not clean or not `.json`/`.yaml`/`.yml`, and two documents sharing a name or a path.
+  not clean or not `.json`/`.yaml`/`.yml`, two documents sharing a name or a path, and a
+  document that is not valid OpenAPI 3.0.
+
+### Enforced, not only documented
+
+Every request a document describes is validated against it before any handler runs:
+its path and query parameters, its headers, its body. One that does not hold is
+answered `400 invalid_request`, as a problem document whose `detail` says why:
+
+```json
+{"title":"Invalid request","status":400,"code":"invalid_request","retryable":false,
+ "detail":"request body has an error: doesn't match schema #/components/schemas/OrderSpec: property \"colour\" is unsupported",
+ "correlation_id":"5f0c…"}
+```
+
+- Handlers receive only what the contract allows: no hand-written checks for what the
+  contract already says.
+- A request no document describes — `/-/metrics`, a route the service adds on its own —
+  goes through untouched.
+- Authentication is not checked here: a security scheme in the contract is
+  documentation, and what stands in front of the service enforces it.
+- The validation runs on the routes the service adds after `NewServerGin`, which is
+  where they go.
 
 
 
@@ -176,26 +204,12 @@ logged in full, with the request's correlation id, and answered as an
 `internal_error` 500 that does not repeat its text - a database DSN or a stack
 trace has no business reaching the caller.
 
-`server.WithCorrelationID`/`server.CorrelationID` carry the id every response
-and log line of one call shares, usually set once by a middleware from a
-header the gateway or the caller sent:
-
-```go
-func correlate(c *gin.Context) {
-	id := c.GetHeader("X-Correlation-ID")
-	if id == "" {
-		id = rand.Text()
-	}
-	c.Header("X-Correlation-ID", id)
-	c.Request = c.Request.WithContext(server.WithCorrelationID(c.Request.Context(), id))
-	server.LogField(c, "correlation_id", id)
-	c.Next()
-}
-```
-
-`WriteError` reads it from the request's context and puts it in the payload's
-`correlation_id`, so every error answer carries the same id the access log
-line does.
+The engine puts the request's `X-Request-Id` in its context
+(`server.CorrelationID`), and `WriteError` puts it in the payload's
+`correlation_id`: every error answer carries the id the access log line does.
+Setting that header — and returning it to the caller — is the job of what
+stands in front of the service, a gateway or a proxy: the engine generates
+none, and a call that reaches it without one has none.
 
 ## Metrics
 
