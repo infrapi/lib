@@ -26,8 +26,9 @@ import (
 //	GET /-/openapi.json  OpenAPI 3.1, generated from the route table
 //	GET /-/docs          Swagger UI reading that specification
 //
-// Every request carries the gateway's X-Request-Id (RequestIDHeader) in its
-// context, for the problem documents. Gin runs in release mode unless the
+// Every request carries its X-Request-Id (RequestIDHeader) in its context,
+// for the problem documents, and has an OpenTelemetry span with the tracer
+// provider pkg/tracing sets up. Gin runs in release mode unless the
 // service logs at debug or trace.
 //
 // Options adjust it: WithOpenAPI documents the service with its own OpenAPI
@@ -44,7 +45,7 @@ func NewServerGin(cfg *config.AppConfig, opts ...Option) (*gin.Engine, error) {
 	ginMode(cfg.AppLogLevel)
 	app := gin.New()
 	app.Use(logMiddlewares(cfg.AppLogFormat, gin.DefaultWriter)...)
-	app.Use(correlate)
+	app.Use(spans(cfg.AppName), correlate)
 
 	if err := app.SetTrustedProxies(cfg.AppTrustedProxies); err != nil {
 		return nil, err
