@@ -1,5 +1,7 @@
-// Package config loads InfraPI service configuration from a dotenv file and
-// exposes it as typed, validated values.
+// Package config loads InfraPI service configuration, typically from a
+// dotenv file, and exposes it as typed, validated values. Callers who source
+// their settings elsewhere (YAML, JSON, ...) can build Variables directly
+// with NewConfigFromMap instead.
 package config
 
 import (
@@ -65,6 +67,21 @@ func NewConfig() (*Variables, error) {
 		Path:          path,
 		DefaultConfig: NewDefaultConfig(),
 	}, nil
+}
+
+// NewConfigFromMap builds Variables from an already-loaded map of key/value
+// pairs, bypassing the dotenv file entirely. It is meant for callers who keep
+// their INFRAPI_* settings in another format (YAML, JSON, a secrets manager,
+// ...) and have already flattened them into the same keys NewConfig would
+// have produced from a dotenv file, e.g. INFRAPI_APP_NAME. path is recorded
+// for error messages only and may be any descriptive string, such as the
+// source file's name.
+func NewConfigFromMap(values map[string]string, path string) *Variables {
+	return &Variables{
+		Values:        values,
+		Path:          path,
+		DefaultConfig: NewDefaultConfig(),
+	}
 }
 
 // GetString returns the value of opts.Key. An absent or empty key falls back to

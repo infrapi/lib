@@ -395,6 +395,22 @@ func TestGetDotEnv_default_path(t *testing.T) {
 	assert.Equal(t, path, ".env")
 }
 
+// ---- NewConfigFromMap
+
+func TestNewConfigFromMap_success(t *testing.T) {
+	c := NewConfigFromMap(map[string]string{
+		"INFRAPI_APP_NAME": "from-map",
+	}, "myapp.yaml")
+
+	require.NotNil(t, c)
+	assert.Equal(t, "myapp.yaml", c.Path)
+	assert.NotNil(t, c.DefaultConfig)
+
+	name, err := c.GetAppName()
+	require.NoError(t, err)
+	assert.Equal(t, "from-map", name)
+}
+
 // Additional GetString tests
 func TestGetString_nil_opts(t *testing.T) {
 	c := &Variables{
