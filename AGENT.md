@@ -74,14 +74,16 @@ The palette and type live in `docs/assets/stylesheets/theme.css`.
 - Known behaviour, deliberate until someone decides otherwise: the HTTP client's
   default success range is `200..400` inclusive, so a `400` response is not an
   error.
-- `pkg/tofu` tests run against a real `terraform-provider-local` binary:
+- `pkg/tofu` tests run against real `terraform-provider-local` and
+  `terraform-provider-random` binaries (random for import):
   `github.com/opentofu/provider-client`'s `Provider` interface is sealed, so
-  it cannot be mocked. The tests download and cache the binary under
+  it cannot be mocked. The tests download and cache the binaries under
   `$TMPDIR/infrapi-lib-tofu-testcache` on first use and `t.Skip` if there is
   no network access, so `make test` still passes offline once the cache is
   warm, or skips cleanly if it never was.
 - `provider-client` does not expose a plan response's "requires replacement"
-  attribute list, so `tofu.Provider.Update` cannot detect that a resource
-  type needs a destroy+recreate for a given attribute change; it surfaces
-  the provider's resulting incomplete state as an error instead of silently
-  returning it. See that method's godoc before changing it.
+  attribute list, so `tofu.Provider.Update` infers a replacement from the
+  plan making the resource's `id` unknown and returns `ErrReplaceRequired`.
+  A plugin framework resource that keeps its prior `id` while requiring
+  replacement (`random_string`) is missed. See that method's godoc before
+  changing it.

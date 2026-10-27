@@ -46,12 +46,20 @@ func TestApplyAndDestroy(t *testing.T) {
 	}
 
 	// Re-applying the same plan against the prior result updates rather
-	// than recreates every resource: nothing actually changed, so this
-	// only exercises the Update path (see Provider.Update's godoc for why
-	// a changed local_file attribute could not be re-applied this way).
+	// than recreates every resource: nothing changed, so the state does not.
 	result2, err := tofu.Apply(context.Background(), plan, result.Resources)
 	require.NoError(t, err)
 	assert.Equal(t, result.Resources["local_file.a"].Attributes, result2.Resources["local_file.a"].Attributes)
+
+	// A changed local_file requires replacement: Apply deletes and creates
+	// it, where Update alone refuses.
+	plan.Resources[0].Config["content"] = "a2"
+	result2, err = tofu.Apply(context.Background(), plan, result2.Resources)
+	require.NoError(t, err)
+	assert.Equal(t, "a2", result2.Resources["local_file.a"].Attributes["content"])
+	content, err := os.ReadFile(filepath.Join(dir, "a.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "a2", string(content))
 
 	require.NoError(t, tofu.Destroy(context.Background(), plan, result2.Resources))
 

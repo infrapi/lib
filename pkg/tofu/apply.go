@@ -2,6 +2,7 @@ package tofu
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -17,8 +18,11 @@ type Result struct {
 // Apply starts every provider in plan.Providers and configures it, then
 // walks plan.Resources in order: an address present in prior is updated
 // from its recorded state via [Provider.Update], any other address is
-// created via [Provider.Create]. Every provider Apply started is closed
-// before it returns, whether or not it succeeds.
+// created via [Provider.Create]. An update that requires replacing the
+// resource ([ErrReplaceRequired]) deletes it, then creates it again: the
+// old object is gone before the new one exists, as a resource whose name
+// must be unique needs. Every provider Apply started is closed before it
+// returns, whether or not it succeeds.
 //
 // prior may be nil, meaning every resource in the plan is created.
 func Apply(ctx context.Context, plan Plan, prior map[string]Resource) (Result, error) {
@@ -45,6 +49,11 @@ func Apply(ctx context.Context, plan Plan, prior map[string]Resource) (Result, e
 		)
 		if existing, ok := prior[rs.Address]; ok {
 			state, err = provider.Update(ctx, existing, rs.Config)
+			if errors.Is(err, ErrReplaceRequired) {
+				if err = provider.Delete(ctx, existing); err == nil {
+					state, err = provider.Create(ctx, rs.ResourceType, rs.Config)
+				}
+			}
 		} else {
 			state, err = provider.Create(ctx, rs.ResourceType, rs.Config)
 		}

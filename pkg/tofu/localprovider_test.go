@@ -22,17 +22,32 @@ import (
 // without needing any credentials or external API.
 const localProviderVersion = "2.5.2"
 
-// localProviderExe returns the path to a cached terraform-provider-local
+// randomProviderVersion is a hashicorp/terraform-provider-random release,
+// built on the plugin framework, whose resources support import: what
+// local_file does not.
+const randomProviderVersion = "3.4.3"
+
+func localProviderExe(t *testing.T) string {
+	t.Helper()
+	return providerExe(t, "local", localProviderVersion)
+}
+
+func randomProviderExe(t *testing.T) string {
+	t.Helper()
+	return providerExe(t, "random", randomProviderVersion)
+}
+
+// providerExe returns the path to a cached hashicorp/terraform-provider-<name>
 // binary for the current platform, downloading and caching it under the OS
 // temp directory on first use. Tests that need it skip, rather than fail,
 // when no cached copy exists and it cannot be downloaded: that keeps this
 // package's tests real (a genuine provider plugin process, not a mock)
 // without requiring network access to run them at all.
-func localProviderExe(t *testing.T) string {
+func providerExe(t *testing.T, name, version string) string {
 	t.Helper()
 
 	cacheDir := filepath.Join(os.TempDir(), "infrapi-lib-tofu-testcache")
-	exe := filepath.Join(cacheDir, fmt.Sprintf("terraform-provider-local_%s_%s_%s", localProviderVersion, runtime.GOOS, runtime.GOARCH))
+	exe := filepath.Join(cacheDir, fmt.Sprintf("terraform-provider-%s_%s_%s_%s", name, version, runtime.GOOS, runtime.GOARCH))
 
 	if _, err := os.Stat(exe); err == nil {
 		return exe
@@ -41,18 +56,18 @@ func localProviderExe(t *testing.T) string {
 	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
 
 	url := fmt.Sprintf(
-		"https://releases.hashicorp.com/terraform-provider-local/%[1]s/terraform-provider-local_%[1]s_%[2]s_%[3]s.zip",
-		localProviderVersion, runtime.GOOS, runtime.GOARCH,
+		"https://releases.hashicorp.com/terraform-provider-%[1]s/%[2]s/terraform-provider-%[1]s_%[2]s_%[3]s_%[4]s.zip",
+		name, version, runtime.GOOS, runtime.GOARCH,
 	)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(url) // #nosec G107 -- fixed HashiCorp releases domain, not user input
 	if err != nil {
-		t.Skipf("terraform-provider-local: no network access to download it: %v", err)
+		t.Skipf("terraform-provider-%s: no network access to download it: %v", name, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		t.Skipf("terraform-provider-local: download failed with status %s", resp.Status)
+		t.Skipf("terraform-provider-%s: download failed with status %s", name, resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -63,12 +78,12 @@ func localProviderExe(t *testing.T) string {
 
 	var binName string
 	for _, f := range zr.File {
-		if strings.HasPrefix(f.Name, "terraform-provider-local") {
+		if strings.HasPrefix(f.Name, "terraform-provider-"+name) {
 			binName = f.Name
 			break
 		}
 	}
-	require.NotEmptyf(t, binName, "terraform-provider-local zip has no provider binary: %v", zr.File)
+	require.NotEmptyf(t, binName, "terraform-provider-%s zip has no provider binary: %v", name, zr.File)
 
 	rc, err := zr.Open(binName)
 	require.NoError(t, err)

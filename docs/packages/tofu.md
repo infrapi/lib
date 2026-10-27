@@ -39,6 +39,66 @@ its attributes as a plain Go map, plus the bookkeeping data the provider
 needs to see again in `Read`, `Update` or `Delete`. Persisting it between
 runs is the caller's job; this package keeps none of its own state.
 
+## Schema and import
+
+`ResourceSchema` returns a resource type's schema as the provider reported
+it: attributes and nested blocks, which are required, optional or computed,
+sensitive or deprecated, with their descriptions. It is what a caller needs
+to describe a resource type to its own users, such as in an API contract.
+
+`Import` brings an existing object under management from its id, as
+`terraform import` does: the provider turns the id into a state, which is
+then read. A caller that keeps only ids rebuilds a `Resource` this way
+before `Update` or `Delete`:
+
+```go
+res, err := provider.Import(ctx, "random_string", "s3cret-value")
+```
+
+An id the provider cannot find is a `404`.
+
+## Errors
+
+Errors are [`infraerrors.Error`](errors.md) values. When a provider reports
+diagnostics, the status says whose fault it is:
+
+| step | status | code |
+|---|---|---|
+| validating a configuration, planning a change | `422` | `invalid_configuration` |
+| applying, reading, importing, deleting, configuring | `502` | `upstream_error` |
+
+The diagnostics themselves, and the step, are in a wrapped
+[`DiagnosticsError`](https://pkg.go.dev/github.com/infrapi/lib/pkg/tofu#DiagnosticsError):
+
+```go
+var de *tofu.DiagnosticsError
+if errors.As(err, &de) {
+	log.Printf("%s failed: %v", de.Phase, de.Diagnostics)
+}
+```
+
+## Replacement
+
+Some changes cannot be made in place: the resource has to be deleted and
+created again. When the plan shows it, `Update` applies nothing and returns
+a `409` wrapping `ErrReplaceRequired`; `Apply` deletes and creates the
+resource instead.
+
+```go
+res, err := provider.Update(ctx, res, config)
+if errors.Is(err, tofu.ErrReplaceRequired) {
+	// delete, then create
+}
+```
+
+`provider-client` does not expose the plan's "requires replacement" list,
+so this package infers it from the plan making the resource's `id`
+unknown. Most resource types plan a replacement that way; one that keeps its
+prior `id` and computed values while still requiring replacement (a plugin
+framework resource using `UseStateForUnknown`, such as `random_string`) is
+not detected, and is updated in place with state that does not match its
+configuration.
+
 ## Multiple providers
 
 A [`Registry`](https://pkg.go.dev/github.com/infrapi/lib/pkg/tofu#Registry)
@@ -76,7 +136,8 @@ result, err := tofu.Apply(ctx, plan, nil)
 
 `Apply` starts every provider the plan names, applies every resource in
 declaration order — creating an address absent from `prior`, updating one
-present in it — and closes every provider before returning. `Destroy` does
+present in it, replacing it when the update requires — and closes every
+provider before returning. `Destroy` does
 the same in reverse, deleting instead of creating or updating:
 
 ```go
@@ -98,14 +159,8 @@ layer on top of them:
   resource's config depends on comes earlier in the slice.
 - No plan preview or approval step: `Apply` and `Destroy` both act
   immediately.
-- `Update` cannot detect that a provider requires replacement (destroy then
-  re-create) for a given attribute change, because the underlying
-  `provider-client` library does not currently expose that information. A
-  provider that needs replacement typically returns incomplete state for an
-  in-place update, which this package reports as an error rather than
-  returning silently-wrong data; call `Delete` then `Create` instead for a
-  resource type known to require replacement for the attributes being
-  changed.
+- Replacement is inferred, not read from the plan: see
+  [Replacement](#replacement) for the resource types it misses.
 
 `examples/tofu` applies a plan with two resources, re-applies it to show the
 second run updates in place, then destroys it.

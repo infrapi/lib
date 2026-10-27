@@ -3,6 +3,8 @@ package tofu
 import (
 	"context"
 	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/zclconf/go-cty/cty"
 
@@ -72,7 +74,7 @@ func (p *Provider) Read(ctx context.Context, state Resource) (Resource, error) {
 	if err != nil {
 		return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "read resource type %q", state.ResourceType)
 	}
-	if err := diagnosticsError(origin, resp.Diagnostics()); err != nil {
+	if err := diagnosticsError(origin, PhaseRead, resp.Diagnostics()); err != nil {
 		return Resource{}, err
 	}
 	if resp.Deferred() != nil {
@@ -102,16 +104,20 @@ func (p *Provider) Read(ctx context.Context, state Resource) (Resource, error) {
 // and applies changing the existing instance described by state to match
 // it.
 //
-// Some resource types require replacement (destroy then re-create) rather
-// than an in-place update for a change to certain attributes. The
-// underlying provider-client library does not currently expose the plan
-// response's "requires replacement" information for this package to detect,
-// so Update always attempts an in-place change; a provider that needs
-// replacement for the given config change typically responds with
-// incomplete state, which this method reports as an error rather than
-// returning silently-wrong data. Call Delete then Create instead of Update
-// for a resource type known to require replacement for the attributes
-// being changed.
+// Some resource types require replacement (delete then create) rather than
+// an in-place update for a change to certain attributes. When the plan shows
+// it, Update applies nothing and returns an error wrapping
+// [ErrReplaceRequired]; [Apply] then deletes and creates the resource.
+//
+// The underlying provider-client library does not expose the plan
+// response's "requires replacement" list, so this package infers it: a plan
+// that makes the id of an existing resource unknown is planning a new
+// object. That holds for most resource types, but not all: one whose plan
+// keeps its prior id and computed values while still requiring replacement
+// (a resource built on the plugin framework with UseStateForUnknown, such
+// as random_string) is updated "in place" and comes back with state that
+// does not match its configuration. Call Delete then Create instead of
+// Update for a resource type known to behave so.
 func (p *Provider) Update(ctx context.Context, state Resource, config map[string]any) (Resource, error) {
 	origin := "tofu.Provider.Update(" + p.name + "." + state.ResourceType + ")"
 
@@ -163,7 +169,7 @@ func (p *Provider) Delete(ctx context.Context, state Resource) error {
 		if err != nil {
 			return infraerrors.Wrap(err, http.StatusBadGateway, origin, "plan delete of resource type %q", state.ResourceType)
 		}
-		if err := diagnosticsError(origin, planResp.Diagnostics()); err != nil {
+		if err := diagnosticsError(origin, PhaseDelete, planResp.Diagnostics()); err != nil {
 			return err
 		}
 
@@ -185,7 +191,7 @@ func (p *Provider) Delete(ctx context.Context, state Resource) error {
 	if err != nil {
 		return infraerrors.Wrap(err, http.StatusBadGateway, origin, "apply delete of resource type %q", state.ResourceType)
 	}
-	return diagnosticsError(origin, applyResp.Diagnostics())
+	return diagnosticsError(origin, PhaseDelete, applyResp.Diagnostics())
 }
 
 // planApply runs the validate, plan, apply sequence shared by Create and
@@ -207,7 +213,7 @@ func (p *Provider) planApply(ctx context.Context, origin string, rt resourceType
 	if err != nil {
 		return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "validate configuration for resource type %q", rt.name)
 	}
-	if err := diagnosticsError(origin, validateResp.Diagnostics()); err != nil {
+	if err := diagnosticsError(origin, PhaseValidate, validateResp.Diagnostics()); err != nil {
 		return Resource{}, err
 	}
 
@@ -224,13 +230,19 @@ func (p *Provider) planApply(ctx context.Context, origin string, rt resourceType
 	if err != nil {
 		return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "plan resource type %q", rt.name)
 	}
-	if err := diagnosticsError(origin, planResp.Diagnostics()); err != nil {
+	if err := diagnosticsError(origin, PhasePlan, planResp.Diagnostics()); err != nil {
 		return Resource{}, err
 	}
 
 	plannedVal, err := planResp.PlannedNewState().AsCtyValue(rt.ty)
 	if err != nil {
 		return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "decode plan for resource type %q", rt.name)
+	}
+	if replacing(priorVal, plannedVal) {
+		return Resource{}, infraerrors.Wrap(ErrReplaceRequired, http.StatusConflict, origin,
+			"changing %s of resource type %q requires replacing the resource", changedAttributes(priorVal, plannedVal), rt.name).
+			WithSlug("replace_required").WithTitle("Replacement required").
+			WithSolution("delete the resource and create it again; Apply does so")
 	}
 
 	applyResp, err := p.client.ApplyManagedResourceChange(ctx, &providerops.ApplyManagedResourceChangeRequest{
@@ -243,7 +255,7 @@ func (p *Provider) planApply(ctx context.Context, origin string, rt resourceType
 	if err != nil {
 		return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "apply resource type %q", rt.name)
 	}
-	if err := diagnosticsError(origin, applyResp.Diagnostics()); err != nil {
+	if err := diagnosticsError(origin, PhaseApply, applyResp.Diagnostics()); err != nil {
 		return Resource{}, err
 	}
 
@@ -262,4 +274,90 @@ func (p *Provider) planApply(ctx context.Context, origin string, rt resourceType
 		Internal:      applyResp.ProviderInternal(),
 		SchemaVersion: rt.schema.SchemaVersion(),
 	}, nil
+}
+
+// replacing reports whether a plan for an existing resource is planning a
+// new object: its id, known before, is unknown in the plan.
+func replacing(prior, planned cty.Value) bool {
+	if prior.IsNull() || planned.IsNull() || !prior.Type().IsObjectType() || !prior.Type().HasAttribute("id") {
+		return false
+	}
+	before, after := prior.GetAttr("id"), planned.GetAttr("id")
+	return before.IsKnown() && !before.IsNull() && !after.IsKnown()
+}
+
+// changedAttributes lists, for an error message, the top-level attributes a
+// plan gives a new known value.
+func changedAttributes(prior, planned cty.Value) string {
+	var names []string
+	for name := range prior.Type().AttributeTypes() {
+		before, after := prior.GetAttr(name), planned.GetAttr(name)
+		if after.IsWhollyKnown() && before.IsWhollyKnown() && !after.RawEquals(before) {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return "the configuration"
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
+// Import brings an existing object under management from its id, as
+// `terraform import` does: the provider turns the id into a state, which is
+// then read, so the Resource returned is complete. What an id looks like is
+// the resource type's to define (see its documentation).
+//
+// An id the provider cannot find is an error with [http.StatusNotFound].
+func (p *Provider) Import(ctx context.Context, resourceType, id string) (Resource, error) {
+	origin := "tofu.Provider.Import(" + p.name + "." + resourceType + ")"
+
+	rt, err := p.resourceTypeByName(origin, resourceType)
+	if err != nil {
+		return Resource{}, err
+	}
+
+	resp, err := p.client.ImportManagedResourceState(ctx, &providerops.ImportManagedResourceStateRequest{
+		ResourceType: resourceType,
+		ID:           id,
+	})
+	if err != nil {
+		return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "import resource type %q", resourceType)
+	}
+	if err := diagnosticsError(origin, PhaseImport, resp.Diagnostics()); err != nil {
+		return Resource{}, err
+	}
+
+	// A provider may import several objects for one id; the one of the type
+	// asked for is the resource.
+	for imported := range resp.ImportedResources() {
+		if imported.ResourceType() != resourceType {
+			continue
+		}
+		val, err := imported.State().AsCtyValue(rt.ty)
+		if err != nil {
+			return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "decode imported state for resource type %q", resourceType)
+		}
+		attrs, err := valueToGo(val, rt.ty)
+		if err != nil {
+			return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "decode imported state for resource type %q", resourceType)
+		}
+
+		res, err := p.Read(ctx, Resource{
+			ResourceType:  resourceType,
+			Attributes:    attrs,
+			Internal:      imported.ProviderInternal(),
+			SchemaVersion: rt.schema.SchemaVersion(),
+		})
+		if err != nil {
+			return Resource{}, err
+		}
+		if res.Attributes == nil {
+			break
+		}
+		return res, nil
+	}
+	notFound := infraerrors.NotFound("no %s with id %q", resourceType, id)
+	notFound.Origin = origin
+	return Resource{}, notFound
 }

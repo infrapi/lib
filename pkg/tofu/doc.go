@@ -28,6 +28,15 @@
 //		"filename": "./foo.bar",
 //	})
 //
+// [Provider.ResourceSchema] describes a resource type, and [Provider.Import]
+// rebuilds a [Resource] from the id of an object that already exists.
+//
+// Errors are [github.com/infrapi/lib/pkg/errors.Error] values: a
+// configuration the provider refuses is a 422, a failure between the
+// provider and what it manages a 502, with the provider's diagnostics in a
+// wrapped [DiagnosticsError]. A change that cannot be made in place is
+// [ErrReplaceRequired].
+//
 // Use a [Registry] to run several providers side by side:
 //
 //	registry := tofu.NewRegistry()
