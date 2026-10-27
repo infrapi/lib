@@ -60,7 +60,7 @@ func Start(ctx context.Context, name, exe string, args ...string) (*Provider, er
 		_ = client.Close()
 		return nil, infraerrors.Wrap(err, http.StatusBadGateway, origin, "get schema of provider %q", name)
 	}
-	if err := diagnosticsError(origin, resp.Diagnostics()); err != nil {
+	if err := diagnosticsError(origin, PhaseSchema, resp.Diagnostics()); err != nil {
 		_ = client.Close()
 		return nil, err
 	}
@@ -98,6 +98,21 @@ func (p *Provider) ResourceTypes() []string {
 	return names
 }
 
+// ResourceSchema returns the schema of a managed resource type, as the
+// provider reported it at [Start]: its attributes and nested blocks, which
+// of them are required, optional or computed, sensitive or deprecated, and
+// their descriptions. It is what a caller needs to describe the resource
+// type to its own users, such as in an API contract.
+func (p *Provider) ResourceSchema(resourceType string) (providerschema.Schema, error) {
+	origin := "tofu.Provider.ResourceSchema(" + p.name + ")"
+
+	rt, err := p.resourceTypeByName(origin, resourceType)
+	if err != nil {
+		return nil, err
+	}
+	return rt.schema, nil
+}
+
 // Configure validates and applies the provider-level configuration. Call it
 // once, before any resource method. terraformVersion is reported to the
 // provider as the calling Terraform/OpenTofu version; providers generally
@@ -122,7 +137,7 @@ func (p *Provider) Configure(ctx context.Context, terraformVersion string, confi
 	if err != nil {
 		return infraerrors.Wrap(err, http.StatusBadGateway, origin, "validate configuration for provider %q", p.name)
 	}
-	if err := diagnosticsError(origin, validateResp.Diagnostics()); err != nil {
+	if err := diagnosticsError(origin, PhaseValidate, validateResp.Diagnostics()); err != nil {
 		return err
 	}
 
@@ -133,7 +148,7 @@ func (p *Provider) Configure(ctx context.Context, terraformVersion string, confi
 	if err != nil {
 		return infraerrors.Wrap(err, http.StatusBadGateway, origin, "configure provider %q", p.name)
 	}
-	return diagnosticsError(origin, configureResp.Diagnostics())
+	return diagnosticsError(origin, PhaseConfigure, configureResp.Diagnostics())
 }
 
 // Close terminates the provider plugin's child process. It is safe to call

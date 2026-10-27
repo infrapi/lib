@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/opentofu/provider-client/tofuprovider/providerschema"
+
 	infraerrors "github.com/infrapi/lib/pkg/errors"
 	"github.com/infrapi/lib/pkg/tofu"
 )
@@ -77,24 +79,75 @@ func TestProvider_Update_RequiresReplacement(t *testing.T) {
 	t.Cleanup(func() { _ = p.Delete(ctx, created) })
 
 	// local_file marks every settable attribute RequiresReplace, so
-	// changing "content" needs a destroy+recreate, not an in-place update.
-	// This package's Update cannot detect that (see its godoc) and must
-	// surface the provider's resulting incomplete state as an error
-	// instead of returning it.
+	// changing "content" needs a delete and a create, not an in-place
+	// update: Update says so and applies nothing.
 	_, err = p.Update(ctx, created, map[string]any{"content": "goodbye", "filename": path})
-	require.Error(t, err)
-	assert.Equal(t, http.StatusBadGateway, infraerrors.ErrorCode(err))
+	require.ErrorIs(t, err, tofu.ErrReplaceRequired)
+	assert.Equal(t, http.StatusConflict, infraerrors.ErrorCode(err))
+	assert.Contains(t, err.Error(), "content")
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "hello", string(content), "nothing applied")
 }
 
 func TestProvider_Create_InvalidConfig(t *testing.T) {
 	p := startLocalProvider(t, "local")
 
 	// "filename" is a required attribute of local_file: omitting it must
-	// fail validation before anything is planned or applied.
+	// fail validation before anything is planned or applied, as the
+	// caller's mistake.
 	_, err := p.Create(context.Background(), "local_file", map[string]any{
 		"content": "hello",
 	})
 	require.Error(t, err)
+	assert.Equal(t, http.StatusUnprocessableEntity, infraerrors.ErrorCode(err))
+
+	var de *tofu.DiagnosticsError
+	require.ErrorAs(t, err, &de)
+	assert.Equal(t, tofu.PhaseValidate, de.Phase)
+	require.NotEmpty(t, de.Diagnostics)
+	assert.NotEmpty(t, de.Diagnostics[0].Summary)
+}
+
+func TestProvider_ResourceSchema(t *testing.T) {
+	p := startLocalProvider(t, "local")
+
+	s, err := p.ResourceSchema("local_file")
+	require.NoError(t, err)
+	usage := map[string]providerschema.AttributeUsage{}
+	for name, a := range s.Attributes() {
+		usage[name] = a.Usage()
+	}
+	assert.Equal(t, providerschema.AttributeRequired, usage["filename"])
+	assert.Equal(t, providerschema.AttributeComputed, usage["content_md5"])
+
+	_, err = p.ResourceSchema("local_nope")
+	assert.Equal(t, http.StatusNotFound, infraerrors.ErrorCode(err))
+}
+
+func TestProvider_Import(t *testing.T) {
+	p, err := tofu.Start(context.Background(), "random", randomProviderExe(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, p.Close()) })
+	require.NoError(t, p.Configure(context.Background(), "", nil))
+
+	// random_string imports the string itself as its id.
+	res, err := p.Import(context.Background(), "random_string", "s3cret-value")
+	require.NoError(t, err)
+	assert.Equal(t, "random_string", res.ResourceType)
+	assert.Equal(t, "s3cret-value", res.Attributes["result"])
+	assert.Equal(t, float64(len("s3cret-value")), res.Attributes["length"])
+}
+
+func TestProvider_Import_Unsupported(t *testing.T) {
+	p := startLocalProvider(t, "local")
+
+	_, err := p.Import(context.Background(), "local_file", "anything")
+	require.Error(t, err)
+	var de *tofu.DiagnosticsError
+	require.ErrorAs(t, err, &de)
+	assert.Equal(t, tofu.PhaseImport, de.Phase)
 	assert.Equal(t, http.StatusBadGateway, infraerrors.ErrorCode(err))
 }
 
