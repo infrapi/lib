@@ -37,6 +37,14 @@ type ClientOptions struct {
 	// HTTPClient overrides the client Timeout would otherwise build, for
 	// TLS, proxy or transport settings Timeout alone cannot express.
 	HTTPClient *http.Client
+
+	// CacheTTL caches a successful Verify result in memory for this long,
+	// keyed by a hash of the token, so repeated calls with the same token
+	// skip the HTTP round trip - DefaultCacheTTL (1h) is a reasonable
+	// value. Zero (default) disables caching: every call reaches the
+	// authentication service, so a revoked token or a changed group
+	// membership is reflected immediately.
+	CacheTTL time.Duration
 }
 
 // Client calls an authentication service's POST /oauth2/userinfo endpoint
@@ -44,6 +52,7 @@ type ClientOptions struct {
 type Client struct {
 	baseURL string
 	http    *http.Client
+	cache   *cache // nil when ClientOptions.CacheTTL is 0
 }
 
 // NewClient returns a Client calling opts.BaseURL.
@@ -61,23 +70,49 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		httpClient = &http.Client{Timeout: timeout}
 	}
 
-	return &Client{baseURL: strings.TrimRight(opts.BaseURL, "/"), http: httpClient}, nil
+	c := &Client{baseURL: strings.TrimRight(opts.BaseURL, "/"), http: httpClient}
+	if opts.CacheTTL > 0 {
+		c.cache = newCache(opts.CacheTTL)
+	}
+	return c, nil
 }
 
 // Verify forwards token to the authentication service's userinfo endpoint
-// and returns the identity it resolves to.
+// and returns the identity it resolves to, serving a cached result
+// instead when ClientOptions.CacheTTL is set and a prior Verify for the
+// same token has not expired.
 //
 // A token the service itself refuses - missing, malformed, expired, signed
 // by an unknown provider - comes back as a 401 *errors.Error; the service
 // answering with anything else, or not answering at all, comes back as
 // infraerrors.Upstream or infraerrors.Unavailable respectively, so a
 // caller can tell "this caller is not who they claim" from "the auth
-// service is having a bad day".
+// service is having a bad day". Neither is cached: only a successful
+// resolution is worth saving a round trip on.
 func (a *Client) Verify(ctx context.Context, token string) (*UserInfo, error) {
 	if token == "" {
 		return nil, infraerrors.New(http.StatusUnauthorized, "auth.Verify", "empty bearer token")
 	}
 
+	if a.cache != nil {
+		if info, ok := a.cache.get(token); ok {
+			return info, nil
+		}
+	}
+
+	info, err := a.verify(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	if a.cache != nil {
+		a.cache.set(token, info)
+	}
+	return info, nil
+}
+
+// verify is the HTTP call Verify makes on a cache miss.
+func (a *Client) verify(ctx context.Context, token string) (*UserInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+UserinfoPath, nil)
 	if err != nil {
 		return nil, infraerrors.Wrap(err, http.StatusInternalServerError, "auth.Verify", "")

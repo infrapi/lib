@@ -64,6 +64,31 @@ A missing or empty bearer header, or a token the service refuses, answers with a
 problem-detail response via [`server.AbortError`](server.md#answering-with-an-error) and
 stops the chain - no handler downstream runs.
 
+## Caching Verify results
+
+```go
+client, err := infraauth.NewClient(infraauth.ClientOptions{
+	BaseURL:  "https://auth.example.com",
+	CacheTTL: infraauth.DefaultCacheTTL, // 1h
+})
+```
+
+With `CacheTTL` set, a successful `Verify` is kept in memory for that long, keyed by a
+SHA-256 hash of the token - never the token itself - so a request reusing the same bearer
+token within the window skips the HTTP round trip entirely. `Middleware` benefits from
+this automatically, since it calls `Verify`.
+
+- Only success is cached: a token the service refuses is checked again on every call, so
+  a typo or an expired token is never one you have to wait `CacheTTL` out.
+- Zero (the default) disables caching: every call reaches the authentication service, so
+  a revoked token or a changed group membership takes effect immediately.
+- Each `Verify` returns its own copy of the cached `UserInfo` - mutating `Groups` or
+  `Attributes` in a handler never corrupts what the next cache hit serves.
+- `CacheTTL` trades freshness for load: a revoked token, or a user removed from a group,
+  stays valid in this process for up to `CacheTTL` after the change. Pick a value your
+  service's security posture tolerates - `DefaultCacheTTL` (1h) matches what the
+  authentication service itself typically caches a resolved user for.
+
 ### Gating every route at once
 
 Pass it to [`server.WithAuth`](server.md) instead of wiring it onto each route:

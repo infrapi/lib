@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync/atomic"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,7 +20,7 @@ func main() {
 	fmt.Println("=== InfraPi Auth Package Examples ===")
 	fmt.Println()
 
-	authSvc := startAuthStub()
+	authSvc, calls := startAuthStub()
 	defer authSvc.Close()
 
 	// Example 1: Call the authentication service directly through the client.
@@ -27,14 +28,19 @@ func main() {
 
 	// Example 2: Gate every route a service adds with the middleware.
 	example2(authSvc.URL)
+
+	// Example 3: Cache Verify results to skip the HTTP round trip.
+	example3(authSvc.URL, calls)
 }
 
 // startAuthStub stands in for a real authentication service's POST
 // /oauth2/userinfo endpoint: it accepts "valid-token" and refuses
 // everything else, exactly as that service's own bearer-auth middleware
-// does.
-func startAuthStub() *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// does. The returned counter tracks how many requests actually reached it.
+func startAuthStub() (*httptest.Server, *atomic.Int64) {
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
 		if r.Header.Get("Authorization") != "Bearer valid-token" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
@@ -43,6 +49,7 @@ func startAuthStub() *httptest.Server {
 		_, _ = w.Write([]byte(`{"sub":"jdoe","provider":"okta","authorization":"idm",` +
 			`"groups":["sre","sandbox-apps"],"email":"jdoe@example.com"}`))
 	}))
+	return srv, &calls
 }
 
 // Example 1: resolve a bearer token to the identity the authentication
@@ -94,6 +101,30 @@ func example2(authURL string) {
 	fmt.Printf("GET /widgets   (no token) -> %d\n", mustGet(srv.URL+"/widgets", ""))
 	fmt.Printf("GET /widgets   (bad token) -> %d\n", mustGet(srv.URL+"/widgets", "wrong-token"))
 	fmt.Printf("GET /widgets   (valid token) -> %d\n\n", mustGet(srv.URL+"/widgets", "valid-token"))
+}
+
+// Example 3: with CacheTTL set, repeated Verify calls for the same token
+// stop reaching the authentication service.
+func example3(authURL string, calls *atomic.Int64) {
+	fmt.Println("--- Example 3: Caching Verify results ---")
+
+	before := calls.Load()
+
+	client, err := infraauth.NewClient(infraauth.ClientOptions{
+		BaseURL:  authURL,
+		CacheTTL: infraauth.DefaultCacheTTL,
+	})
+	if err != nil {
+		log.Fatalf("NewClient: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		if _, err := client.Verify(context.Background(), "valid-token"); err != nil {
+			log.Fatalf("Verify: %v", err)
+		}
+	}
+
+	fmt.Printf("3 Verify calls, %d reached the authentication service\n\n", calls.Load()-before)
 }
 
 func mustGet(url, token string) int {
