@@ -218,6 +218,21 @@ Setting that header — and returning it to the caller — is the job of what
 stands in front of the service, a gateway or a proxy: the engine generates
 none, and a call that reaches it without one has none.
 
+## Authentication
+
+`WithAuth` puts a `gin.HandlerFunc` in front of every route the service adds after
+`NewServerGin` returns - typically [`auth.Client.Middleware`](auth.md), which
+authenticates each request against an upstream authentication service:
+
+```go
+client, err := auth.NewClient(auth.ClientOptions{BaseURL: "https://auth.example.com"})
+engine, err := server.NewServerGin(cfg, server.WithAuth(client.Middleware()))
+```
+
+Same as `WithOpenAPI`'s contract validation, it never reaches the engine's own endpoints
+under `/-/` (health, metrics, metadata, OpenAPI, docs): those are registered before it
+and are meant to answer without a token.
+
 ## Health
 
 A gateway or a load balancer checks `/-/readyz` to know whether to send a replica

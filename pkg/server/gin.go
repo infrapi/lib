@@ -36,7 +36,9 @@ import (
 // Options adjust it: WithOpenAPI documents the service with its own OpenAPI
 // documents rather than the generated specification, and validates every
 // request against them before any handler runs; WithReadiness adds the checks
-// /-/readyz runs.
+// /-/readyz runs; WithAuth puts an authentication middleware - typically
+// pkg/auth.Client.Middleware - in front of every route the service adds
+// after this call.
 func NewServerGin(cfg *config.AppConfig, opts ...Option) (*gin.Engine, error) {
 	var o options
 	for _, opt := range opts {
@@ -93,6 +95,13 @@ func NewServerGin(cfg *config.AppConfig, opts ...Option) (*gin.Engine, error) {
 			return nil, err
 		}
 		app.Use(contracts.validate)
+	}
+
+	// Same reasoning as the contracts above: registered after the
+	// engine's own endpoints, so it never gates /-/healthz, /-/metrics
+	// and the rest, only the routes the service adds next.
+	if o.auth != nil {
+		app.Use(o.auth)
 	}
 
 	return app, nil

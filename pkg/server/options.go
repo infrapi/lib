@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 // Option adjusts the engine NewServerGin builds.
@@ -12,6 +14,7 @@ type Option func(*options) error
 type options struct {
 	specs     []OpenAPISpec
 	readiness []ReadinessCheck
+	auth      gin.HandlerFunc
 }
 
 // OpenAPISpec is an OpenAPI document a service maintains itself — a contract
@@ -56,6 +59,22 @@ func WithOpenAPI(specs ...OpenAPISpec) Option {
 			names[s.Name], paths[s.Path] = true, true
 		}
 		o.specs = append(o.specs, specs...)
+		return nil
+	}
+}
+
+// WithAuth adds mw as global middleware in front of every route the
+// service adds after NewServerGin returns - typically
+// [pkg/auth.Client.Middleware]. Like WithOpenAPI's contract validation,
+// it does not reach the engine's own endpoints under /-/ (health, metrics,
+// metadata, OpenAPI, docs): those are registered before it and are meant
+// to be reachable without a token.
+func WithAuth(mw gin.HandlerFunc) Option {
+	return func(o *options) error {
+		if mw == nil {
+			return fmt.Errorf("server: WithAuth middleware is nil")
+		}
+		o.auth = mw
 		return nil
 	}
 }
