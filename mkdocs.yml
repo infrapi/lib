@@ -71,4 +71,5 @@ nav:
       - server: packages/server.md
       - tofu: packages/tofu.md
       - tracing: packages/tracing.md
+      - vault: packages/vault.md
   - Development: development.md
