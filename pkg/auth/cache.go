@@ -9,11 +9,10 @@ import (
 	"time"
 )
 
-// DefaultCacheTTL is a reasonable starting point for ClientOptions.CacheTTL:
-// long enough to spare an active session repeated round trips to the
-// authentication service, short enough that a revoked token or a changed
-// group membership is not served stale for long. It matches what Genesis
-// itself caches a resolved user for.
+// DefaultCacheTTL is what ClientOptions.CacheTTL defaults to when left
+// zero: long enough to spare an active session repeated round trips to
+// the authentication service, short enough that a revoked token or a
+// changed group membership is not served stale for long.
 const DefaultCacheTTL = time.Hour
 
 // cacheEntry is one cached Verify result.

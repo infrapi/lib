@@ -45,11 +45,28 @@ func TestVerify_cacheHitSkipsTheHTTPCall(t *testing.T) {
 	assert.Equal(t, int64(1), calls.Load())
 }
 
-func TestVerify_cacheDisabledByDefault(t *testing.T) {
+// Leaving CacheTTL unset caches for DefaultCacheTTL (1h), not off.
+func TestVerify_cachesByDefault(t *testing.T) {
 	srv, calls := countingStub(t, "good-token", `{"sub":"jdoe"}`)
 	defer srv.Close()
 
 	client, err := NewClient(ClientOptions{BaseURL: srv.URL})
+	require.NoError(t, err)
+
+	for range 3 {
+		_, err := client.Verify(context.Background(), "good-token")
+		require.NoError(t, err)
+	}
+
+	assert.Equal(t, int64(1), calls.Load())
+}
+
+// A negative CacheTTL is the explicit opt-out.
+func TestVerify_cacheDisabledByNegativeTTL(t *testing.T) {
+	srv, calls := countingStub(t, "good-token", `{"sub":"jdoe"}`)
+	defer srv.Close()
+
+	client, err := NewClient(ClientOptions{BaseURL: srv.URL, CacheTTL: -1})
 	require.NoError(t, err)
 
 	for range 3 {

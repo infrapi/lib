@@ -40,10 +40,10 @@ type ClientOptions struct {
 
 	// CacheTTL caches a successful Verify result in memory for this long,
 	// keyed by a hash of the token, so repeated calls with the same token
-	// skip the HTTP round trip - DefaultCacheTTL (1h) is a reasonable
-	// value. Zero (default) disables caching: every call reaches the
-	// authentication service, so a revoked token or a changed group
-	// membership is reflected immediately.
+	// skip the HTTP round trip. Zero (default) means DefaultCacheTTL
+	// (1h); a negative value disables caching entirely, so every call
+	// reaches the authentication service and a revoked token or a
+	// changed group membership is reflected immediately.
 	CacheTTL time.Duration
 }
 
@@ -52,7 +52,7 @@ type ClientOptions struct {
 type Client struct {
 	baseURL string
 	http    *http.Client
-	cache   *cache // nil when ClientOptions.CacheTTL is 0
+	cache   *cache // nil when ClientOptions.CacheTTL is negative
 }
 
 // NewClient returns a Client calling opts.BaseURL.
@@ -71,7 +71,10 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	}
 
 	c := &Client{baseURL: strings.TrimRight(opts.BaseURL, "/"), http: httpClient}
-	if opts.CacheTTL > 0 {
+	switch {
+	case opts.CacheTTL == 0:
+		c.cache = newCache(DefaultCacheTTL)
+	case opts.CacheTTL > 0:
 		c.cache = newCache(opts.CacheTTL)
 	}
 	return c, nil
@@ -79,8 +82,9 @@ func NewClient(opts ClientOptions) (*Client, error) {
 
 // Verify forwards token to the authentication service's userinfo endpoint
 // and returns the identity it resolves to, serving a cached result
-// instead when ClientOptions.CacheTTL is set and a prior Verify for the
-// same token has not expired.
+// instead when a prior Verify for the same token has not expired -
+// ClientOptions.CacheTTL (1h by default) controls that, and a negative
+// value turns caching off.
 //
 // A token the service itself refuses - missing, malformed, expired, signed
 // by an unknown provider - comes back as a 401 *errors.Error; the service

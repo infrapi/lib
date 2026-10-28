@@ -103,28 +103,36 @@ func example2(authURL string) {
 	fmt.Printf("GET /widgets   (valid token) -> %d\n\n", mustGet(srv.URL+"/widgets", "valid-token"))
 }
 
-// Example 3: with CacheTTL set, repeated Verify calls for the same token
-// stop reaching the authentication service.
+// Example 3: Verify caches by default (infraauth.DefaultCacheTTL, 1h), so
+// repeated calls for the same token stop reaching the authentication
+// service; a negative CacheTTL opts back out.
 func example3(authURL string, calls *atomic.Int64) {
 	fmt.Println("--- Example 3: Caching Verify results ---")
 
-	before := calls.Load()
-
-	client, err := infraauth.NewClient(infraauth.ClientOptions{
-		BaseURL:  authURL,
-		CacheTTL: infraauth.DefaultCacheTTL,
-	})
+	cached, err := infraauth.NewClient(infraauth.ClientOptions{BaseURL: authURL})
+	if err != nil {
+		log.Fatalf("NewClient: %v", err)
+	}
+	uncached, err := infraauth.NewClient(infraauth.ClientOptions{BaseURL: authURL, CacheTTL: -1})
 	if err != nil {
 		log.Fatalf("NewClient: %v", err)
 	}
 
-	for i := 0; i < 3; i++ {
-		if _, err := client.Verify(context.Background(), "valid-token"); err != nil {
+	before := calls.Load()
+	for range 3 {
+		if _, err := cached.Verify(context.Background(), "valid-token"); err != nil {
 			log.Fatalf("Verify: %v", err)
 		}
 	}
+	fmt.Printf("default client,  3 Verify calls -> %d reached the service\n", calls.Load()-before)
 
-	fmt.Printf("3 Verify calls, %d reached the authentication service\n\n", calls.Load()-before)
+	before = calls.Load()
+	for range 3 {
+		if _, err := uncached.Verify(context.Background(), "valid-token"); err != nil {
+			log.Fatalf("Verify: %v", err)
+		}
+	}
+	fmt.Printf("CacheTTL: -1,    3 Verify calls -> %d reached the service\n\n", calls.Load()-before)
 }
 
 func mustGet(url, token string) int {

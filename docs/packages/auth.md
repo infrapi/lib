@@ -66,28 +66,34 @@ stops the chain - no handler downstream runs.
 
 ## Caching Verify results
 
+A successful `Verify` is kept in memory for `ClientOptions.CacheTTL`, keyed by a SHA-256
+hash of the token - never the token itself - so a request reusing the same bearer token
+within the window skips the HTTP round trip entirely. `Middleware` benefits from this
+automatically, since it calls `Verify`.
+
 ```go
 client, err := infraauth.NewClient(infraauth.ClientOptions{
-	BaseURL:  "https://auth.example.com",
-	CacheTTL: infraauth.DefaultCacheTTL, // 1h
+	BaseURL: "https://auth.example.com",
 })
 ```
 
-With `CacheTTL` set, a successful `Verify` is kept in memory for that long, keyed by a
-SHA-256 hash of the token - never the token itself - so a request reusing the same bearer
-token within the window skips the HTTP round trip entirely. `Middleware` benefits from
-this automatically, since it calls `Verify`.
+Caching is on by default: leaving `CacheTTL` unset (`0`) caches for `DefaultCacheTTL`
+(1h). Set it to another `time.Duration` to tune that, or to a negative value to turn
+caching off entirely - every call then reaches the authentication service, so a revoked
+token or a changed group membership takes effect immediately.
+
+```go
+infraauth.ClientOptions{BaseURL: "...", CacheTTL: 10 * time.Minute} // tune it
+infraauth.ClientOptions{BaseURL: "...", CacheTTL: -1}               // disable it
+```
 
 - Only success is cached: a token the service refuses is checked again on every call, so
   a typo or an expired token is never one you have to wait `CacheTTL` out.
-- Zero (the default) disables caching: every call reaches the authentication service, so
-  a revoked token or a changed group membership takes effect immediately.
 - Each `Verify` returns its own copy of the cached `UserInfo` - mutating `Groups` or
   `Attributes` in a handler never corrupts what the next cache hit serves.
 - `CacheTTL` trades freshness for load: a revoked token, or a user removed from a group,
   stays valid in this process for up to `CacheTTL` after the change. Pick a value your
-  service's security posture tolerates - `DefaultCacheTTL` (1h) matches what the
-  authentication service itself typically caches a resolved user for.
+  service's security posture tolerates, or disable caching if it tolerates none.
 
 ### Gating every route at once
 
