@@ -98,8 +98,8 @@ func startVaultStub() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		switch {
-		case r.URL.Path == "/v1/secret/data/myapp/db":
+		switch r.URL.Path {
+		case "/v1/secret/data/myapp/db":
 			switch r.Method {
 			case http.MethodGet:
 				_ = json.NewEncoder(w).Encode(map[string]any{
@@ -115,9 +115,9 @@ func startVaultStub() *httptest.Server {
 			case http.MethodDelete:
 				w.WriteHeader(http.StatusNoContent)
 			}
-		case r.URL.Path == "/v1/secret/metadata/myapp/":
+		case "/v1/secret/metadata/myapp/":
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"keys": []string{"db"}}})
-		case r.URL.Path == "/v1/pki/cert/12:34:56":
+		case "/v1/pki/cert/12:34:56":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": map[string]any{"certificate": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"},
 			})

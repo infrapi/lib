@@ -128,7 +128,7 @@ func (a *Client) verify(ctx context.Context, token string) (*UserInfo, error) {
 	if err != nil {
 		return nil, infraerrors.Unavailable("auth: contact authentication service: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
