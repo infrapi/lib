@@ -78,3 +78,61 @@ func TestGetUser_notSet(t *testing.T) {
 	_, ok := GetUser(c)
 	assert.False(t, ok)
 }
+
+func testAccessEngine(t *testing.T, client *Client) *gin.Engine {
+	t.Helper()
+	app := gin.New()
+	app.Any("/api/v1/namespaces/:namespace/stacks/:stack/*resource", client.RequireAccess(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	return app
+}
+
+func TestRequireAccess_allowed(t *testing.T) {
+	authSvc := authorizeStub(t, "good-token", `{"allowed":true}`)
+	defer authSvc.Close()
+
+	client, err := NewClient(ClientOptions{BaseURL: authSvc.URL})
+	require.NoError(t, err)
+
+	app := testAccessEngine(t, client)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/namespaces/core/stacks/compute/vm", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestRequireAccess_denied(t *testing.T) {
+	authSvc := authorizeStub(t, "good-token", `{"allowed":false,"reason":"nope"}`)
+	defer authSvc.Close()
+
+	client, err := NewClient(ClientOptions{BaseURL: authSvc.URL})
+	require.NoError(t, err)
+
+	app := testAccessEngine(t, client)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/namespaces/core/stacks/compute/vm/123", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestRequireAccess_missingHeader(t *testing.T) {
+	authSvc := authorizeStub(t, "good-token", `{"allowed":true}`)
+	defer authSvc.Close()
+
+	client, err := NewClient(ClientOptions{BaseURL: authSvc.URL})
+	require.NoError(t, err)
+
+	app := testAccessEngine(t, client)
+
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/namespaces/core/stacks/compute/vm", nil))
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}

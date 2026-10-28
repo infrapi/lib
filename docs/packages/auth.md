@@ -108,3 +108,58 @@ the engine's own endpoints under `/-/` - registered before it, same as `WithOpen
 contract validation - are not gated.
 
 `examples/auth` runs all of this against a stub authentication server.
+
+## Authorizing stack/resource/verb access
+
+Any app whose routes are shaped
+`/api/v1/namespaces/:namespace/stacks/:stack/<resource>` — Genesis's own
+convention for building RBAC-protected APIs on top of this package — can
+gate them on `Client.RequireAccess()` instead of hand-rolling its own RBAC
+storage and matching:
+
+```go
+engine.Any(
+	"/api/v1/namespaces/:namespace/stacks/:stack/*resource",
+	client.RequireAccess(),
+	handler,
+)
+```
+
+`RequireAccess` reads `:namespace`/`:stack` from the route and the rest
+of the path from gin's `*resource` wildcard, derives `Resource`/`Verb`
+from it (see below), and calls the authentication/authorization
+service's `POST /api/v1/authorize` with the caller's own bearer token to
+get an allow/deny decision — the actual RBAC rules never leave that
+service, this package only shapes the request. A denial answers `403`
+with the service's own reason in `detail`; it does not depend on
+`Middleware` having run first (each guards a different concern — identity
+vs. access — and reaches the service independently), and it is never
+cached, so an edited role or rolebinding takes effect on the very next
+request.
+
+```go
+resource, hasID, err := infraauth.ParseResource(c.Param("resource"))
+verb, err := infraauth.VerbFor(c.Request.Method, hasID)
+```
+
+These are what `RequireAccess` calls, exported in case a caller needs the
+same parsing without the HTTP round trip. The path after `:stack`
+alternates resource/action names and instance ids —
+`/vm` → resource `"vm"`, no id; `/vm/123` → resource `"vm"`, id `"123"`;
+`/vm/123/reboot` → resource `"vm/reboot"` (a sub-resource action's name is
+just part of `Resource`), id `"123"`. `VerbFor` maps the HTTP method to
+the verb an RBAC rule grants: `GET` splits into `"list"` (no id) or
+`"get"` (has one); every other method maps 1:1 regardless of id
+(`POST`→`"create"`, `PUT`→`"update"`, `PATCH`→`"patch"`,
+`DELETE`→`"delete"`) — an action call like `PATCH .../vm/123/reboot` is
+just as unambiguous as `PATCH .../vm/123`.
+
+```go
+allowed, reason, err := client.Authorize(ctx, token, infraauth.AuthorizeRequest{
+	Namespace: "core", Stack: "compute", Resource: "vm", Verb: "list",
+})
+```
+
+The lower-level call `RequireAccess` wraps, for a caller that already has
+`Namespace`/`Stack`/`Resource`/`Verb` in hand and wants the raw decision
+instead of a gin middleware.
