@@ -46,3 +46,9 @@ func TestNewClient_setsNamespace(t *testing.T) {
 	_, err := NewClient(ClientOptions{Address: "http://vault.example.com", Namespace: "tenant-a"})
 	require.NoError(t, err)
 }
+
+func TestNewClient_noRetries(t *testing.T) {
+	client, err := NewClient(ClientOptions{Address: "http://vault.example.com", RetryCount: -1})
+	require.NoError(t, err)
+	assert.Equal(t, 0, client.APIClient.Clone().Configuration().RetryConfiguration.RetryMax)
+}

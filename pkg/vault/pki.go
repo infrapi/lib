@@ -2,9 +2,9 @@ package vault
 
 import (
 	"context"
-	"fmt"
 
 	api "github.com/hashicorp/vault-client-go"
+	"github.com/hashicorp/vault-client-go/schema"
 )
 
 // GetCertificate reads the certificate serial from the PKI engine mounted
@@ -12,9 +12,13 @@ import (
 //
 // https://pkg.go.dev/github.com/hashicorp/vault-client-go#Secrets.PkiReadCert
 func (c *Client) GetCertificate(ctx context.Context, mountPath, serial string) ([]byte, error) {
-	resp, err := c.APIClient.Secrets.PkiReadCert(ctx, serial, api.WithMountPath(mountPath))
+	var resp *api.Response[schema.PkiReadCertResponse]
+	err := c.authenticated(ctx, func() (err error) {
+		resp, err = c.APIClient.Secrets.PkiReadCert(ctx, serial, api.WithMountPath(mountPath))
+		return err
+	})
 	if err != nil {
-		return nil, fmt.Errorf("vault: get certificate %q: %w", serial, err)
+		return nil, classify(err, "get certificate %q", serial)
 	}
 	return []byte(resp.Data.Certificate), nil
 }

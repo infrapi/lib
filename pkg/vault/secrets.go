@@ -2,7 +2,6 @@ package vault
 
 import (
 	"context"
-	"fmt"
 
 	api "github.com/hashicorp/vault-client-go"
 	"github.com/hashicorp/vault-client-go/schema"
@@ -12,9 +11,13 @@ import (
 //
 // https://pkg.go.dev/github.com/hashicorp/vault-client-go#Secrets.KvV2Read
 func (c *Client) GetSecret(ctx context.Context, mountPath, path string) (map[string]any, error) {
-	resp, err := c.APIClient.Secrets.KvV2Read(ctx, path, api.WithMountPath(mountPath))
+	var resp *api.Response[schema.KvV2ReadResponse]
+	err := c.authenticated(ctx, func() (err error) {
+		resp, err = c.APIClient.Secrets.KvV2Read(ctx, path, api.WithMountPath(mountPath))
+		return err
+	})
 	if err != nil {
-		return nil, fmt.Errorf("vault: get secret %q: %w", path, err)
+		return nil, classify(err, "get secret %q", path)
 	}
 	return resp.Data.Data, nil
 }
@@ -24,9 +27,13 @@ func (c *Client) GetSecret(ctx context.Context, mountPath, path string) (map[str
 //
 // https://pkg.go.dev/github.com/hashicorp/vault-client-go#Secrets.KvV2Write
 func (c *Client) SetSecret(ctx context.Context, mountPath, path string, data map[string]any) (map[string]any, error) {
-	if _, err := c.APIClient.Secrets.KvV2Write(ctx, path, schema.KvV2WriteRequest{Data: data},
-		api.WithMountPath(mountPath)); err != nil {
-		return nil, fmt.Errorf("vault: set secret %q: %w", path, err)
+	err := c.authenticated(ctx, func() error {
+		_, err := c.APIClient.Secrets.KvV2Write(ctx, path, schema.KvV2WriteRequest{Data: data},
+			api.WithMountPath(mountPath))
+		return err
+	})
+	if err != nil {
+		return nil, classify(err, "set secret %q", path)
 	}
 
 	// KvV2Write's own response carries only version metadata (created
@@ -41,8 +48,12 @@ func (c *Client) SetSecret(ctx context.Context, mountPath, path string, data map
 //
 // https://pkg.go.dev/github.com/hashicorp/vault-client-go#Secrets.KvV2Delete
 func (c *Client) DeleteSecret(ctx context.Context, mountPath, path string) error {
-	if _, err := c.APIClient.Secrets.KvV2Delete(ctx, path, api.WithMountPath(mountPath)); err != nil {
-		return fmt.Errorf("vault: delete secret %q: %w", path, err)
+	err := c.authenticated(ctx, func() error {
+		_, err := c.APIClient.Secrets.KvV2Delete(ctx, path, api.WithMountPath(mountPath))
+		return err
+	})
+	if err != nil {
+		return classify(err, "delete secret %q", path)
 	}
 	return nil
 }
@@ -52,9 +63,13 @@ func (c *Client) DeleteSecret(ctx context.Context, mountPath, path string) error
 //
 // https://pkg.go.dev/github.com/hashicorp/vault-client-go#Secrets.KvV2List
 func (c *Client) ListSecrets(ctx context.Context, mountPath, path string) ([]string, error) {
-	resp, err := c.APIClient.Secrets.KvV2List(ctx, path, api.WithMountPath(mountPath))
+	var resp *api.Response[schema.StandardListResponse]
+	err := c.authenticated(ctx, func() (err error) {
+		resp, err = c.APIClient.Secrets.KvV2List(ctx, path, api.WithMountPath(mountPath))
+		return err
+	})
 	if err != nil {
-		return nil, fmt.Errorf("vault: list secrets %q: %w", path, err)
+		return nil, classify(err, "list secrets %q", path)
 	}
 	return resp.Data.Keys, nil
 }
