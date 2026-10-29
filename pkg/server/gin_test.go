@@ -156,7 +156,7 @@ func TestNewServerGin_openAPI_noServerURL(t *testing.T) {
 	app, err := NewServerGin(cfg)
 	require.NoError(t, err)
 
-	assert.Empty(t, openAPISpec(app, cfg).Servers)
+	assert.Empty(t, openAPISpec(app, cfg, false, nil).Servers)
 }
 
 func TestOpenAPIPath(t *testing.T) {

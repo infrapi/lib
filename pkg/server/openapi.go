@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"runtime/debug"
+	"slices"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -14,9 +15,14 @@ import (
 )
 
 const (
-	// OpenAPIPath is where the engine serves the generated specification, when
-	// the service supplies no document of its own with WithOpenAPI.
+	// OpenAPIPath is where the engine serves the specification it generates
+	// from its route table: of every route, or, beside the documents supplied
+	// with WithOpenAPI, of its operational endpoints only.
 	OpenAPIPath = "/-/openapi.json"
+
+	// OperationsName labels the operational endpoints' specification in the
+	// docs page's selector, beside the documents supplied with WithOpenAPI.
+	OperationsName = "operations"
 
 	// DocsPath is where the engine serves the Swagger UI reading that
 	// specification, or the ones supplied with WithOpenAPI.
@@ -51,6 +57,7 @@ type openAPIServer struct {
 }
 
 type operation struct {
+	Summary    string              `json:"summary,omitempty"`
 	Parameters []parameter         `json:"parameters,omitempty"`
 	Responses  map[string]response `json:"responses"`
 }
@@ -63,7 +70,12 @@ type parameter struct {
 }
 
 type response struct {
-	Description string `json:"description"`
+	Description string               `json:"description"`
+	Content     map[string]mediaType `json:"content,omitempty"`
+}
+
+type mediaType struct {
+	Schema map[string]any `json:"schema,omitempty"`
 }
 
 // defaultVersion stands in when the binary carries no version information at
@@ -110,8 +122,12 @@ func openAPIPath(route string) (string, []parameter) {
 }
 
 // openAPISpec describes the routes currently registered on app. It is built per
-// request, so routes the service adds after NewServerGin are included.
-func openAPISpec(app *gin.Engine, cfg *config.AppConfig) *openAPI {
+// request, so routes the service adds after NewServerGin are included. With
+// operations, it describes only those under /-/, the engine's own and any the
+// service adds there, but the documents served under OpenAPIPrefix: the API
+// is in those documents. A route in documented, by method and path, carries
+// its summary and responses; the others an undocumented default.
+func openAPISpec(app *gin.Engine, cfg *config.AppConfig, operations bool, documented map[string]Operation) *openAPI {
 	spec := &openAPI{
 		OpenAPI: "3.1.0",
 		Info: openAPIInfo{
@@ -121,31 +137,50 @@ func openAPISpec(app *gin.Engine, cfg *config.AppConfig) *openAPI {
 		},
 		Paths: map[string]map[string]operation{},
 	}
+	if operations {
+		spec.Info.Title = cfg.AppName + " " + OperationsName
+		spec.Info.Description = "The operational endpoints of " + cfg.AppFqdn + ", generated from its route table."
+	}
 
 	if cfg.AppUrl != "" {
 		spec.Servers = []openAPIServer{{URL: cfg.AppUrl}}
 	}
 
 	for _, route := range app.Routes() {
+		if operations && (!strings.HasPrefix(route.Path, "/-/") || strings.HasPrefix(route.Path, OpenAPIPrefix)) {
+			continue
+		}
 		path, params := openAPIPath(route.Path)
 
 		if _, ok := spec.Paths[path]; !ok {
 			spec.Paths[path] = map[string]operation{}
 		}
 
-		spec.Paths[path][strings.ToLower(route.Method)] = operation{
+		op := operation{
 			Parameters: params,
 			Responses: map[string]response{
 				"default": {Description: "Undocumented: this specification is generated from the route table."},
 			},
 		}
+		if doc, ok := documented[route.Method+" "+route.Path]; ok {
+			op.Summary, op.Responses = doc.Summary, map[string]response{}
+			for status, r := range doc.Responses {
+				res := response{Description: r.Description}
+				if r.ContentType != "" {
+					res.Content = map[string]mediaType{r.ContentType: {Schema: r.Schema}}
+				}
+				op.Responses[status] = res
+			}
+		}
+		spec.Paths[path][strings.ToLower(route.Method)] = op
 	}
 
 	return spec
 }
 
 // docsPage renders the Swagger UI page once: on the generated specification,
-// or on the documents the service supplied, offered in a selector.
+// or on the documents the service supplied and the operational endpoints',
+// offered in a selector.
 var docsPage = template.Must(template.New("docs").Parse(
 	`<!doctype html>
 <html lang="en">
@@ -187,6 +222,9 @@ func newDocsPage(cfg *config.AppConfig, specs []OpenAPISpec) ([]byte, error) {
 	for _, s := range specs {
 		urls = append(urls, docsURL{Name: s.Name, URL: OpenAPIPrefix + s.Path})
 	}
+	if len(urls) > 0 {
+		urls = append(urls, docsURL{Name: OperationsName, URL: OpenAPIPath})
+	}
 
 	var page bytes.Buffer
 	if err := docsPage.Execute(&page, map[string]any{
@@ -201,20 +239,23 @@ func newDocsPage(cfg *config.AppConfig, specs []OpenAPISpec) ([]byte, error) {
 }
 
 // openAPIHandlers registers the specifications and the documentation page.
-func openAPIHandlers(app *gin.Engine, cfg *config.AppConfig, specs []OpenAPISpec) error {
+func openAPIHandlers(app *gin.Engine, cfg *config.AppConfig, specs []OpenAPISpec, ops []Operation) error {
 	page, err := newDocsPage(cfg, specs)
 	if err != nil {
 		return err
 	}
 
-	// The generated specification only stands in for a contract the service
-	// does not have: next to one, it would be a second, poorer description of
-	// the same API.
-	if len(specs) == 0 {
-		app.GET(OpenAPIPath, func(c *gin.Context) {
-			c.JSON(http.StatusOK, openAPISpec(app, cfg))
-		})
+	// Beside the service's documents, the generated specification keeps to
+	// the operational endpoints: describing the API too, it would be a
+	// second, poorer description of it.
+	operations := len(specs) > 0
+	documented := map[string]Operation{}
+	for _, op := range append(slices.Clone(engineOperations), ops...) {
+		documented[op.Method+" "+op.Path] = op
 	}
+	app.GET(OpenAPIPath, func(c *gin.Context) {
+		c.JSON(http.StatusOK, openAPISpec(app, cfg, operations, documented))
+	})
 
 	for _, s := range specs {
 		content, contentType := s.Content, specContentType(s.Path)

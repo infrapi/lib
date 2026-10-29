@@ -1,12 +1,14 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,14 +43,72 @@ func TestWithOpenAPI_servesTheServicesDocuments(t *testing.T) {
 	require.NoError(t, err)
 	body := string(page)
 	assert.Contains(t, body, `urls: [{"name":"orders v1","url":"/-/openapi/orders/v1.yaml"},`+
-		`{"name":"orders v2","url":"/-/openapi/orders/v2.json"}]`)
+		`{"name":"orders v2","url":"/-/openapi/orders/v2.json"},`+
+		`{"name":"operations","url":"/-/openapi.json"}]`)
 	assert.Contains(t, body, "swagger-ui-standalone-preset.js")
 	assert.Contains(t, body, `layout: "StandaloneLayout"`)
 	assert.NotContains(t, body, `url: "`+OpenAPIPath+`"`)
+}
 
-	// The service's documents are the only description of its API: the
-	// generated one is gone.
-	assert.Equal(t, http.StatusNotFound, get(t, app, OpenAPIPath).Code)
+// Beside the service's documents, the generated specification describes
+// the operational endpoints only, those the service adds under /-/ too: the
+// service's documents are the only description of its API.
+func TestWithOpenAPI_operations(t *testing.T) {
+	app, err := NewServerGin(testAppConfig(t), WithOpenAPI(ordersV1), WithOperations(Operation{
+		Method: http.MethodGet, Path: "/-/workers/:id", Summary: "A worker",
+		Responses: map[string]Response{"200": {Description: "The worker", ContentType: "application/json",
+			Schema: map[string]any{"type": "object"}}},
+	}))
+	require.NoError(t, err)
+	app.GET("/orders/:id", func(c *gin.Context) {})
+	app.GET("/-/workers", func(c *gin.Context) {})
+	app.GET("/-/workers/:id", func(c *gin.Context) {})
+
+	w := get(t, app, OpenAPIPath)
+	require.Equal(t, http.StatusOK, w.Code)
+	var spec openAPI
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&spec))
+	assert.Contains(t, spec.Info.Title, OperationsName)
+	assert.Contains(t, spec.Paths, HealthzPath)
+	assert.Contains(t, spec.Paths, ReadyzPath)
+	assert.Contains(t, spec.Paths, MetricsPath)
+	assert.Contains(t, spec.Paths, "/-/metadata")
+	assert.Contains(t, spec.Paths, "/-/workers")
+	assert.NotContains(t, spec.Paths, "/orders/{id}")
+	assert.NotContains(t, spec.Paths, "/-/openapi/orders/v1.yaml")
+
+	// The engine's endpoints are documented, and those the service
+	// documents; the others are listed only.
+	readyz := spec.Paths[ReadyzPath]["get"]
+	assert.NotEmpty(t, readyz.Summary)
+	assert.Contains(t, readyz.Responses["503"].Content, "application/problem+json")
+	assert.Contains(t, spec.Paths[MetricsPath]["get"].Responses["200"].Content, "text/plain")
+	worker := spec.Paths["/-/workers/{id}"]["get"]
+	assert.Equal(t, "A worker", worker.Summary)
+	assert.Len(t, worker.Parameters, 1)
+	assert.Equal(t, map[string]any{"type": "object"}, worker.Responses["200"].Content["application/json"].Schema)
+	assert.Contains(t, spec.Paths["/-/workers"]["get"].Responses, "default")
+}
+
+func TestWithOperations_refuses(t *testing.T) {
+	ok := map[string]Response{"200": {Description: "ok"}}
+	for name, op := range map[string]Operation{
+		"no method":     {Path: "/-/x", Responses: ok},
+		"not under /-/": {Method: http.MethodGet, Path: "/x", Responses: ok},
+		"no response":   {Method: http.MethodGet, Path: "/-/x"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := NewServerGin(testAppConfig(t), WithOperations(op))
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestWithOpenAPI_refusesTheOperationsName(t *testing.T) {
+	spec := ordersV1
+	spec.Name = OperationsName
+	_, err := NewServerGin(testAppConfig(t), WithOpenAPI(spec))
+	assert.ErrorContains(t, err, "operational endpoints")
 }
 
 // Without documents, nothing changes: the page reads the generated one.

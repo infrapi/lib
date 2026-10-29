@@ -45,7 +45,7 @@ if err := engine.Run(cfg.AppListenAddress); err != nil {
 | `GET /-/healthz` | `200` while the process serves: liveness. |
 | `GET /-/readyz` | `200` when ready for traffic, `503` when a `WithReadiness` check fails: readiness. |
 | `GET /-/metrics` | Prometheus exposition format. |
-| `GET /-/openapi.json` | OpenAPI 3.1, generated from the route table - unless the service passes its own documents with `WithOpenAPI`. |
+| `GET /-/openapi.json` | OpenAPI 3.1, generated from the route table - of the endpoints under `/-/` only when the service passes its own documents with `WithOpenAPI`. |
 | `GET /-/docs` | Swagger UI reading that specification, or the documents passed with `WithOpenAPI`. |
 
 The paths are exported as `server.MetricsPath`, `server.HealthzPath`,
@@ -91,13 +91,13 @@ engine, err := server.NewServerGin(cfg, server.WithOpenAPI(
 - Each document is served as it is under `server.OpenAPIPrefix`, here
   `/-/openapi/orders/v1.yaml`, as `application/yaml` (`.yaml`, `.yml`) or
   `application/json` (`.json`).
-- With several documents — one file per major version, say — Swagger UI offers them in
-  a selector.
-- They replace the generated specification: `/-/openapi.json` is no longer served, so
-  the API has one description, not two.
-- `NewServerGin` refuses a document without a name or content, a path that is absolute,
-  not clean or not `.json`/`.yaml`/`.yml`, two documents sharing a name or a path, and a
-  document that is not valid OpenAPI 3.0.
+- Swagger UI offers them in a selector — one file per major version, say — followed by
+  `operations`: `/-/openapi.json`, which then describes only the endpoints under `/-/`,
+  the engine's own and those the service adds there. The API has one description, not
+  two.
+- `NewServerGin` refuses a document without a name or content, or named `operations`, a
+  path that is absolute, not clean or not `.json`/`.yaml`/`.yml`, two documents sharing a
+  name or a path, and a document that is not valid OpenAPI 3.0.
 
 ### Enforced, not only documented
 
@@ -308,6 +308,24 @@ the same way.
     parameters, response schemas or status codes, so the document does not invent them:
     every operation carries a single `default` response marked as undocumented. It is an
     accurate map of the surface, not a contract.
+
+The engine's own endpoints - `/-/healthz`, `/-/readyz`, `/-/metrics`, `/-/metadata`,
+`/-/openapi.json`, `/-/docs` - are documented: a summary, their status codes, content
+types and schemas. A service documents the routes it adds under `/-/` with
+`WithOperations`, by the method and path it registers them with:
+
+```go
+server.WithOperations(server.Operation{
+	Method: http.MethodGet, Path: "/-/workers", Summary: "The workers and their state",
+	Responses: map[string]server.Response{
+		"200": {Description: "The workers", ContentType: "application/json",
+			Schema: map[string]any{"type": "array", "items": map[string]any{"type": "object"}}},
+	},
+})
+```
+
+`NewServerGin` refuses an operation without a method, with a path outside `/-/`, or
+without a response.
 
 !!! warning "The docs page loads Swagger UI from a CDN"
     `/-/docs` is a small HTML page pulling a pinned Swagger UI release from
