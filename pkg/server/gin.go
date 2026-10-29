@@ -83,7 +83,7 @@ func NewServerGin(cfg *config.AppConfig, opts ...Option) (*gin.Engine, error) {
 	app.GET(MetricsPath, m.handler())
 	healthHandlers(app, o.readiness)
 
-	if err := openAPIHandlers(app, cfg, o.specs); err != nil {
+	if err := openAPIHandlers(app, cfg, o.specs, o.operations); err != nil {
 		return nil, err
 	}
 

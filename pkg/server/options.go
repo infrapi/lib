@@ -12,9 +12,10 @@ import (
 type Option func(*options) error
 
 type options struct {
-	specs     []OpenAPISpec
-	readiness []ReadinessCheck
-	auth      gin.HandlerFunc
+	specs      []OpenAPISpec
+	operations []Operation
+	readiness  []ReadinessCheck
+	auth       gin.HandlerFunc
 }
 
 // OpenAPISpec is an OpenAPI document a service maintains itself — a contract
@@ -32,9 +33,10 @@ type OpenAPISpec struct {
 }
 
 // WithOpenAPI serves the service's own OpenAPI documents under OpenAPIPrefix
-// and points the documentation page at them, with a selector when there are
-// several — one per major version, say. They replace the generated
-// specification: OpenAPIPath is no longer served.
+// and points the documentation page at them, in a selector — one per major
+// version, say. Beside them, the generated specification at OpenAPIPath keeps
+// to the operational endpoints, those under /-/, and comes last in the
+// selector as OperationsName: the API has one description, not two.
 func WithOpenAPI(specs ...OpenAPISpec) Option {
 	return func(o *options) error {
 		names, paths := map[string]bool{}, map[string]bool{}
@@ -52,6 +54,9 @@ func WithOpenAPI(specs ...OpenAPISpec) Option {
 			}
 			if len(s.Content) == 0 {
 				return fmt.Errorf("server: OpenAPI document %q is empty", s.Name)
+			}
+			if s.Name == OperationsName {
+				return fmt.Errorf("server: OpenAPI document name %q is the operational endpoints'", s.Name)
 			}
 			if names[s.Name] || paths[s.Path] {
 				return fmt.Errorf("server: two OpenAPI documents share the name %q or the path %q", s.Name, s.Path)
