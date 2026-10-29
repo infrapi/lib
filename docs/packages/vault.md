@@ -23,7 +23,7 @@ client, err := infravault.NewClient(infravault.ClientOptions{
 |--------|------|---------|
 | `Namespace` | `string` | none (Vault Enterprise only) |
 | `Timeout` | `time.Duration` | `DefaultTimeout` (60s) |
-| `RetryCount` | `int` | `DefaultRetryCount` (2) |
+| `RetryCount` | `int` | `DefaultRetryCount` (2); negative for no retry |
 | `RetryWaitTime` | `time.Duration` | `DefaultRetryWaitTime` (1s) |
 | `RetryMaxWaitTime` | `time.Duration` | `DefaultRetryMaxWaitTime` (1.5s) |
 
@@ -63,13 +63,33 @@ err := client.Login(ctx, infravault.LoginOptions{
 `LoginOptions` is one of:
 
 - `AppRole`: authenticates via the [AppRole auth method](https://developer.hashicorp.com/vault/docs/auth/approle).
-  `RoleID` and `SecretID` are mandatory; `MountPath` defaults to `DefaultAppRoleMountPath`
-  (`"approle"`).
+  `RoleID` is mandatory, and `SecretID` or `SecretIDFile`, a file holding it, read at each
+  login so that a rotated SecretID is picked up; `MountPath` defaults to
+  `DefaultAppRoleMountPath` (`"approle"`).
 - `Token`: sets the client's token directly, for one already issued out of band (`vault
   login`, a token minted by another service), without a login call of its own.
 
 A successful call leaves every subsequent request on `client` carrying the resulting
 token - there is nothing further to pass around.
+
+With `AppRole`, the client keeps the token valid on its own, for a long-running service:
+it logs in again shortly before the token's lease ends, and once more when Vault refuses a
+call with a 403 (a token revoked, or expired before its time), then retries that call.
+Calls refused at once log in again once. A `Token` is used as it is: Vault refusing it is
+the caller's error.
+
+## Errors
+
+Every call returns an [`infraerrors.Error`](errors.md), the vault-client-go error as its
+cause (vault-client-go's `IsErrorStatus` still works on it):
+
+| Vault's answer | Error |
+|---|---|
+| 404 | `NotFound` |
+| 401, 403 | `UpstreamAuth`: Vault refused the client's token or its AppRole login |
+| 5xx | `Upstream`, retryable |
+| another status | `Upstream` |
+| none (connection refused, timeout) | `Unavailable`, retryable |
 
 ## Secrets (KV v2)
 

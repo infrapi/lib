@@ -6,6 +6,7 @@ package vault
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	api "github.com/hashicorp/vault-client-go"
@@ -33,7 +34,7 @@ type ClientOptions struct {
 	// Timeout per request (default: DefaultTimeout).
 	Timeout time.Duration
 	// RetryCount is the number of times a 5xx or 412 response is retried
-	// (default: DefaultRetryCount).
+	// (default: DefaultRetryCount); a negative count retries nothing.
 	RetryCount int
 	// RetryWaitTime is the initial wait between retries (default:
 	// DefaultRetryWaitTime).
@@ -57,7 +58,7 @@ type ClientOptions struct {
 
 // Client calls Vault's KV v2 and PKI secrets engines, over a
 // github.com/hashicorp/vault-client-go client configured from
-// ClientOptions.
+// ClientOptions. It is safe for concurrent use.
 type Client struct {
 	ClientOptions
 
@@ -65,6 +66,14 @@ type Client struct {
 	// wrapper does not cover - other secrets engines, system endpoints,
 	// a different auth method - is reachable there.
 	APIClient *api.Client
+
+	// The AppRole login, kept to log in again when its token expires or
+	// is refused; nil after a login with a token.
+	mu      sync.Mutex
+	appRole *AppRoleLogin
+	token   string
+	expires time.Time // zero: the token does not expire
+	now     func() time.Time
 }
 
 // NewClient returns a Client calling opts.Address.
@@ -79,8 +88,11 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	}
 
 	retryCount := opts.RetryCount
-	if retryCount == 0 {
+	switch {
+	case retryCount == 0:
 		retryCount = DefaultRetryCount
+	case retryCount < 0:
+		retryCount = 0
 	}
 	retryWaitTime := opts.RetryWaitTime
 	if retryWaitTime <= 0 {
@@ -111,7 +123,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		}
 	}
 
-	return &Client{ClientOptions: opts, APIClient: raw}, nil
+	return &Client{ClientOptions: opts, APIClient: raw, now: time.Now}, nil
 }
 
 // tlsConfiguration builds vault-client-go's TLS settings from opts, with
