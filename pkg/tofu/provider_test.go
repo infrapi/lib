@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/opentofu/provider-client/tofuprovider/providerschema"
+	"github.com/zclconf/go-cty/cty"
 
 	infraerrors "github.com/infrapi/lib/pkg/errors"
 	"github.com/infrapi/lib/pkg/tofu"
@@ -115,15 +115,37 @@ func TestProvider_ResourceSchema(t *testing.T) {
 
 	s, err := p.ResourceSchema("local_file")
 	require.NoError(t, err)
-	usage := map[string]providerschema.AttributeUsage{}
-	for name, a := range s.Attributes() {
-		usage[name] = a.Usage()
-	}
-	assert.Equal(t, providerschema.AttributeRequired, usage["filename"])
-	assert.Equal(t, providerschema.AttributeComputed, usage["content_md5"])
+	assert.NotEmpty(t, s.Description)
+	assert.Equal(t, tofu.UsageRequired, s.Attributes["filename"].Usage)
+	assert.Equal(t, cty.String, s.Attributes["filename"].Type)
+	assert.NotEmpty(t, s.Attributes["filename"].Description)
+	assert.Equal(t, tofu.UsageComputed, s.Attributes["content_md5"].Usage)
+	assert.True(t, s.Attributes["sensitive_content"].Sensitive)
+	assert.True(t, s.Attributes["sensitive_content"].Deprecated)
+
+	// A copy each time: changing one leaves the next alone
+	delete(s.Attributes, "filename")
+	again, err := p.ResourceSchema("local_file")
+	require.NoError(t, err)
+	assert.Contains(t, again.Attributes, "filename")
 
 	_, err = p.ResourceSchema("local_nope")
 	assert.Equal(t, http.StatusNotFound, infraerrors.ErrorCode(err))
+}
+
+func TestProvider_ResourceSchemaTypes(t *testing.T) {
+	p, err := tofu.Start(context.Background(), "random", randomProviderExe(t))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, p.Close()) })
+
+	s, err := p.ResourceSchema("random_password")
+	require.NoError(t, err)
+	assert.Equal(t, cty.Number, s.Attributes["length"].Type)
+	assert.Equal(t, cty.Map(cty.String), s.Attributes["keepers"].Type)
+	assert.Equal(t, tofu.UsageOptional, s.Attributes["keepers"].Usage)
+	assert.Equal(t, tofu.UsageComputed, s.Attributes["result"].Usage)
+	assert.True(t, s.Attributes["result"].Sensitive)
+	assert.Equal(t, tofu.UsageOptionalComputed, s.Attributes["special"].Usage)
 }
 
 func TestProvider_Import(t *testing.T) {

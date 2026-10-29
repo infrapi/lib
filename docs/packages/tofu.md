@@ -45,6 +45,21 @@ runs is the caller's job; this package keeps none of its own state.
 it: attributes and nested blocks, which are required, optional or computed,
 sensitive or deprecated, with their descriptions. It is what a caller needs
 to describe a resource type to its own users, such as in an API contract.
+The schema is plain values (`Block`, `Attribute`, `NestedBlock`), so a
+caller can also build one in its tests:
+
+```go
+schema, err := provider.ResourceSchema("local_file")
+if err != nil {
+	return err
+}
+for name, attr := range schema.Attributes {
+	if attr.Usage == tofu.UsageComputed {
+		continue // set by the provider, never by the caller
+	}
+	fmt.Println(name, attr.Type.FriendlyName())
+}
+```
 
 `Import` brings an existing object under management from its id, as
 `terraform import` does: the provider turns the id into a state, which is

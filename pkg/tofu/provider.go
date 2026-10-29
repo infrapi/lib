@@ -102,15 +102,22 @@ func (p *Provider) ResourceTypes() []string {
 // provider reported it at [Start]: its attributes and nested blocks, which
 // of them are required, optional or computed, sensitive or deprecated, and
 // their descriptions. It is what a caller needs to describe the resource
-// type to its own users, such as in an API contract.
-func (p *Provider) ResourceSchema(resourceType string) (providerschema.Schema, error) {
+// type to its own users, such as in an API contract. Each call returns a
+// new copy, which the caller may change.
+func (p *Provider) ResourceSchema(resourceType string) (Block, error) {
 	origin := "tofu.Provider.ResourceSchema(" + p.name + ")"
 
 	rt, err := p.resourceTypeByName(origin, resourceType)
 	if err != nil {
-		return nil, err
+		return Block{}, err
 	}
-	return rt.schema, nil
+	b, err := blockFrom(rt.schema)
+	if err != nil {
+		return Block{}, infraerrors.Wrap(err, http.StatusBadGateway, origin,
+			"resource type %q of provider %q has a schema this client cannot describe", resourceType, p.name)
+	}
+	b.Description, _ = rt.schema.DocDescription() // the second value is the text's format
+	return b, nil
 }
 
 // Configure validates and applies the provider-level configuration. Call it
