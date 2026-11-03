@@ -51,7 +51,7 @@ func (a *Client) Middleware() gin.HandlerFunc {
 }
 
 // RequireAccess authorizes every request it wraps against the
-// authorization service's POST /api/v1/authorize, for routes mounted at
+// authorization service's POST AuthorizePath, for routes mounted at
 // a path shaped ".../apis/:api/v1/namespaces/:namespace/*resource"
 // (gin's "*resource" wildcard catch-all, so :namespace, :api and the
 // rest of the path are all available via c.Param without any other

@@ -11,8 +11,13 @@ import (
 )
 
 // AuthorizePath is the endpoint an authorization decision is made
-// against — Genesis's rbac.RegisterAuthorizeRoute.
-const AuthorizePath = "/api/v1/authorize"
+// against — Genesis's rbac.RegisterAuthorizeRoute. It sits in the same
+// api group ("authorization.giservices.io") as the groups/roles/
+// rolebindings it decides against, but — like Kubernetes'
+// SelfSubjectAccessReview — needs no RBAC grant of its own: the answer
+// never reveals more than the caller's own already-resolved identity
+// already could.
+const AuthorizePath = "/apis/authorization.giservices.io/v1/check"
 
 // AuthorizeRequest mirrors Genesis's rbac.AuthorizeRequest: Namespace and
 // Api normally come straight from a request's own :namespace/:api route

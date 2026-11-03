@@ -13,8 +13,8 @@ import (
 )
 
 // authorizeStub serves a minimal stand-in for the authorization
-// service's POST /api/v1/authorize: it checks the bearer token against
-// want and, on match, answers with body (an {"allowed":...,"reason":...}
+// service's POST AuthorizePath: it checks the bearer token against want
+// and, on match, answers with body (an {"allowed":...,"reason":...}
 // object, as the real service does).
 func authorizeStub(t *testing.T, want, body string) *httptest.Server {
 	t.Helper()

@@ -134,9 +134,11 @@ client itself has no reason to know which app is using it.
 `RequireAccess` reads `:namespace`/`:api` from the route and the rest
 of the path from gin's `*resource` wildcard, derives `Resource`/`Verb`
 from it (see below), and calls the authentication/authorization
-service's `POST /api/v1/authorize` with the caller's own bearer token to
-get an allow/deny decision — the actual RBAC rules never leave that
-service, this package only shapes the request. A denial answers `403`
+service's `POST AuthorizePath`
+(`/apis/authorization.giservices.io/v1/check`) with the caller's own
+bearer token to get an allow/deny decision — the actual RBAC rules
+never leave that service, this package only shapes the request. A
+denial answers `403`
 with the service's own reason in `detail`; it does not depend on
 `Middleware` having run first (each guards a different concern — identity
 vs. access — and reaches the service independently), and it is never
