@@ -39,7 +39,7 @@ func TestAuthorize_allowed(t *testing.T) {
 	require.NoError(t, err)
 
 	allowed, reason, err := client.Authorize(context.Background(), "good-token", AuthorizeRequest{
-		Namespace: "core", Stack: "compute", Resource: "vm", Verb: "list",
+		Namespace: "core", Api: "compute.giservices.io", Resource: "vm", Verb: "list",
 	})
 	require.NoError(t, err)
 	assert.True(t, allowed)
@@ -54,7 +54,7 @@ func TestAuthorize_denied(t *testing.T) {
 	require.NoError(t, err)
 
 	allowed, reason, err := client.Authorize(context.Background(), "good-token", AuthorizeRequest{
-		Namespace: "core", Stack: "compute", Resource: "vm", Verb: "delete",
+		Namespace: "core", Api: "compute.giservices.io", Resource: "vm", Verb: "delete",
 	})
 	require.NoError(t, err)
 	assert.False(t, allowed)

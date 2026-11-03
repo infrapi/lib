@@ -15,12 +15,15 @@ import (
 const AuthorizePath = "/api/v1/authorize"
 
 // AuthorizeRequest mirrors Genesis's rbac.AuthorizeRequest: Namespace and
-// Stack normally come straight from a request's own :namespace/:stack
-// route params, Resource/Verb from ParseResource/VerbFor against the
-// rest of the path and the HTTP method.
+// Api normally come straight from a request's own :namespace/:api route
+// params, Resource/Verb from ParseResource/VerbFor against the rest of
+// the path and the HTTP method. Api is the calling app's own full API
+// group URN (e.g. "compute.giservices.io"), matching how it's actually
+// reachable (/apis/compute.giservices.io/v1/...) — never the bare app
+// name.
 type AuthorizeRequest struct {
 	Namespace string `json:"namespace"`
-	Stack     string `json:"stack"`
+	Api       string `json:"api"`
 	Resource  string `json:"resource"`
 	Verb      string `json:"verb"`
 }
@@ -32,7 +35,7 @@ type authorizeResponse struct {
 }
 
 // Authorize asks the authentication/authorization service whether
-// token's caller may req.Verb req.Resource on req.Stack within
+// token's caller may req.Verb req.Resource on req.Api within
 // req.Namespace, returning the decision and (when denied) the reason the
 // service gave. Unlike Verify, this is never cached: an authorization
 // decision can change (an edited rolebinding or role) independently of
