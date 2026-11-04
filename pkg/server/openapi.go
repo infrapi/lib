@@ -180,7 +180,9 @@ func openAPISpec(app *gin.Engine, cfg *config.AppConfig, operations bool, docume
 
 // docsPage renders the Swagger UI page once: on the generated specification,
 // or on the documents the service supplied and the operational endpoints',
-// offered in a selector.
+// offered in a selector. Without the online validator: validator.swagger.io
+// fetches the specification itself, which it cannot behind a private address
+// or a gateway, and the page then ends on "Can't read from file".
 var docsPage = template.Must(template.New("docs").Parse(
 	`<!doctype html>
 <html lang="en">
@@ -199,10 +201,10 @@ var docsPage = template.Must(template.New("docs").Parse(
 <script>
 window.onload = () => {
 {{- if .URLs}}
-  SwaggerUIBundle({urls: {{.URLs}}, dom_id: "#swagger-ui", deepLinking: true,
+  SwaggerUIBundle({urls: {{.URLs}}, dom_id: "#swagger-ui", deepLinking: true, validatorUrl: null,
     presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset], layout: "StandaloneLayout"});
 {{- else}}
-  SwaggerUIBundle({url: {{.SpecPath}}, dom_id: "#swagger-ui", deepLinking: true});
+  SwaggerUIBundle({url: {{.SpecPath}}, dom_id: "#swagger-ui", deepLinking: true, validatorUrl: null});
 {{- end}}
 };
 </script>

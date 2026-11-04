@@ -217,6 +217,7 @@ func TestNewServerGin_docs(t *testing.T) {
 	assert.Contains(t, body, "<title>"+cfg.AppName+" API</title>")
 	assert.Contains(t, body, "swagger-ui-dist@"+swaggerUI)
 	assert.Contains(t, body, `url: "`+OpenAPIPath+`"`)
+	assert.Contains(t, body, "validatorUrl: null")
 }
 
 // The application name reaches the docs page, so it must not be able to close
