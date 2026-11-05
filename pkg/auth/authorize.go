@@ -11,7 +11,8 @@ import (
 )
 
 // AuthorizePath is the endpoint an authorization decision is made
-// against — Genesis's rbac.RegisterAuthorizeRoute. It sits in the same
+// against — Kayra's (github.com/infrapi/kayra) rbac.RegisterAuthorizeRoute.
+// It sits in the same
 // api group ("authorization.giservices.io") as the groups/roles/
 // rolebindings it decides against, but — like Kubernetes'
 // SelfSubjectAccessReview — needs no RBAC grant of its own: the answer
@@ -19,7 +20,7 @@ import (
 // already could.
 const AuthorizePath = "/apis/authorization.giservices.io/v1/check"
 
-// AuthorizeRequest mirrors Genesis's rbac.AuthorizeRequest: Namespace and
+// AuthorizeRequest mirrors Kayra's rbac.AuthorizeRequest: Namespace and
 // Api normally come straight from a request's own :namespace/:api route
 // params, Resource/Verb from ParseResource/VerbFor against the rest of
 // the path and the HTTP method. Api is the calling app's own full API
@@ -33,7 +34,7 @@ type AuthorizeRequest struct {
 	Verb      string `json:"verb"`
 }
 
-// authorizeResponse mirrors Genesis's rbac.AuthorizeResponse.
+// authorizeResponse mirrors Kayra's rbac.AuthorizeResponse.
 type authorizeResponse struct {
 	Allowed bool   `json:"allowed"`
 	Reason  string `json:"reason"`

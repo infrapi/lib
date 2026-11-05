@@ -112,7 +112,7 @@ contract validation - are not gated.
 ## Authorizing api/resource/verb access
 
 Any app whose routes are shaped
-`/apis/:api/v1/namespaces/:namespace/<resource>` — Genesis's own
+`/apis/:api/v1/namespaces/:namespace/<resource>` — [Kayra](https://github.com/infrapi/kayra)'s own
 convention for building RBAC-protected APIs on top of this package, with
 `:api` the calling app's own full API group URN (e.g.
 "compute.giservices.io"), matching how it's actually reachable — can gate
