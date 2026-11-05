@@ -47,6 +47,7 @@ func TestWithOpenAPI_servesTheServicesDocuments(t *testing.T) {
 		`{"name":"operations","url":"/-/openapi.json"}]`)
 	assert.Contains(t, body, "swagger-ui-standalone-preset.js")
 	assert.Contains(t, body, `layout: "StandaloneLayout"`)
+	assert.Contains(t, body, "validatorUrl: null")
 	assert.NotContains(t, body, `url: "`+OpenAPIPath+`"`)
 }
 
