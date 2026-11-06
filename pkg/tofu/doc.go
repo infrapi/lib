@@ -31,6 +31,14 @@
 // [Provider.ResourceSchema] describes a resource type, and [Provider.Import]
 // rebuilds a [Resource] from the id of an object that already exists.
 //
+// Data sources are read, as data blocks are: [Provider.DataSourceTypes]
+// names them, [Provider.DataSourceSchema] describes one, and
+// [Provider.ReadDataSource] reads it from its arguments, keeping nothing:
+//
+//	attrs, err := provider.ReadDataSource(ctx, "local_file", map[string]any{
+//		"filename": "./foo.bar",
+//	})
+//
 // Errors are [github.com/infrapi/lib/pkg/errors.Error] values: a
 // configuration the provider refuses is a 422, a failure between the
 // provider and what it manages a 502, with the provider's diagnostics in a

@@ -28,6 +28,9 @@ type Provider struct {
 	schema providerschema.ProviderSchema
 	caps   providerops.ServerCapabilities
 	types  map[string]resourceType
+	// dataSources are the data source types, by name, as types are the
+	// managed resource types.
+	dataSources map[string]resourceType
 }
 
 // resourceType bundles a managed resource type's schema with the cty.Type
@@ -76,12 +79,24 @@ func Start(ctx context.Context, name, exe string, args ...string) (*Provider, er
 		types[rtName] = resourceType{name: rtName, schema: rSchema, ty: ty}
 	}
 
+	dataSources := map[string]resourceType{}
+	for dsName, dsSchema := range resp.ProviderSchema().DataResourceTypeSchemas() {
+		ty, err := schemaType(dsSchema)
+		if err != nil {
+			_ = client.Close()
+			return nil, infraerrors.Wrap(err, http.StatusBadGateway, origin,
+				"data source %q of provider %q has a schema this client cannot use", dsName, name)
+		}
+		dataSources[dsName] = resourceType{name: dsName, schema: dsSchema, ty: ty}
+	}
+
 	return &Provider{
-		name:   name,
-		client: client,
-		schema: resp.ProviderSchema(),
-		caps:   resp.ServerCapabilities(),
-		types:  types,
+		name:        name,
+		client:      client,
+		schema:      resp.ProviderSchema(),
+		caps:        resp.ServerCapabilities(),
+		types:       types,
+		dataSources: dataSources,
 	}, nil
 }
 
