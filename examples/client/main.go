@@ -8,11 +8,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	infrahttp "github.com/infrapi/lib/pkg/http"
+	"github.com/infrapi/lib/pkg/api"
+	infraclient "github.com/infrapi/lib/pkg/client"
 )
 
+// myapp is the API the local server exposes: every request of the examples
+// goes to /apis/myapp.example.com/v1/namespaces/demo/{resource}.
+var myapp = api.Group{Name: "myapp", Domain: "example.com", Version: "v1"}
+
 func main() {
-	fmt.Println("=== InfraPi HTTP Package Examples ===")
+	fmt.Println("=== InfraPI client Package Examples ===")
 	fmt.Println()
 
 	srv := startServer()
@@ -46,6 +51,7 @@ func main() {
 // startServer launches a local HTTP server that backs all examples.
 func startServer() *http.Server {
 	mux := http.NewServeMux()
+	ns := myapp.NamespacePath("demo")
 
 	// Echo handler registered for specific paths
 	echo := func(w http.ResponseWriter, r *http.Request) {
@@ -57,24 +63,24 @@ func startServer() *http.Server {
 		_ = json.NewEncoder(w).Encode(resp)
 	}
 	for _, path := range []string{
-		"/api/v1/myapp/status",
-		"/api/v1/myapp/config",
-		"/api/v1/myapp/items",
-		"/api/v1/myapp/events",
-		"/api/v1/myapp/ping",
+		ns + "/status",
+		ns + "/config",
+		ns + "/items",
+		ns + "/events",
+		ns + "/ping",
 	} {
 		mux.HandleFunc(path, echo)
 	}
 
 	// Slow endpoint (simulates tail latency)
-	mux.HandleFunc("/api/v1/myapp/slow", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(ns+"/slow", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		_, _ = fmt.Fprintln(w, `{"status":"slow"}`)
 	})
 
 	// Endpoint that fails the first N calls then succeeds
 	var retryCounter int32
-	mux.HandleFunc("/api/v1/myapp/flaky", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(ns+"/flaky", func(w http.ResponseWriter, r *http.Request) {
 		if atomic.AddInt32(&retryCounter, 1) < 3 {
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = fmt.Fprintln(w, `{"error":"transient"}`)
@@ -89,13 +95,14 @@ func startServer() *http.Server {
 }
 
 // newClient is a helper that builds a client pointed at the local example server.
-func newClient(opts *infrahttp.ClientOptions) *infrahttp.Client {
+func newClient(opts *infraclient.ClientOptions) *infraclient.Client {
 	opts.Server = "127.0.0.1"
 	opts.Protocol = "http"
 	opts.Port = 18080
-	opts.Application = "myapp"
+	opts.API = myapp
+	opts.Namespace = "demo"
 
-	client, err := infrahttp.NewClient(opts)
+	client, err := infraclient.NewClient(opts)
 	if err != nil {
 		log.Fatalf("newClient: %v", err)
 	}
@@ -106,9 +113,8 @@ func newClient(opts *infrahttp.ClientOptions) *infrahttp.Client {
 func example1() {
 	fmt.Println("--- Example 1: Basic GET Request ---")
 
-	client := newClient(&infrahttp.ClientOptions{
-		Token:      "my-infrapi-token",
-		APIVersion: "v1",
+	client := newClient(&infraclient.ClientOptions{
+		Token: "my-infrapi-token",
 	})
 
 	resp, err := client.Get("status", nil)
@@ -125,12 +131,12 @@ func example1() {
 func example2() {
 	fmt.Println("--- Example 2: HTTP Methods ---")
 
-	client := newClient(&infrahttp.ClientOptions{})
+	client := newClient(&infraclient.ClientOptions{})
 
 	payload := []byte(`{"name":"widget","value":42}`)
 
 	for _, method := range []string{"POST", "PUT", "PATCH", "DELETE", "HEAD"} {
-		resp, err := client.Do(method, "items", &infrahttp.RequestOptions{Data: payload})
+		resp, err := client.Do(method, "items", &infraclient.RequestOptions{Data: payload})
 		if err != nil {
 			log.Printf("%s error: %v", method, err)
 			continue
@@ -147,7 +153,7 @@ func example2() {
 func example3() {
 	fmt.Println("--- Example 3: Custom Headers and User Agent ---")
 
-	client := newClient(&infrahttp.ClientOptions{
+	client := newClient(&infraclient.ClientOptions{
 		UserAgent: "my-service/2.0",
 		Headers: map[string]string{
 			"X-Correlation-ID": "abc-123",
@@ -171,7 +177,7 @@ func example3() {
 func example4() {
 	fmt.Println("--- Example 4: Error Handling ---")
 
-	client := newClient(&infrahttp.ClientOptions{RetryCount: 0})
+	client := newClient(&infraclient.ClientOptions{RetryCount: 0})
 
 	// 404 — path does not exist on the router but the mux returns 404
 	resp, err := client.Get("nonexistent/deep/path", nil)
@@ -180,22 +186,24 @@ func example4() {
 	}
 
 	// Wrong server — connection refused
-	_, err = infrahttp.NewClient(&infrahttp.ClientOptions{
-		Server:      "127.0.0.1",
-		Protocol:    "http",
-		Port:        19999, // nothing listening here
-		Application: "myapp",
-		RetryCount:  0,
+	_, err = infraclient.NewClient(&infraclient.ClientOptions{
+		Server:     "127.0.0.1",
+		Protocol:   "http",
+		Port:       19999, // nothing listening here
+		API:        myapp,
+		Namespace:  "demo",
+		RetryCount: 0,
 	})
 	if err != nil {
 		log.Printf("NewClient error: %v", err)
 		return
 	}
-	badClient, _ := infrahttp.NewClient(&infrahttp.ClientOptions{
+	badClient, _ := infraclient.NewClient(&infraclient.ClientOptions{
 		Server:        "127.0.0.1",
 		Protocol:      "http",
 		Port:          19999,
-		Application:   "myapp",
+		API:           myapp,
+		Namespace:     "demo",
 		RetryCount:    0,
 		GlobalTimeout: 1,
 	})
@@ -211,7 +219,7 @@ func example5() {
 
 	// The /flaky endpoint returns 500 for the first 2 calls, then 200.
 	// With RetryCount=3 and a short wait, the client will succeed automatically.
-	client := newClient(&infrahttp.ClientOptions{
+	client := newClient(&infraclient.ClientOptions{
 		RetryCount:       3,
 		RetryWaitTime:    50 * time.Millisecond,
 		RetryMaxWaitTime: 500 * time.Millisecond,
@@ -233,8 +241,8 @@ func example6() {
 	// With hedging we fire 3 requests staggered by 50ms; the first one to
 	// respond (or a later one if the first is still pending) wins.
 	// Here we use the normal /status endpoint so the example finishes quickly.
-	client := newClient(&infrahttp.ClientOptions{
-		Hedging: &infrahttp.HedgingOptions{
+	client := newClient(&infraclient.ClientOptions{
+		Hedging: &infraclient.HedgingOptions{
 			Enabled:      true,
 			Delay:        50 * time.Millisecond,
 			UpTo:         3,
@@ -253,15 +261,15 @@ func example6() {
 
 	// Demonstrate NonReadOnlyAllowed — hedge a POST (use with care: may cause
 	// duplicate writes if the server is not idempotent).
-	hedgedPost := newClient(&infrahttp.ClientOptions{
-		Hedging: &infrahttp.HedgingOptions{
+	hedgedPost := newClient(&infraclient.ClientOptions{
+		Hedging: &infraclient.HedgingOptions{
 			Enabled:            true,
 			Delay:              50 * time.Millisecond,
 			UpTo:               2,
 			NonReadOnlyAllowed: true,
 		},
 	})
-	resp, err = hedgedPost.Post("events", &infrahttp.RequestOptions{Data: []byte(`{"event":"ping"}`)})
+	resp, err = hedgedPost.Post("events", &infraclient.RequestOptions{Data: []byte(`{"event":"ping"}`)})
 	if err != nil {
 		log.Printf("Hedged POST error: %v", err)
 		return
@@ -277,9 +285,10 @@ func example7() {
 	// or the filesystem. Here we show both approaches.
 
 	// Approach A: provide PEM bytes directly (e.g. from Vault)
-	_, err := infrahttp.NewClient(&infrahttp.ClientOptions{
+	_, err := infraclient.NewClient(&infraclient.ClientOptions{
 		Server:            "internal.example.com",
-		Application:       "myapp",
+		API:               myapp,
+		Namespace:         "demo",
 		Protocol:          "https",
 		Port:              443,
 		ClientCertContent: []byte("-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"),
@@ -291,9 +300,10 @@ func example7() {
 	}
 
 	// Approach B: reference cert/key files on disk
-	_, err = infrahttp.NewClient(&infrahttp.ClientOptions{
+	_, err = infraclient.NewClient(&infraclient.ClientOptions{
 		Server:         "internal.example.com",
-		Application:    "myapp",
+		API:            myapp,
+		Namespace:      "demo",
 		Protocol:       "https",
 		Port:           443,
 		ClientCertPath: "/etc/ssl/myapp/client.crt",

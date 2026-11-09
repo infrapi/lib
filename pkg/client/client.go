@@ -1,10 +1,14 @@
-// Package http provides the InfraPI API client: a resty client with TLS,
-// retry and hedging defaults, and helpers to call /api/{version}/{application}.
-// Callers whose target does not fit that URL shape - a third-party API with
-// its own path layout - use [Client.NewRequest] instead, which keeps this
-// client's TLS, retry and header configuration without exposing resty to
-// them.
-package http
+// Package client calls the APIs InfraPI services expose with pkg/server: a
+// resty client with TLS, retry and hedging defaults, building the paths of
+// pkg/api,
+//
+//	/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}
+//
+// from a namespace and a resource. A route of such a service outside that
+// layout - a cluster-wide endpoint, one under /-/ - goes through
+// [Client.NewRequest], which keeps this client's TLS, retry and header
+// configuration without exposing resty.
+package client
 
 import (
 	"context"
@@ -15,9 +19,11 @@ import (
 	"time"
 
 	"resty.dev/v3"
+
+	"github.com/infrapi/lib/pkg/api"
 )
 
-// Client is an InfraPI API client. It carries the options it was built with and
+// Client calls one API of an InfraPI service. It carries the options it was built with and
 // exposes the underlying resty client for anything the wrapper does not cover.
 type Client struct {
 	ClientOptions
@@ -25,7 +31,7 @@ type Client struct {
 	RestyClient *resty.Client
 }
 
-// ClientOptions configures a Client. Only Server and Application are mandatory;
+// ClientOptions configures a Client. Only Server and API are mandatory;
 // the defaults are opinionated, and resty and the TLS config stay reachable for
 // anything they do not cover.
 type ClientOptions struct {
@@ -39,15 +45,18 @@ type ClientOptions struct {
 	// InfraPI token, should be set
 	Token string
 
-	// InfraPI API version
-	APIVersion string
-	// InfraPI application name
-	Application string
+	// API called: compute, giservices.io, v1 for
+	// /apis/compute.giservices.io/v1/...
+	API api.Group
+
+	// Namespace requests go to when RequestOptions leaves it empty. A
+	// request with neither fails.
+	Namespace string
 
 	// Default headers to set, if empty will add application/json as content type and accept
 	Headers map[string]string
 
-	// Custom user agent (default: infrapi-lib-http-{application})
+	// Custom user agent (default: infrapi-lib-client-{name}.{domain})
 	UserAgent string
 
 	// Server CA to trust, could be byte or filesystem path, CACertContent win over CACertPath
@@ -97,6 +106,9 @@ type RequestOptions struct {
 	// Host to call instead of the client one
 	Server string
 
+	// Namespace to call instead of the client one
+	Namespace string
+
 	// Raw request body
 	Data []byte
 
@@ -124,7 +136,7 @@ const (
 	DefaultMaxHttpCode   = 400
 )
 
-// NewClient returns a Client configured with opts. Server and Application are
+// NewClient returns a Client configured with opts. Server and API are
 // mandatory.
 func NewClient(opts *ClientOptions) (*Client, error) {
 	c := new(Client)
@@ -142,8 +154,8 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 		return nil, fmt.Errorf("missing mandatory attribute Server")
 	}
 
-	if opts.Application == "" {
-		return nil, fmt.Errorf("missing mandatory attribute Application")
+	if err := opts.API.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid attribute API: %w", err)
 	}
 
 	c.RestyClient = resty.New()
@@ -194,7 +206,7 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 	}
 
 	// Set user agent
-	userAgent := fmt.Sprintf("infrapi-lib-http-%s", opts.Application)
+	userAgent := "infrapi-lib-client-" + opts.API.URN()
 	if opts.UserAgent != "" {
 		userAgent = opts.UserAgent
 	}
@@ -264,53 +276,50 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 		c.Protocol = opts.Protocol
 	}
 
-	if opts.APIVersion == "" {
-		c.APIVersion = "v1"
-	} else {
-		c.APIVersion = opts.APIVersion
-	}
-
 	c.Server = opts.Server
-	c.Application = opts.Application
+	c.API = opts.API
+	c.Namespace = opts.Namespace
 
 	return c, nil
 }
 
-// Get performs a GET request on path.
-func (c *Client) Get(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do(MethodGet, path, opts)
+// Get performs a GET request on resource.
+func (c *Client) Get(resource string, opts *RequestOptions) (*Response, error) {
+	return c.Do(MethodGet, resource, opts)
 }
 
-// Post performs a POST request on path.
-func (c *Client) Post(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do(MethodPost, path, opts)
+// Post performs a POST request on resource.
+func (c *Client) Post(resource string, opts *RequestOptions) (*Response, error) {
+	return c.Do(MethodPost, resource, opts)
 }
 
-// Put performs a PUT request on path.
-func (c *Client) Put(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do(MethodPut, path, opts)
+// Put performs a PUT request on resource.
+func (c *Client) Put(resource string, opts *RequestOptions) (*Response, error) {
+	return c.Do(MethodPut, resource, opts)
 }
 
-// Delete performs a DELETE request on path.
-func (c *Client) Delete(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do(MethodDelete, path, opts)
+// Delete performs a DELETE request on resource.
+func (c *Client) Delete(resource string, opts *RequestOptions) (*Response, error) {
+	return c.Do(MethodDelete, resource, opts)
 }
 
-// Patch performs a PATCH request on path.
-func (c *Client) Patch(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do(MethodPatch, path, opts)
+// Patch performs a PATCH request on resource.
+func (c *Client) Patch(resource string, opts *RequestOptions) (*Response, error) {
+	return c.Do(MethodPatch, resource, opts)
 }
 
-// Head performs a HEAD request on path.
-func (c *Client) Head(path string, opts *RequestOptions) (*Response, error) {
-	return c.Do(MethodHead, path, opts)
+// Head performs a HEAD request on resource.
+func (c *Client) Head(resource string, opts *RequestOptions) (*Response, error) {
+	return c.Do(MethodHead, resource, opts)
 }
 
-// Do sends method to {Protocol}://{Server}:{Port}/api/{APIVersion}/{Application}/{path}
-// and returns the response. A status code outside the accepted range is
-// returned as an error carrying the HTTP status text, with the response filled
-// in. opts may be nil.
-func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response, error) {
+// Do sends method to resource - vm, vm/123, vm/123/reboot - in the
+// request's namespace, at
+// {Protocol}://{Server}:{Port}/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource},
+// and returns the response. Each segment of resource is escaped. A status
+// code outside the accepted range is returned as an error carrying the HTTP
+// status text, with the response filled in. opts may be nil.
+func (c *Client) Do(method string, resource string, opts *RequestOptions) (*Response, error) {
 	r := &Response{
 		Code: StatusInternalServerError,
 	}
@@ -337,15 +346,15 @@ func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response
 		opts.Server = c.Server
 	}
 
-	uri := fmt.Sprintf(
-		"%s://%s:%d/api/%s/%s/%s",
-		c.Protocol,
-		opts.Server,
-		c.Port,
-		c.APIVersion,
-		c.Application,
-		path,
-	)
+	if opts.Namespace == "" {
+		opts.Namespace = c.Namespace
+	}
+
+	path, err := c.API.Path(opts.Namespace, resource)
+	if err != nil {
+		return r, err
+	}
+	uri := fmt.Sprintf("%s://%s:%d%s", c.Protocol, opts.Server, c.Port, path)
 
 	// Create request
 	req := c.RestyClient.R()
@@ -360,7 +369,6 @@ func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response
 
 	// Execute request
 	var resp *resty.Response
-	var err error
 
 	switch method {
 	case MethodGet:
@@ -394,15 +402,14 @@ func (c *Client) Do(method string, path string, opts *RequestOptions) (*Response
 }
 
 // Request is a single call sharing this client's TLS, retry, header and
-// timeout configuration, built against an arbitrary URL rather than the
-// {Protocol}://{Server}:{Port}/api/{APIVersion}/{Application}/{path} shape Do
-// assumes. Build one with [Client.NewRequest].
+// timeout configuration, built against a full URL rather than the namespaced
+// path Do builds. Build one with [Client.NewRequest].
 type Request struct {
 	resty *resty.Request
 }
 
-// NewRequest returns a Request bound to ctx, for a call whose URL Do's
-// api/{version}/{application}/{path} shape does not fit.
+// NewRequest returns a Request bound to ctx, for a route outside the
+// namespaced layout Do builds: a cluster-wide endpoint, one under /-/.
 func (c *Client) NewRequest(ctx context.Context) *Request {
 	return &Request{resty: c.RestyClient.R().SetContext(ctx)}
 }

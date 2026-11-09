@@ -1,30 +1,36 @@
-# http
+# client
 
 ```go
-import infrahttp "github.com/infrapi/lib/pkg/http"
+import infraclient "github.com/infrapi/lib/pkg/client"
 ```
 
-A [resty](https://resty.dev) client with InfraPI defaults: bearer token, JSON headers,
-TLS 1.2 floor, retry on transient failures and optional hedging.
+The client of the APIs InfraPI services expose with [`server`](server.md): a
+[resty](https://resty.dev) client with InfraPI defaults - bearer token, JSON headers,
+TLS 1.2 floor, retry on transient failures and optional hedging - that builds the paths of
+[`api`](api.md).
 
 ## Creating a client
 
 ```go
-client, err := infrahttp.NewClient(&infrahttp.ClientOptions{
-	Server:      "api.example.com",
-	Application: "myapp",
-	Token:       token,
+compute := api.Group{Name: "compute", Domain: "giservices.io", Version: "v1"}
+
+client, err := infraclient.NewClient(&infraclient.ClientOptions{
+	Server:    "compute.example.com",
+	API:       compute,
+	Namespace: "core",
+	Token:     token,
 })
 ```
 
-`Server` and `Application` are mandatory; everything else has a default:
+`Server` and `API` are mandatory, and `API` must pass `api.Group.Validate`; everything
+else has a default:
 
 | Option | Type | Default |
 |--------|------|---------|
 | `Protocol` | `string` | `https` |
 | `Port` | `int` | `443` |
-| `APIVersion` | `string` | `v1` |
-| `UserAgent` | `string` | `infrapi-lib-http-{application}` |
+| `Namespace` | `string` | none: each request must then name one |
+| `UserAgent` | `string` | `infrapi-lib-client-{name}.{domain}` |
 | `Headers` | `map[string]string` | `Content-Type` and `Accept` set to `application/json` |
 | `GlobalTimeout` | `int` (seconds) | `60` |
 | `RetryCount` | `int` | `3` |
@@ -38,22 +44,26 @@ what `NewClient` calls internally.
 
 ## Request URL
 
-Paths are relative. The client builds:
+Requests name a resource, and the client builds:
 
 ```text
-{Protocol}://{Server}:{Port}/api/{APIVersion}/{Application}/{path}
+{Protocol}://{Server}:{Port}/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}
 ```
 
-So `client.Get("status", nil)` on the client above requests
-`https://api.example.com:443/api/v1/myapp/status`.
+So on the client above, `client.Get("vm/123", nil)` requests
+`https://compute.example.com:443/apis/compute.giservices.io/v1/namespaces/core/vm/123`,
+and `client.Post("vm/123/reboot", nil)` its `reboot` action. Each segment of the
+resource is escaped. A resource with an empty, `.` or `..` segment, or a request without
+a namespace, fails before anything is sent.
 
 ## Sending requests
 
 ```go
-resp, err := client.Post("items", &infrahttp.RequestOptions{
-	Data:    body,                                   // raw request body
-	Headers: map[string]string{"X-Request-Id": id},  // merged into the request
-	Server:  "api-eu.example.com",                   // per-request host override
+resp, err := client.Post("vm", &infraclient.RequestOptions{
+	Data:      body,                                  // raw request body
+	Headers:   map[string]string{"X-Request-Id": id}, // merged into the request
+	Server:    "compute-eu.example.com",              // per-request host override
+	Namespace: "edge",                                // per-request namespace override
 })
 ```
 
@@ -77,7 +87,7 @@ A response is an error when its status code is below `MinHttpCode` or above
 `400 Bad Request` counts as success unless the range is narrowed:
 
 ```go
-resp, err := client.Get("status", &infrahttp.RequestOptions{
+resp, err := client.Get("vm", &infraclient.RequestOptions{
 	MinHttpCode: 200,
 	MaxHttpCode: 299,
 })
@@ -91,9 +101,9 @@ Retries are on by default and trigger on a transport error, `429 Too Many Reques
 any `5xx`, with exponential backoff between `RetryWaitTime` and `RetryMaxWaitTime`.
 
 ```go
-client, err := infrahttp.NewClient(&infrahttp.ClientOptions{
-	Server:           "api.example.com",
-	Application:      "myapp",
+client, err := infraclient.NewClient(&infraclient.ClientOptions{
+	Server:           "compute.example.com",
+	API:              compute,
 	RetryCount:       5,
 	RetryWaitTime:    200 * time.Millisecond,
 	RetryMaxWaitTime: 5 * time.Second,
@@ -106,10 +116,10 @@ Hedging fires staggered concurrent requests and keeps the first success, trading
 load for a shorter tail latency.
 
 ```go
-client, err := infrahttp.NewClient(&infrahttp.ClientOptions{
-	Server:      "api.example.com",
-	Application: "myapp",
-	Hedging: &infrahttp.HedgingOptions{
+client, err := infraclient.NewClient(&infraclient.ClientOptions{
+	Server: "compute.example.com",
+	API:    compute,
+	Hedging: &infraclient.HedgingOptions{
 		Enabled:      true,
 		Delay:        150 * time.Millisecond,
 		UpTo:         2,
@@ -136,9 +146,9 @@ The client always negotiates TLS 1.2 or later. Certificates can be passed as PEM
 as filesystem paths; when both are given, the in-memory content wins.
 
 ```go
-client, err := infrahttp.NewClient(&infrahttp.ClientOptions{
-	Server:      "api.example.com",
-	Application: "myapp",
+client, err := infraclient.NewClient(&infraclient.ClientOptions{
+	Server: "compute.example.com",
+	API:    compute,
 
 	CACertPath: "/etc/ssl/certs/internal-ca.pem",
 
@@ -155,18 +165,15 @@ client, err := infrahttp.NewClient(&infrahttp.ClientOptions{
 
 An mTLS keypair needs both halves: cert and key must come from the same source.
 
-## A different URL shape
+## Routes outside the layout
 
-`Do` always builds `{Protocol}://{Server}:{Port}/api/{APIVersion}/{Application}/{path}`.
-A caller targeting something else - a third-party API with its own path layout - uses
-`NewRequest` instead, which keeps this client's TLS, retry, header and timeout
-configuration without going through that URL template, and without exposing resty to the
-caller:
+`Do` always builds a namespaced path. A route of the same service outside it - a
+cluster-wide endpoint such as `auth`'s `/apis/authorization.giservices.io/v1/check`, or
+one under `/-/` - goes through `NewRequest`, which keeps this client's TLS, retry, header
+and timeout configuration without exposing resty to the caller:
 
 ```go
-resp, err := client.NewRequest(ctx).
-	SetBody(payload).
-	Post("https://third-party.example.com/v2/widgets")
+resp, err := client.NewRequest(ctx).Get("https://compute.example.com/-/metadata")
 ```
 
 `NewRequest(ctx)` returns a `*Request` with `Get`, `Post`, `Put`, `Patch` and `Delete`,
@@ -180,7 +187,7 @@ so a caller deciding what counts as a failure - and building an
 
 ```go
 if resp.Code < 200 || resp.Code >= 300 {
-	return infraerrors.New(resp.Code, "myapp.Call", "%s", infrahttp.StatusText(resp.Code))
+	return infraerrors.New(resp.Code, "myapp.Call", "%s", infraclient.StatusText(resp.Code))
 }
 ```
 
@@ -189,4 +196,4 @@ if resp.Code < 200 || resp.Code >= 300 {
 `client.RestyClient` is the underlying `*resty.Client`. Anything neither wrapper exposes -
 middlewares, cookies, proxies, custom transports - is configurable there.
 
-`examples/http` runs all of this against a local server, including retry and hedging.
+`examples/client` runs all of this against a local server, including retry and hedging.

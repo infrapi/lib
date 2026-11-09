@@ -1,4 +1,4 @@
-package http
+package client
 
 import (
 	"context"
@@ -11,10 +11,16 @@ import (
 	"math/big"
 	nhttp "net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/infrapi/lib/pkg/api"
 )
+
+// puppet is the API the test server exposes.
+var puppet = api.Group{Name: "puppet", Domain: "infrapi.test", Version: "v1"}
 
 // generateTestCert creates a self-signed CA certificate and returns PEM-encoded cert and key.
 func generateTestCert(t *testing.T) (certPEM, keyPEM []byte) {
@@ -45,26 +51,28 @@ var api_client_server *nhttp.Server
 func setup_api_client_server(t *testing.T) {
 	serverMux := nhttp.NewServeMux()
 
-	serverMux.HandleFunc("/api/v1/puppet/ok", func(w nhttp.ResponseWriter, r *nhttp.Request) {
-		if _, err := w.Write([]byte("It works!")); err != nil {
-			t.Fatalf("client_test.go(WriteOk): %s", err)
-		}
-	})
+	for _, ns := range []string{"core", "other"} {
+		serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/"+ns+"/ok", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+			if _, err := w.Write([]byte("It works!")); err != nil {
+				t.Fatalf("client_test.go(WriteOk): %s", err)
+			}
+		})
+	}
 
-	serverMux.HandleFunc("/api/v1/puppet/slow", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+	serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/core/slow", func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		time.Sleep(9999 * time.Second)
 		if _, err := w.Write([]byte("This will never return!!!!!")); err != nil {
 			t.Fatalf("client_test.go(WriteSlow): %s", err)
 		}
 	})
 
-	serverMux.HandleFunc("/api/v1/puppet/redirect", func(w nhttp.ResponseWriter, r *nhttp.Request) {
-		nhttp.Redirect(w, r, "/api/v1/puppet/ok", StatusPermanentRedirect)
+	serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/core/redirect", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+		nhttp.Redirect(w, r, "/apis/puppet.infrapi.test/v1/namespaces/core/ok", StatusPermanentRedirect)
 	})
 
 	// Handler for retry testing
 	var retryCounter int32
-	serverMux.HandleFunc("/api/v1/puppet/retry", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+	serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/core/retry", func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		count := atomic.AddInt32(&retryCounter, 1)
 		if count < 3 {
 			w.WriteHeader(StatusInternalServerError)
@@ -81,7 +89,7 @@ func setup_api_client_server(t *testing.T) {
 
 	// Handler for 429 testing
 	var rateLimitCounter int32
-	serverMux.HandleFunc("/api/v1/puppet/ratelimit", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+	serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/core/ratelimit", func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		count := atomic.AddInt32(&rateLimitCounter, 1)
 		if count < 2 {
 			w.Header().Set("Retry-After", "1")
@@ -121,8 +129,9 @@ func TestAPIClient_NewClient(t *testing.T) {
 	}
 
 	_, err = NewClient(&ClientOptions{
-		Server:      "127.0.0.1",
-		Application: "puppet",
+		Server:    "127.0.0.1",
+		API:       puppet,
+		Namespace: "core",
 	})
 	if err != nil {
 		t.Fatalf("client_test.go(NewClientMandatory): %s", err)
@@ -132,15 +141,16 @@ func TestAPIClient_NewClient(t *testing.T) {
 		Server: "127.0.0.1",
 	})
 	if err != nil {
-		if err.Error() != "missing mandatory attribute Application" {
+		if !strings.HasPrefix(err.Error(), "invalid attribute API: ") {
 			t.Fatalf("client_test.go(NewClient): %s", err)
 		}
 	} else {
-		t.Fatalf("client_test.go(NewClient): missing Application should returns error")
+		t.Fatalf("client_test.go(NewClient): missing API should returns error")
 	}
 
 	_, err = NewClient(&ClientOptions{
-		Application: "puppet",
+		API:       puppet,
+		Namespace: "core",
 	})
 	if err != nil {
 		if err.Error() != "missing mandatory attribute Server" {
@@ -154,8 +164,8 @@ func TestAPIClient_NewClient(t *testing.T) {
 		Server:        "127.0.0.1",
 		Token:         "empty",
 		GlobalTimeout: 2,
-		APIVersion:    "v1",
-		Application:   "puppet",
+		API:           puppet,
+		Namespace:     "core",
 	})
 	if err != nil {
 		t.Fatalf("client_test.go(NewClient): %s", err)
@@ -171,11 +181,12 @@ func TestAPIClient_NewClient(t *testing.T) {
 func TestAPIClient_CustomUserAgent(t *testing.T) {
 	customAgent := "custom-user-agent/1.0"
 	client, err := NewClient(&ClientOptions{
-		Server:      "127.0.0.1",
-		Application: "puppet",
-		UserAgent:   customAgent,
-		Protocol:    "http",
-		Port:        8080,
+		Server:    "127.0.0.1",
+		API:       puppet,
+		Namespace: "core",
+		UserAgent: customAgent,
+		Protocol:  "http",
+		Port:      8080,
 	})
 	if err != nil {
 		t.Fatalf("client_test.go(NewClient): %s", err)
@@ -189,16 +200,17 @@ func TestAPIClient_CustomUserAgent(t *testing.T) {
 
 func TestAPIClient_DefaultUserAgent(t *testing.T) {
 	client, err := NewClient(&ClientOptions{
-		Server:      "127.0.0.1",
-		Application: "puppet",
-		Protocol:    "http",
-		Port:        8080,
+		Server:    "127.0.0.1",
+		API:       puppet,
+		Namespace: "core",
+		Protocol:  "http",
+		Port:      8080,
 	})
 	if err != nil {
 		t.Fatalf("client_test.go(NewClient): %s", err)
 	}
 
-	expectedAgent := "infrapi-lib-http-puppet"
+	expectedAgent := "infrapi-lib-client-puppet.infrapi.test"
 	if client.RestyClient.Header().Get("User-Agent") != expectedAgent {
 		t.Fatalf("client_test.go(DefaultUserAgent): expected '%s' but got '%s'", expectedAgent, client.RestyClient.Header().Get("User-Agent"))
 	}
@@ -212,8 +224,8 @@ func TestAPIClient_methods(t *testing.T) {
 		Server:        "127.0.0.1",
 		Token:         "empty",
 		GlobalTimeout: 2,
-		APIVersion:    "v1",
-		Application:   "puppet",
+		API:           puppet,
+		Namespace:     "core",
 		Protocol:      "http",
 		Port:          8080,
 		RetryCount:    0, // Disable retries for basic tests
@@ -275,6 +287,26 @@ func TestAPIClient_methods(t *testing.T) {
 	if err == nil {
 		t.Fatalf("client_test.go(getFail): should return error")
 	}
+
+	// The request namespace wins over the client one.
+	res, err = client.Get("ok", &RequestOptions{Namespace: "other"})
+	checkOk(t, res, err, "namespace override")
+
+	// A resource outside the layout never leaves the client.
+	res, err = client.Get("../ok", nil)
+	if err == nil || res.Code != StatusInternalServerError {
+		t.Fatalf("client_test.go(badResource): want an error, got %d %v", res.Code, err)
+	}
+}
+
+func TestAPIClient_NoNamespace(t *testing.T) {
+	client, err := NewClient(&ClientOptions{Server: "127.0.0.1", API: puppet, Protocol: "http", Port: 8080})
+	if err != nil {
+		t.Fatalf("client_test.go(NewClient): %s", err)
+	}
+	if _, err = client.Get("ok", nil); err == nil || !strings.Contains(err.Error(), "namespace") {
+		t.Fatalf("client_test.go(NoNamespace): want a namespace error, got %v", err)
+	}
 }
 
 func TestAPIClient_NewRequest(t *testing.T) {
@@ -283,7 +315,8 @@ func TestAPIClient_NewRequest(t *testing.T) {
 
 	client, err := NewClient(&ClientOptions{
 		Server:           "127.0.0.1",
-		Application:      "puppet",
+		API:              puppet,
+		Namespace:        "core",
 		Protocol:         "http",
 		Port:             8080,
 		RetryWaitTime:    10 * time.Millisecond,
@@ -293,7 +326,7 @@ func TestAPIClient_NewRequest(t *testing.T) {
 		t.Fatalf("client_test.go(NewClient): %s", err)
 	}
 
-	const okURL = "http://127.0.0.1:8080/api/v1/puppet/ok"
+	const okURL = "http://127.0.0.1:8080/apis/puppet.infrapi.test/v1/namespaces/core/ok"
 	ctx := context.Background()
 
 	res, err := client.NewRequest(ctx).Get(okURL)
@@ -311,7 +344,7 @@ func TestAPIClient_NewRequest(t *testing.T) {
 	res, err = client.NewRequest(ctx).Delete(okURL)
 	checkOk(t, res, err, MethodDelete)
 
-	res, err = client.NewRequest(ctx).Get("http://127.0.0.1:8080/api/v1/puppet/fail")
+	res, err = client.NewRequest(ctx).Get("http://127.0.0.1:8080/apis/puppet.infrapi.test/v1/namespaces/core/fail")
 	if err != nil {
 		t.Fatalf("client_test.go(NewRequest fail): %s", err)
 	}
@@ -334,7 +367,8 @@ func TestAPIClient_Retry(t *testing.T) {
 
 	client, err := NewClient(&ClientOptions{
 		Server:           "127.0.0.1",
-		Application:      "puppet",
+		API:              puppet,
+		Namespace:        "core",
 		Protocol:         "http",
 		Port:             8080,
 		RetryCount:       3,
@@ -360,7 +394,8 @@ func TestAPIClient_RateLimit(t *testing.T) {
 
 	client, err := NewClient(&ClientOptions{
 		Server:           "127.0.0.1",
-		Application:      "puppet",
+		API:              puppet,
+		Namespace:        "core",
 		Protocol:         "http",
 		Port:             8080,
 		RetryCount:       3,
@@ -400,11 +435,12 @@ func TestStatusText(t *testing.T) {
 
 func TestAPIClient_CustomHeaders(t *testing.T) {
 	client, err := NewClient(&ClientOptions{
-		Server:      "127.0.0.1",
-		Application: "puppet",
-		Protocol:    "http",
-		Port:        8080,
-		Headers:     map[string]string{"X-Custom": "infrapi"},
+		Server:    "127.0.0.1",
+		API:       puppet,
+		Namespace: "core",
+		Protocol:  "http",
+		Port:      8080,
+		Headers:   map[string]string{"X-Custom": "infrapi"},
 	})
 	if err != nil {
 		t.Fatalf("client_test.go(CustomHeaders): %s", err)
@@ -419,11 +455,12 @@ func TestAPIClient_UnsupportedMethod(t *testing.T) {
 	defer shutdown_api_client_server()
 
 	client, err := NewClient(&ClientOptions{
-		Server:      "127.0.0.1",
-		Application: "puppet",
-		Protocol:    "http",
-		Port:        8080,
-		RetryCount:  0,
+		Server:     "127.0.0.1",
+		API:        puppet,
+		Namespace:  "core",
+		Protocol:   "http",
+		Port:       8080,
+		RetryCount: 0,
 	})
 	if err != nil {
 		t.Fatalf("client_test.go(UnsupportedMethod): %s", err)
@@ -438,7 +475,8 @@ func TestAPIClient_CACertContent(t *testing.T) {
 	certPEM, _ := generateTestCert(t)
 	_, err := NewClient(&ClientOptions{
 		Server:        "127.0.0.1",
-		Application:   "puppet",
+		API:           puppet,
+		Namespace:     "core",
 		CACertContent: certPEM,
 	})
 	if err != nil {
@@ -460,9 +498,10 @@ func TestAPIClient_CACertPath(t *testing.T) {
 	}
 
 	_, err = NewClient(&ClientOptions{
-		Server:      "127.0.0.1",
-		Application: "puppet",
-		CACertPath:  f.Name(),
+		Server:     "127.0.0.1",
+		API:        puppet,
+		Namespace:  "core",
+		CACertPath: f.Name(),
 	})
 	if err != nil {
 		t.Fatalf("client_test.go(CACertPath): %s", err)
@@ -471,9 +510,10 @@ func TestAPIClient_CACertPath(t *testing.T) {
 
 func TestAPIClient_CACertPathError(t *testing.T) {
 	_, err := NewClient(&ClientOptions{
-		Server:      "127.0.0.1",
-		Application: "puppet",
-		CACertPath:  "/nonexistent/ca.pem",
+		Server:     "127.0.0.1",
+		API:        puppet,
+		Namespace:  "core",
+		CACertPath: "/nonexistent/ca.pem",
 	})
 	if err == nil {
 		t.Fatalf("client_test.go(CACertPathError): expected error for bad CA path")
@@ -484,7 +524,8 @@ func TestAPIClient_mTLSContent(t *testing.T) {
 	certPEM, keyPEM := generateTestCert(t)
 	_, err := NewClient(&ClientOptions{
 		Server:            "127.0.0.1",
-		Application:       "puppet",
+		API:               puppet,
+		Namespace:         "core",
 		ClientCertContent: certPEM,
 		ClientKeyContent:  keyPEM,
 	})
@@ -496,7 +537,8 @@ func TestAPIClient_mTLSContent(t *testing.T) {
 func TestAPIClient_mTLSContentError(t *testing.T) {
 	_, err := NewClient(&ClientOptions{
 		Server:            "127.0.0.1",
-		Application:       "puppet",
+		API:               puppet,
+		Namespace:         "core",
 		ClientCertContent: []byte("not-a-cert"),
 		ClientKeyContent:  []byte("not-a-key"),
 	})
@@ -529,7 +571,8 @@ func TestAPIClient_mTLSPath(t *testing.T) {
 
 	_, err = NewClient(&ClientOptions{
 		Server:         "127.0.0.1",
-		Application:    "puppet",
+		API:            puppet,
+		Namespace:      "core",
 		ClientCertPath: certFile.Name(),
 		ClientKeyPath:  keyFile.Name(),
 	})
@@ -541,7 +584,8 @@ func TestAPIClient_mTLSPath(t *testing.T) {
 func TestAPIClient_mTLSPathError(t *testing.T) {
 	_, err := NewClient(&ClientOptions{
 		Server:         "127.0.0.1",
-		Application:    "puppet",
+		API:            puppet,
+		Namespace:      "core",
 		ClientCertPath: "/nonexistent/cert.pem",
 		ClientKeyPath:  "/nonexistent/key.pem",
 	})
@@ -552,10 +596,11 @@ func TestAPIClient_mTLSPathError(t *testing.T) {
 
 func TestAPIClient_HedgingNonReadOnly(t *testing.T) {
 	_, err := NewClient(&ClientOptions{
-		Server:      "127.0.0.1",
-		Application: "puppet",
-		Protocol:    "http",
-		Port:        8080,
+		Server:    "127.0.0.1",
+		API:       puppet,
+		Namespace: "core",
+		Protocol:  "http",
+		Port:      8080,
 		Hedging: &HedgingOptions{
 			Enabled:            true,
 			Delay:              10 * time.Millisecond,
@@ -573,11 +618,12 @@ func TestAPIClient_Hedging(t *testing.T) {
 	defer shutdown_api_client_server()
 
 	client, err := NewClient(&ClientOptions{
-		Server:      "127.0.0.1",
-		Application: "puppet",
-		Protocol:    "http",
-		Port:        8080,
-		RetryCount:  0,
+		Server:     "127.0.0.1",
+		API:        puppet,
+		Namespace:  "core",
+		Protocol:   "http",
+		Port:       8080,
+		RetryCount: 0,
 		Hedging: &HedgingOptions{
 			Enabled: true,
 			Delay:   10 * time.Millisecond,
@@ -600,7 +646,7 @@ func TestAPIClient_Hedging(t *testing.T) {
 // Benchmark tests
 func BenchmarkClient_Get(b *testing.B) {
 	serverMux := nhttp.NewServeMux()
-	serverMux.HandleFunc("/api/v1/puppet/benchmark", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+	serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/core/benchmark", func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		_, _ = fmt.Fprint(w, "benchmark")
 	})
 
@@ -614,11 +660,12 @@ func BenchmarkClient_Get(b *testing.B) {
 	time.Sleep(100 * time.Millisecond)
 
 	client, _ := NewClient(&ClientOptions{
-		Server:      "127.0.0.1",
-		Application: "puppet",
-		Protocol:    "http",
-		Port:        8081,
-		RetryCount:  0,
+		Server:     "127.0.0.1",
+		API:        puppet,
+		Namespace:  "core",
+		Protocol:   "http",
+		Port:       8081,
+		RetryCount: 0,
 	})
 
 	b.ResetTimer()
