@@ -7,9 +7,9 @@ import (
 )
 
 // ParseResource splits rawResource — everything after a request's
-// /apis/:api/v1/namespaces/:namespace/ segment (e.g. gin's "*resource"
-// wildcard param, which includes the leading "/": "/vm" or
-// "/vm/123/reboot") into the Resource
+// /apis/{api}/{version}/namespaces/{namespace}/ segment, pkg/api's
+// Path.Resource, with or without a leading "/": "vm" or
+// "/vm/123/reboot" — into the Resource
 // an RBAC rule matches and whether the path names a specific instance of
 // it.
 //

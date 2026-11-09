@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/infrapi/lib/pkg/api"
+	"github.com/infrapi/lib/pkg/server"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -135,4 +139,53 @@ func TestRequireAccess_missingHeader(t *testing.T) {
 	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/apis/compute.giservices.io/v1/namespaces/core/vm", nil))
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestRequireAccess_apiGroup checks RequireAccess on routes mounted by
+// server.APIGroup, with named parameters rather than a wildcard, and what it
+// asks the authorization service.
+func TestRequireAccess_apiGroup(t *testing.T) {
+	var got AuthorizeRequest
+	authSvc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+		_, _ = w.Write([]byte(`{"allowed":true}`))
+	}))
+	defer authSvc.Close()
+
+	client, err := NewClient(ClientOptions{BaseURL: authSvc.URL})
+	require.NoError(t, err)
+
+	app := gin.New()
+	vms, err := server.APIGroup(app, api.Group{Name: "compute", Domain: "giservices.io", Version: "v2beta1"})
+	require.NoError(t, err)
+	vms.Use(client.RequireAccess())
+	vms.POST("/vm/:id/reboot", func(c *gin.Context) { c.Status(http.StatusAccepted) })
+
+	req := httptest.NewRequest(http.MethodPost, "/apis/compute.giservices.io/v2beta1/namespaces/core/vm/123/reboot", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code)
+	assert.Equal(t, AuthorizeRequest{
+		Namespace: "core", Api: "compute.giservices.io", Resource: "vm/reboot", Verb: "create",
+	}, got)
+}
+
+func TestRequireAccess_outsideLayout(t *testing.T) {
+	authSvc := authorizeStub(t, "good-token", `{"allowed":true}`)
+	defer authSvc.Close()
+
+	client, err := NewClient(ClientOptions{BaseURL: authSvc.URL})
+	require.NoError(t, err)
+
+	app := gin.New()
+	app.GET("/widgets", client.RequireAccess(), func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	req := httptest.NewRequest(http.MethodGet, "/widgets", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }

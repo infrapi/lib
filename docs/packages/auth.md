@@ -111,48 +111,43 @@ contract validation - are not gated.
 
 ## Authorizing api/resource/verb access
 
-Any app whose routes are shaped
-`/apis/:api/v1/namespaces/:namespace/<resource>` — [Kayra](https://github.com/infrapi/kayra)'s own
-convention for building RBAC-protected APIs on top of this package, with
-`:api` the calling app's own full API group URN (e.g.
-"compute.giservices.io"), matching how it's actually reachable — can gate
-them on `Client.RequireAccess()` instead of hand-rolling its own RBAC
-storage and matching:
+A service mounting its routes with [`server.APIGroup`](server.md#api-routes), under
+[`api`](api.md)'s layout
+`/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}` -
+[Kayra](https://github.com/infrapi/kayra)'s convention for RBAC-protected APIs - gates
+them on `Client.RequireAccess()` instead of hand-rolling its own RBAC storage and
+matching:
 
 ```go
-engine.Any(
-	"/apis/:api/v1/namespaces/:namespace/*resource",
-	client.RequireAccess(),
-	handler,
-)
+vms, err := server.APIGroup(engine, api.Group{Name: "compute", Domain: "giservices.io", Version: "v1"})
+vms.Use(client.RequireAccess())
+vms.GET("/vm/:id", getVM)
+vms.POST("/vm/:id/reboot", rebootVM)
 ```
 
-Most apps mount a single fixed URN here rather than genuinely routing on
-`:api` — it stays a route param (not a `Client` field) because the auth
-client itself has no reason to know which app is using it.
+`RequireAccess` takes the request path apart with `api.Parse` - the API URN
+(`compute.giservices.io`) and the namespace come from it, `Resource`/`Verb` from the rest
+of the path and the HTTP method (see below) - and calls the authentication/authorization
+service's `POST AuthorizePath` (`/apis/authorization.giservices.io/v1/check`) with the
+caller's own bearer token to get an allow/deny decision; the actual RBAC rules never leave
+that service, this package only shapes the request. It reads the request path rather than
+route parameters, so any route pattern works, a `*resource` wildcard as well as named
+`:id` segments; a path outside the layout answers `404`.
 
-`RequireAccess` reads `:namespace`/`:api` from the route and the rest
-of the path from gin's `*resource` wildcard, derives `Resource`/`Verb`
-from it (see below), and calls the authentication/authorization
-service's `POST AuthorizePath`
-(`/apis/authorization.giservices.io/v1/check`) with the caller's own
-bearer token to get an allow/deny decision — the actual RBAC rules
-never leave that service, this package only shapes the request. A
-denial answers `403`
-with the service's own reason in `detail`; it does not depend on
-`Middleware` having run first (each guards a different concern — identity
-vs. access — and reaches the service independently), and it is never
-cached, so an edited role or rolebinding takes effect on the very next
-request.
+A denial answers `403` with the service's own reason in `detail`; it does not depend on
+`Middleware` having run first (each guards a different concern — identity vs. access —
+and reaches the service independently), and it is never cached, so an edited role or
+rolebinding takes effect on the very next request.
 
 ```go
-resource, hasID, err := infraauth.ParseResource(c.Param("resource"))
+p, err := api.Parse(c.Request.URL.Path)
+resource, hasID, err := infraauth.ParseResource(p.Resource)
 verb, err := infraauth.VerbFor(c.Request.Method, hasID)
 ```
 
 These are what `RequireAccess` calls, exported in case a caller needs the
-same parsing without the HTTP round trip. The path after `:api/v1/
-namespaces/:namespace` alternates resource/action names and instance ids
+same parsing without the HTTP round trip. The path after
+`/namespaces/{namespace}` alternates resource/action names and instance ids
 — `/vm` → resource `"vm"`, no id; `/vm/123` → resource `"vm"`, id
 `"123"`; `/vm/123/reboot` → resource `"vm/reboot"` (a sub-resource
 action's name is just part of `Resource`), id `"123"`. `VerbFor` maps

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/infrapi/lib/pkg/api"
 	"github.com/infrapi/lib/pkg/config"
 	infraserver "github.com/infrapi/lib/pkg/server"
 )
@@ -93,16 +94,21 @@ func example3() {
 		log.Fatalf("NewServerGin: %v", err)
 	}
 
-	// Add application routes on top of the pre-configured engine.
-	v1 := engine.Group("/api/v1")
-	{
-		v1.GET("/widgets", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"widgets": []string{"foo", "bar"}})
-		})
-		v1.POST("/widgets", func(c *gin.Context) {
-			c.JSON(http.StatusCreated, gin.H{"created": true})
-		})
+	// Add application routes on top of the pre-configured engine, under
+	// /apis/widgets.example.com/v1/namespaces/:namespace.
+	v1, err := infraserver.APIGroup(engine, api.Group{Name: "widgets", Domain: "example.com", Version: "v1"})
+	if err != nil {
+		log.Fatalf("APIGroup: %v", err)
 	}
+	v1.GET("/widget", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"namespace": infraserver.Namespace(c), "widgets": []string{"foo", "bar"}})
+	})
+	v1.POST("/widget", func(c *gin.Context) {
+		c.JSON(http.StatusCreated, gin.H{"created": true})
+	})
+	v1.POST("/widget/:id/polish", func(c *gin.Context) {
+		c.JSON(http.StatusAccepted, gin.H{"polishing": c.Param("id")})
+	})
 
 	fmt.Println("All routes after adding application endpoints:")
 	for _, r := range engine.Routes() {

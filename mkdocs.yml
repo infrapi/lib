@@ -62,10 +62,11 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Packages:
+      - api: packages/api.md
       - auth: packages/auth.md
+      - client: packages/client.md
       - config: packages/config.md
       - errors: packages/errors.md
-      - http: packages/http.md
       - listener: packages/listener.md
       - logger: packages/logger.md
       - server: packages/server.md

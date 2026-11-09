@@ -4,15 +4,16 @@ Working notes for coding agents on this repository. Read before touching code.
 
 ## Project
 
-`github.com/infrapi/lib` is a Go 1.26.7 library, no binary. Six packages that
+`github.com/infrapi/lib` is a Go 1.26.7 library, no binary. The packages that
 InfraPI services import:
 
 ```text
+pkg/api       URL layout: /apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}
+pkg/client    resty v3 client of pkg/server APIs (TLS/mTLS, retry, hedging)
 pkg/config    dotenv loading, go-playground validation, typed AppConfig
 pkg/errors    application error: RFC 9457 payload, cause, remediation
-pkg/http      resty v3 API client (TLS/mTLS, retry, hedging)
 pkg/listener  service socket, TCP or systemd socket activation
-pkg/server    gin.Engine factory (CORS, proxies, /-/metadata /-/metrics /-/openapi.json /-/docs)
+pkg/server    gin.Engine factory (CORS, proxies, /-/metadata /-/metrics /-/openapi.json /-/docs), APIGroup
 pkg/tofu      drive any OpenTofu provider plugin/resource type, and a declarative apply/destroy on top
 examples/     one runnable program per package
 docs/         MkDocs Material site
@@ -28,7 +29,7 @@ make fmt lint security test   # the gate to run before handing work off
 go test ./pkg/config          # a single package
 make docs                     # build the site into site/
 make docs-serve               # live reload on :8000
-go run ./examples/http        # one runnable program per package
+go run ./examples/client      # one runnable program per package
 ```
 
 CI runs `make fmt` then `git diff --exit-code`, so unformatted code fails the
@@ -48,6 +49,15 @@ build. `mkdocs build --strict` also runs in CI: a warning is an error.
 - Conventional commit messages. `go-semantic-release` cuts versions from pushes
   to `main`, so `feat:` and `fix:` prefixes decide the next tag.
 - `site/`, `cover*.out` and `coverage.html` are build output and gitignored.
+- Resources are served under `pkg/api`'s layout,
+  `/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}`, with
+  name/id segments alternating after the namespace. `server.APIGroup` mounts
+  it, `client` builds it, `auth.RequireAccess` parses it: change the layout
+  in `pkg/api` only. `pkg/api` imports nothing, so `pkg/client` stays free of
+  gin.
+- `pkg/client` is the client of `pkg/server` services, not of third-party
+  APIs, and has no option to skip TLS verification: an untrusted CA goes in
+  `CACertPath` or `CACertContent`.
 
 ## Documentation
 
@@ -66,7 +76,7 @@ The palette and type live in `docs/assets/stylesheets/theme.css`.
   `SetHedgingAllowNonReadOnly` calls no longer exist.
 - `examples/config` and `examples/server` point `INFRAPI_CONFIG_DOTENV_FILE` at
   paths relative to the repository root, so run them from there.
-- `pkg/http` tests take around 37s of the Makefile's 60s budget, most of it real
+- `pkg/client` tests take around 40s of the Makefile's 60s budget, most of it real
   retry backoff. Keep new timing tests short.
 - `/-/docs` serves Swagger UI from `cdn.jsdelivr.net`, pinned by version in
   `pkg/server/openapi.go`. The specification itself is generated in process and

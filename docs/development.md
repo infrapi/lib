@@ -45,9 +45,10 @@ There is no manual deploy step.
 ## Layout
 
 ```text
+pkg/api       URL layout every service exposes, shared by server, client and auth
+pkg/client    resty-based client of the APIs pkg/server exposes
 pkg/config    dotenv loading, validation, AppConfig
 pkg/errors    RFC 9457 error carried back to API clients
-pkg/http      resty-based API client
 pkg/listener  service socket, TCP or systemd socket activation
 pkg/server    gin engine factory, metrics and OpenAPI endpoints
 examples/     one runnable program per package

@@ -67,10 +67,27 @@ The paths are exported as `server.MetricsPath`, `server.HealthzPath`,
 Nothing else is registered. The engine is a normal `*gin.Engine`: add groups, routes and
 middleware on top of it.
 
+## API routes
+
+Every InfraPI service exposes its resources under [`api`](api.md)'s layout,
+`/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}`, the paths
+[`client`](client.md) builds and [`auth`](auth.md)'s `RequireAccess` authorizes.
+`APIGroup` mounts it:
+
 ```go
-v1 := engine.Group("/api/v1")
-v1.GET("/widgets", listWidgets)
+vms, err := server.APIGroup(engine, api.Group{Name: "compute", Domain: "giservices.io", Version: "v1"})
+if err != nil {
+	log.Fatal(err) // an invalid group, at start
+}
+vms.GET("/vm", listVMs)               // /apis/compute.giservices.io/v1/namespaces/:namespace/vm
+vms.GET("/vm/:id", getVM)             // .../vm/:id
+vms.POST("/vm/:id/reboot", rebootVM)  // .../vm/:id/reboot
 ```
+
+Routes are relative to the namespace, and after it segments alternate a resource or
+action name and an instance id. `server.Namespace(c)` reads the namespace in a handler
+(the route parameter is `server.NamespaceParam`). A namespace that is not a lower case
+DNS label is answered `404` before any handler of the group runs.
 
 
 ## Your own OpenAPI documents
@@ -275,8 +292,8 @@ Two collectors are recorded for every request, carrying the service FQDN in a `n
 label:
 
 ```text
-http_requests_total{method="GET",name="my-service.example.com",path="/api/v1/widgets/:id",status="200"} 1
-http_request_duration_seconds_bucket{method="GET",name="my-service.example.com",path="/api/v1/widgets/:id",le="0.005"} 1
+http_requests_total{method="GET",name="my-service.example.com",path="/apis/widgets.example.com/v1/namespaces/:namespace/widget/:id",status="200"} 1
+http_request_duration_seconds_bucket{method="GET",name="my-service.example.com",path="/apis/widgets.example.com/v1/namespaces/:namespace/widget/:id",le="0.005"} 1
 ```
 
 `path` is the route pattern, not the URL, so `/widgets/1` and `/widgets/2` share one time

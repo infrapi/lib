@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/infrapi/lib/pkg/api"
 	"github.com/infrapi/lib/pkg/config"
 	"github.com/infrapi/lib/pkg/listener"
 	infraserver "github.com/infrapi/lib/pkg/server"
@@ -86,7 +87,11 @@ func example2() {
 		log.Fatalf("NewServerGin: %v", err)
 	}
 
-	engine.GET("/api/v1/widgets", func(c *gin.Context) {
+	widgets, err := infraserver.APIGroup(engine, api.Group{Name: "widgets", Domain: "example.com", Version: "v1"})
+	if err != nil {
+		log.Fatalf("APIGroup: %v", err)
+	}
+	widgets.GET("/widget", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"widgets": []string{"foo", "bar"}})
 	})
 
@@ -95,12 +100,12 @@ func example2() {
 
 	fmt.Printf("Serving on %s\n", ln.Addr())
 
-	for _, path := range []string{"/-/metadata", "/api/v1/widgets"} {
+	for _, path := range []string{"/-/metadata", "/apis/widgets.example.com/v1/namespaces/demo/widget"} {
 		resp, err := http.Get(fmt.Sprintf("http://%s%s", ln.Addr(), path))
 		if err != nil {
 			log.Fatalf("GET %s: %v", path, err)
 		}
-		fmt.Printf("GET %-17s → %d\n", path, resp.StatusCode)
+		fmt.Printf("GET %-52s → %d\n", path, resp.StatusCode)
 		_ = resp.Body.Close()
 	}
 

@@ -47,8 +47,12 @@ if err != nil {
 	log.Fatal(err)
 }
 
-engine.GET("/api/v1/widgets", func(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"widgets": []string{"foo", "bar"}})
+widgets, err := server.APIGroup(engine, api.Group{Name: "widgets", Domain: "example.com", Version: "v1"})
+if err != nil {
+	log.Fatal(err)
+}
+widgets.GET("/widget", func(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"namespace": server.Namespace(c), "widgets": []string{"foo", "bar"}})
 })
 
 if err := engine.Run(cfg.AppListenAddress); err != nil {
@@ -56,34 +60,39 @@ if err := engine.Run(cfg.AppListenAddress); err != nil {
 }
 ```
 
-The engine already answers `GET /-/metadata` with the application identity.
+The engine already answers `GET /-/metadata` with the application identity, and the
+route above is `GET /apis/widgets.example.com/v1/namespaces/:namespace/widget`.
 
 ## 5. Call another service
 
 ```go
-client, err := infrahttp.NewClient(&infrahttp.ClientOptions{
-	Server:      "api.example.com",
-	Application: "myapp",
-	Token:       os.Getenv("INFRAPI_TOKEN"),
+client, err := infraclient.NewClient(&infraclient.ClientOptions{
+	Server:    "widgets.example.com",
+	API:       api.Group{Name: "widgets", Domain: "example.com", Version: "v1"},
+	Namespace: "demo",
+	Token:     os.Getenv("INFRAPI_TOKEN"),
 })
 if err != nil {
 	log.Fatal(err)
 }
 
-resp, err := client.Get("status", nil)
+resp, err := client.Get("widget", nil)
 ```
 
-That request hits `https://api.example.com:443/api/v1/myapp/status`. See the
-[http reference](packages/http.md) for TLS, retry and hedging options.
+That request hits
+`https://widgets.example.com:443/apis/widgets.example.com/v1/namespaces/demo/widget`. See
+the [client reference](packages/client.md) for TLS, retry and hedging options, and
+[api](packages/api.md) for the path layout.
 
 ## Runnable examples
 
 Each package has a self-contained program under `examples/`:
 
 ```bash
+go run ./examples/api
 go run ./examples/config
 go run ./examples/errors
-go run ./examples/http
+go run ./examples/client
 go run ./examples/listener
 go run ./examples/server
 ```
