@@ -16,7 +16,7 @@ pkg/listener  service socket, TCP or systemd socket activation
 pkg/server    gin.Engine factory (CORS, proxies, /-/metadata /-/metrics /-/openapi.json /-/docs), APIGroup
 pkg/tofu      drive any OpenTofu provider plugin/resource type, and a declarative apply/destroy on top
 examples/     one runnable program per package
-docs/         MkDocs Material site
+docs/         Markdown pages, published by the infrapi/docs Hugo portal
 ```
 
 One Go module.
@@ -33,7 +33,8 @@ go run ./examples/client      # one runnable program per package
 ```
 
 CI runs `make fmt` then `git diff --exit-code`, so unformatted code fails the
-build. `mkdocs build --strict` also runs in CI: a warning is an error.
+build. The portal (infrapi/docs) builds these docs with `--panicOnWarning`:
+a broken link or anchor fails its build.
 
 ## Conventions
 
@@ -66,8 +67,8 @@ one-line `--8<-- "README.md"` snippet include. Edit the README, not the include.
 Because the file is rendered from two different roots, cross-links in it must be
 absolute URLs.
 
-A new page must be added to `nav:` in `mkdocs.yml` or the strict build fails.
-The palette and type live in `docs/assets/stylesheets/theme.css`.
+Every page needs front matter `title`, `description`, `weight` (sidebar order).
+Styling lives in the portal, not here.
 
 ## Gotchas
 

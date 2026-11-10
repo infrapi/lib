@@ -1,0 +1,2479 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Opinionated Go building blocks for InfraPI services - dotenv configuration, HTTP client, gin server.">
+      
+      
+      
+        <link rel="canonical" href="https://infrapi.github.io/lib/packages/cluster/">
+      
+      
+        <link rel="prev" href="../../getting-started/">
+      
+      
+        <link rel="next" href="../config/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>cluster - infrapi/lib</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Geist:300,300i,400,400i,700,700i%7CGeist+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Geist";--md-code-font:"Geist Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/theme.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cluster" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="infrapi/lib" class="md-header__button md-logo" aria-label="infrapi/lib" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            infrapi/lib
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              cluster
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/infrapi/lib" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    infrapi/lib
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="infrapi/lib" class="md-nav__button md-logo" aria-label="infrapi/lib" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    infrapi/lib
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/infrapi/lib" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    infrapi/lib
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packages
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Packages
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    cluster
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    cluster
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Modes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-gated-periodic-action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A gated periodic action
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-separations-not-to-confuse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two separations not to confuse
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backends
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ring-and-lifecycler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ring and lifecycler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zones
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gossip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gossip
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etcd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        etcd
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-left-at-dskits-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is left at dskit's defaults
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#several-data-centres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Several data centres
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Several data centres">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#everyone-talks-to-everyone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Everyone talks to everyone
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#one-mesh-gossip-kept-local-bridges-between-zones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One mesh, gossip kept local, bridges between zones
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#independent-clusters-one-per-data-centre" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Independent clusters, one per data centre
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#affinity-work-handled-in-its-own-data-centre" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Affinity: work handled in its own data centre
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keeping-a-zone-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keeping a zone out
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status pages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status pages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-gossip-page-dskits-data-this-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The gossip page: dskit's data, this design
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mounting-them-where-you-already-look" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mounting them where you already look
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metrics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sharing-application-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing application state
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sharing application state">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#deleting-what-actually-happens-and-when-it-is-really-gone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deleting: what actually happens, and when it is really gone
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shutdown-and-the-failover-delay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shutdown, and the failover delay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running the examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-real-replicas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two real replicas
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    errors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gateway/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    gateway
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../http/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    http
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../listener/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    listener
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tofu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    tofu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Modes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-gated-periodic-action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A gated periodic action
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-separations-not-to-confuse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two separations not to confuse
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backends
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ring-and-lifecycler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ring and lifecycler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zones
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gossip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gossip
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etcd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        etcd
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-left-at-dskits-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is left at dskit's defaults
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#several-data-centres" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Several data centres
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Several data centres">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#everyone-talks-to-everyone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Everyone talks to everyone
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#one-mesh-gossip-kept-local-bridges-between-zones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One mesh, gossip kept local, bridges between zones
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#independent-clusters-one-per-data-centre" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Independent clusters, one per data centre
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#affinity-work-handled-in-its-own-data-centre" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Affinity: work handled in its own data centre
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keeping-a-zone-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keeping a zone out
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status pages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status pages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-gossip-page-dskits-data-this-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The gossip page: dskit's data, this design
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mounting-them-where-you-already-look" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mounting them where you already look
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metrics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sharing-application-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing application state
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sharing application state">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#deleting-what-actually-happens-and-when-it-is-really-gone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deleting: what actually happens, and when it is really gone
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shutdown-and-the-failover-delay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shutdown, and the failover delay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running the examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-real-replicas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two real replicas
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="cluster">cluster<a class="headerlink" href="#cluster" title="Permanent link">&para;</a></h1>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="s">&quot;github.com/infrapi/lib/pkg/cluster&quot;</span>
+</code></pre></div>
+<p>Runs a service as several coordinated replicas, on top of
+<a href="https://github.com/grafana/dskit">dskit</a>: a key-value store every replica
+shares, one hash ring per role, and a lifecycler that registers this replica and
+keeps its heartbeat fresh.</p>
+<p>What a service actually gets out of it is one predicate.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nx">should</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">role</span><span class="p">.</span><span class="nx">ShouldRun</span><span class="p">()</span>
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Its own Go module</p>
+<p><code>cluster</code> is a separate module, so a service that does not cluster does not
+inherit dskit's dependency tree — grpc, etcd, consul, otel,
+hashicorp/memberlist.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>go<span class="w"> </span>get<span class="w"> </span>github.com/infrapi/lib/pkg/cluster
+</code></pre></div>
+<p>The cost of that split: because <code>Role.Ring</code>, <code>Role.Lifecycler</code> and
+<code>Cluster.KVClient</code> return dskit types, this package's API is pinned to one
+dskit pseudo-version. A breaking change there is a breaking change here.</p>
+</div>
+<h2 id="roles">Roles<a class="headerlink" href="#roles" title="Permanent link">&para;</a></h2>
+<p>A role is one ring. A service declares its roles in Go, because the coordination
+mode decides what the application code does; the dotenv lists which of them this
+replica joins, the way Mimir's <code>-target</code> does.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nx">appConfig</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">vars</span><span class="p">.</span><span class="nx">GetAppConfig</span><span class="p">()</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nx">clusterConfig</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">vars</span><span class="p">.</span><span class="nx">GetClusterConfig</span><span class="p">()</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">appConfig</span><span class="p">,</span><span class="w"> </span><span class="nx">clusterConfig</span><span class="p">,</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">Options</span><span class="p">{</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nx">Roles</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="nx">cluster</span><span class="p">.</span><span class="nx">RoleSpec</span><span class="p">{</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">        </span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;scheduler&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Mode</span><span class="p">:</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">ModeLeader</span><span class="p">},</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">        </span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;collector&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Mode</span><span class="p">:</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">ModeBroadcast</span><span class="p">},</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">})</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="p">}</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">Start</span><span class="p">(</span><span class="nx">ctx</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="p">}</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="k">defer</span><span class="w"> </span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">Stop</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">())</span><span class="w"> </span><span class="p">}()</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">INFRAPI_CLUSTER_ROLES</span><span class="o">=[</span><span class="s2">&quot;scheduler&quot;</span>,<span class="s2">&quot;collector&quot;</span><span class="o">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Mismatch</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A name in the dotenv the code does not declare</td>
+<td><code>New</code> fails with <code>ErrRoleUndeclared</code>. It is always a typo or a bad rollout, and a silent no-op would mean a scheduler that never schedules with nothing in the logs.</td>
+</tr>
+<tr>
+<td>A declared role the dotenv does not select</td>
+<td>Accepted. A binary legitimately knows more roles than a deployment runs; <code>Cluster.Role</code> reports <code>ErrRoleNotJoined</code>.</td>
+</tr>
+<tr>
+<td>Roles declared, none selected</td>
+<td><code>New</code> fails with <code>ErrNoRoles</code>. A cluster that joins no ring coordinates nothing.</td>
+</tr>
+<tr>
+<td>No roles declared at all</td>
+<td>Accepted: a store with no rings, for a service that wants shared state and no coordination.</td>
+</tr>
+</tbody>
+</table>
+<p>Two roles that share a name, or a ring key, are refused by <code>New</code>. They would
+both register the same Prometheus collectors, and <code>promauto</code> panics rather than
+returning an error.</p>
+<h2 id="modes">Modes<a class="headerlink" href="#modes" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kd">const</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">ModeLeader</span><span class="w">    </span><span class="c1">// only the owner of the leader token acts</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">ModeBroadcast</span><span class="w"> </span><span class="c1">// every healthy member acts</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="p">)</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>ModeLeader</code></th>
+<th><code>ModeBroadcast</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ShouldRun</code> is true on</td>
+<td>the owner of the leader token</td>
+<td>every healthy member</td>
+</tr>
+<tr>
+<td>Ring states accepted</td>
+<td><code>ACTIVE</code>, <code>LEAVING</code></td>
+<td><code>ACTIVE</code></td>
+</tr>
+<tr>
+<td><code>Leader</code>, <code>IsLeader</code></td>
+<td>the elected replica</td>
+<td><code>ErrWrongMode</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>ModeLeader</code> counts a <code>LEAVING</code> replica as eligible, which is what keeps a
+rolling restart from changing leader at every step. <code>ModeBroadcast</code> does not: a
+replica that is draining must stop working.</p>
+<p>A non-nil error from <code>ShouldRun</code> means <strong>do not act</strong>. It says the ring view is
+unusable, not that this replica was excluded.</p>
+<h3 id="a-gated-periodic-action">A gated periodic action<a class="headerlink" href="#a-gated-periodic-action" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">role</span><span class="p">.</span><span class="nx">Run</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="mi">30</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">runCtx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">reconcile</span><span class="p">(</span><span class="nx">runCtx</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="p">})</span>
+</code></pre></div>
+<p><code>Run</code> re-checks <code>ShouldRun</code> on every tick, never overlaps two runs, and cancels
+the action's context as soon as this replica stops being eligible. An error from
+the action is logged and the loop continues: a transient empty ring during a
+gossip partition must not kill a service's control loop.</p>
+<div class="admonition warning">
+<p class="admonition-title">The ring is not a distributed lock</p>
+<p>Leader election here is ownership of a ring token, refreshed by heartbeat.
+There is no quorum and no lease. During a network partition two replicas can
+each believe they are the leader, and the cancellation <code>Run</code> performs is
+cooperative: an action that ignores its context, or is blocked in a syscall,
+keeps running.</p>
+<p>The overlap is bounded by <code>INFRAPI_CLUSTER_HEARTBEAT_TIMEOUT</code> plus one
+watchdog interval. Nothing closes it. <strong>The action must be idempotent, or
+fenced by whatever it writes to</strong> — a compare-and-swap, a conditional write,
+a unique constraint.</p>
+</div>
+<h2 id="two-separations-not-to-confuse">Two separations not to confuse<a class="headerlink" href="#two-separations-not-to-confuse" title="Permanent link">&para;</a></h2>
+<p>This is the part that costs an afternoon if it is got wrong.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Set by</th>
+<th>Decides</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gossip cluster label</td>
+<td><code>INFRAPI_CLUSTER_GOSSIP_CLUSTER_LABEL</code></td>
+<td>Which gossip mesh a replica belongs to. memberlist <strong>discards</strong> any packet whose label does not match, so a wrong label makes a replica invisible rather than noisy.</td>
+</tr>
+<tr>
+<td>Ring key</td>
+<td><code>INFRAPI_CLUSTER_KV_PREFIX</code> + the role name</td>
+<td>Which ring inside that mesh.</td>
+</tr>
+</tbody>
+</table>
+<p>Replicas sharing a label gossip with each other and ignore each other's rings.
+That is what lets several different services join one mesh and each register in
+the ring of its own role, which is how Mimir runs an ingester ring, a ruler ring
+and a compactor ring over one cluster.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>gossip mesh, label &quot;prod-eu-west-1&quot;
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  collectors/scheduler  -&gt; the ring of role &quot;scheduler&quot; (leader)
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  collectors/collector  -&gt; the ring of role &quot;collector&quot; (broadcast)
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  collectors/state      -&gt; whatever a caller codec writes
+</code></pre></div>
+<p>Changing the label on a live cluster needs two rollouts, with
+<code>INFRAPI_CLUSTER_GOSSIP_CLUSTER_LABEL_VERIFICATION_DISABLED=true</code> in between.</p>
+<p><code>RoleSpec.Key</code> overrides the key, and exists for one reason: adopting this
+package on a deployment whose ring is already written under a different key,
+without resetting it.</p>
+<h2 id="backends">Backends<a class="headerlink" href="#backends" title="Permanent link">&para;</a></h2>
+<p><code>INFRAPI_CLUSTER_KV_STORE</code> selects the store. Everything above it is
+backend-agnostic.</p>
+<table>
+<thead>
+<tr>
+<th>Store</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memberlist</code></td>
+<td>Gossip between replicas. No external dependency, one TCP port. The default.</td>
+</tr>
+<tr>
+<td><code>etcd</code></td>
+<td>A central store, when one is already operated.</td>
+</tr>
+<tr>
+<td><code>inmemory</code></td>
+<td>A process-wide map. <strong>Tests and single-replica runs only</strong>: it coordinates nothing beyond the process, so two replicas on it each get their own ring and each elect themselves. <code>INFRAPI_CLUSTER_JOIN_MEMBERS</code> with it is refused, which is the one mistake it can catch for you.</td>
+</tr>
+</tbody>
+</table>
+<p>dskit also implements a <code>consul</code> store and a mirroring <code>multi</code> store for
+migrating between two backends. Neither is wired up here; both would cost one
+widened validator and a key block.</p>
+<div class="admonition danger">
+<p class="admonition-title">The gossip store is memory, and only memory</p>
+<p>There is no persistence in it at all — no snapshot, no file, nothing on
+disk. The cluster's own memory <em>is</em> the storage, replicated across whichever
+replicas happen to be alive.</p>
+<p>A replica that restarts recovers by pulling the state from a live peer, so a
+rolling restart is safe. <strong>Stopping every replica at once loses everything</strong>:
+a bad rollout that restarts them together, a region-wide outage, a scale to
+zero. Nothing warns you, and nothing brings it back.</p>
+<p>So the gossip store holds coordination state that can be rebuilt — who is a
+member, who leads, a view derived from somewhere else. It is not a system of
+record. If the data has to survive the cluster, either use <code>etcd</code>, which
+persists it, or treat the gossip store as a cache each replica repopulates
+at startup from the real source of truth.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Store</th>
+<th>Survives a full cluster stop?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memberlist</code></td>
+<td><strong>No.</strong> Memory only, replicated across live replicas.</td>
+</tr>
+<tr>
+<td><code>etcd</code></td>
+<td>Yes, to etcd's disk.</td>
+</tr>
+<tr>
+<td><code>inmemory</code></td>
+<td>No, and not even a process restart.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">The gossip transport is TCP only</p>
+<p>dskit's memberlist transport uses TCP for both its packet and its stream
+traffic. One port, no UDP: a firewall rule needs TCP <code>7946</code> and nothing
+else.</p>
+</div>
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
+<p>Every key is read from the dotenv through <code>config.GetClusterConfig</code>, which stops
+on the first key that is missing or fails its validator, then checks the rules
+that span several keys.</p>
+<h3 id="core">Core<a class="headerlink" href="#core" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INFRAPI_CLUSTER_ENABLED</code></td>
+<td><code>false</code></td>
+<td>Off means <code>New</code> still returns a usable object whose <code>Start</code> is a no-op and whose queries report <code>ErrDisabled</code>.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_KV_STORE</code></td>
+<td><code>memberlist</code></td>
+<td><code>memberlist</code>, <code>etcd</code> or <code>inmemory</code>.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_KV_PREFIX</code></td>
+<td><code>collectors/</code></td>
+<td>Must end in <code>/</code>.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ROLES</code></td>
+<td><code>[]</code></td>
+<td>The roles this replica joins.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_INSTANCE_ID</code></td>
+<td>the host name</td>
+<td>The ring identity, and the gossip node name.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_INSTANCE_ADDR</code></td>
+<td>auto-detected</td>
+<td>Optional; otherwise found from the interface names below.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_INSTANCE_INTERFACE_NAMES</code></td>
+<td><code>["eth0", "en0"]</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_INSTANCE_PORT</code></td>
+<td><code>7946</code></td>
+<td>The port advertised in the ring.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_START_TIMEOUT</code></td>
+<td><code>30s</code></td>
+<td>Bounds the whole of <code>Start</code>.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_STOP_TIMEOUT</code></td>
+<td><code>45s</code></td>
+<td>Must exceed the gossip leave timeout plus the broadcast drain. A ceiling, not a wait.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ring-and-lifecycler">Ring and lifecycler<a class="headerlink" href="#ring-and-lifecycler" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INFRAPI_CLUSTER_HEARTBEAT_PERIOD</code></td>
+<td><code>15s</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_HEARTBEAT_TIMEOUT</code></td>
+<td><code>1m</code></td>
+<td>Must be greater than the period, or every replica flaps.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_KEEP_INSTANCE_IN_RING_ON_SHUTDOWN</code></td>
+<td><code>true</code></td>
+<td>See the failover note below.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_AUTO_FORGET_UNHEALTHY_PERIODS</code></td>
+<td><code>10</code></td>
+<td>Multiples of the heartbeat <strong>timeout</strong>. <code>0</code> disables it; <code>1</code> is refused.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_TOKENS_OBSERVE_PERIOD</code></td>
+<td><code>0s</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="zones">Zones<a class="headerlink" href="#zones" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INFRAPI_CLUSTER_ZONE</code></td>
+<td><code>INFRAPI_APP_LOCATION</code></td>
+<td>Where this replica runs. At most 16 bytes: it travels in every gossip packet.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ZONE_AWARENESS_ENABLED</code></td>
+<td><code>false</code></td>
+<td>Ring-level: spread a key's replicas across zones. Does nothing until a role's replication factor is above 1.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_EXCLUDED_ZONES</code></td>
+<td><code>[]</code></td>
+<td>Zones to filter out of this replica's view of the ring. Listing your own is refused.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_ZONE_AWARE_ROUTING_ENABLED</code></td>
+<td><code>false</code></td>
+<td>Gossip-level: keep gossip inside a zone. Read the next section before enabling it.</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_ZONE_ROLE</code></td>
+<td><code>member</code></td>
+<td><code>member</code> gossips only within its zone; <code>bridge</code> also reaches bridges in other zones.</td>
+</tr>
+</tbody>
+</table>
+<p>There is no key for the replication factor or the token count. Both are
+semantics of the coordination mode, which lives in code: an operator who could
+set a replication factor of 3 on a leader ring would break the election, so the
+dotenv must not be able to express it. <code>RoleSpec.NumTokens</code> is the override, in
+the same place as the decision it belongs to.</p>
+<h3 id="gossip">Gossip<a class="headerlink" href="#gossip" title="Permanent link">&para;</a></h3>
+<p>Applies only when the store is <code>memberlist</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_CLUSTER_LABEL</code></td>
+<td><code>infrapi</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_CLUSTER_LABEL_VERIFICATION_DISABLED</code></td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_BIND_ADDRS</code></td>
+<td><code>["0.0.0.0"]</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_BIND_PORT</code></td>
+<td><code>7946</code> (<code>0</code> for an ephemeral port)</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_ADVERTISE_ADDR</code></td>
+<td>unset (NAT traversal)</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_ADVERTISE_PORT</code></td>
+<td><code>0</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_JOIN_MEMBERS</code></td>
+<td><code>[]</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_JOIN_MIN_BACKOFF</code></td>
+<td><code>1s</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_JOIN_MAX_BACKOFF</code></td>
+<td><code>1m</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_JOIN_MAX_RETRIES</code></td>
+<td><code>10</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ABORT_IF_JOIN_FAILS</code></td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_REJOIN_INTERVAL</code></td>
+<td><code>0s</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_INTERVAL</code></td>
+<td><code>200ms</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_NODES</code></td>
+<td><code>3</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_PUSH_PULL_INTERVAL</code></td>
+<td><code>30s</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_TO_THE_DEAD_TIME</code></td>
+<td><code>30s</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_LEAVE_TIMEOUT</code></td>
+<td><code>20s</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_BROADCAST_TIMEOUT_ON_SHUTDOWN</code></td>
+<td><code>10s</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_OBSOLETE_ENTRIES_TIMEOUT</code></td>
+<td><code>30s</code> (a fully deleted key)</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_TOMBSTONE_TIMEOUT</code></td>
+<td><code>5m</code> (a deleted entry inside a value)</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_COMPRESSION_ENABLED</code></td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_MESSAGE_HISTORY_BUFFER_BYTES</code></td>
+<td><code>0</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_TLS_ENABLED</code></td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_TLS_CA_PATH</code></td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_TLS_CERT_PATH</code></td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_TLS_KEY_PATH</code></td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_TLS_SERVER_NAME</code></td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_GOSSIP_TLS_INSECURE_SKIP_VERIFY</code></td>
+<td><code>false</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>INFRAPI_CLUSTER_ABORT_IF_JOIN_FAILS=true</code> is worth knowing about: without it, a
+replica that cannot reach its seed nodes starts anyway, forms a cluster of one,
+and elects itself. Two of those are indistinguishable from a working cluster
+until something goes wrong.</p>
+<p><code>INFRAPI_CLUSTER_MESSAGE_HISTORY_BUFFER_BYTES</code> is <code>0</code>, and should stay there.
+It keeps every message the node sends and receives in memory, so it buys the
+message history on the gossip page at the cost of carrying that buffer for as
+long as the process lives. Turn it on while troubleshooting, turn it back off
+afterwards.</p>
+<h3 id="etcd">etcd<a class="headerlink" href="#etcd" title="Permanent link">&para;</a></h3>
+<p>Applies only when the store is <code>etcd</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_ENDPOINTS</code></td>
+<td><code>[]</code>, and required</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_DIAL_TIMEOUT</code></td>
+<td><code>10s</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_MAX_RETRIES</code></td>
+<td><code>10</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_USERNAME</code></td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_PASSWORD</code></td>
+<td>unset, masked in error messages</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_TLS_ENABLED</code></td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_TLS_CA_PATH</code></td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_TLS_CERT_PATH</code></td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_TLS_KEY_PATH</code></td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_TLS_SERVER_NAME</code></td>
+<td>unset</td>
+</tr>
+<tr>
+<td><code>INFRAPI_CLUSTER_ETCD_TLS_INSECURE_SKIP_VERIFY</code></td>
+<td><code>false</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-is-left-at-dskits-defaults">What is left at dskit's defaults<a class="headerlink" href="#what-is-left-at-dskits-defaults" title="Permanent link">&para;</a></h3>
+<p>Stream timeouts, retransmit factor, dead node reclaim time, the message queue
+sizes, the compression algorithm, the CAS retry backoffs, the TCP transport's
+packet timeouts and write concurrency, the TLS cipher suites and minimum
+version, zone awareness, and the whole consul and multi-store surface.</p>
+<p>The rule for adding a key: an operator would plausibly change it to fix a
+production problem, or a test needs it to run fast. Everything above is either a
+dskit internal tuning constant or a knob whose correct value is "whatever dskit
+says".</p>
+<h2 id="several-data-centres">Several data centres<a class="headerlink" href="#several-data-centres" title="Permanent link">&para;</a></h2>
+<p>Two unrelated dskit features are both called zone awareness, and choosing the
+wrong one is how a multi-DC cluster ends up split without anyone noticing.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Key</th>
+<th>What it decides</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ring</td>
+<td><code>INFRAPI_CLUSTER_ZONE_AWARENESS_ENABLED</code></td>
+<td><strong>How many replicas share a piece of work, and where.</strong> With a replication factor above 1, the ring puts those replicas in different zones.</td>
+</tr>
+<tr>
+<td>Gossip</td>
+<td><code>INFRAPI_CLUSTER_GOSSIP_ZONE_AWARE_ROUTING_ENABLED</code></td>
+<td><strong>Who talks to whom.</strong> Whether a replica gossips with every peer or only with those in its own zone.</td>
+</tr>
+</tbody>
+</table>
+<p>The replication factor is the first of those, and it is not what decides whether
+replicas in different data centres talk to each other. The two modes shipped
+here both use a single replica, so ring zone awareness has nothing to spread
+until a role raises <code>RoleSpec.ReplicationFactor</code>.</p>
+<p>What follows is the second one: three topologies, and they are genuinely
+different deployments rather than three settings of the same one.</p>
+<h3 id="everyone-talks-to-everyone">Everyone talks to everyone<a class="headerlink" href="#everyone-talks-to-everyone" title="Permanent link">&para;</a></h3>
+<p>The default. One mesh, every replica gossiping with every other, whatever data
+centre it sits in. One ring per role, spanning all of them, so a role elects one
+leader across the whole deployment.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nv">INFRAPI_CLUSTER_GOSSIP_CLUSTER_LABEL</span><span class="o">=</span><span class="s2">&quot;prod&quot;</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># zone-aware routing left off</span>
+</code></pre></div>
+<p>Simple, and the right answer until cross-DC gossip traffic becomes a problem.
+Every replica holds the whole state and chatters with everyone.</p>
+<h3 id="one-mesh-gossip-kept-local-bridges-between-zones">One mesh, gossip kept local, bridges between zones<a class="headerlink" href="#one-mesh-gossip-kept-local-bridges-between-zones" title="Permanent link">&para;</a></h3>
+<p>Still one logical cluster and one ring per role, but gossip stays inside a zone
+instead of crossing between every pair of replicas. A handful of replicas are
+promoted to <code>bridge</code> and carry traffic between zones.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># every replica</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nv">INFRAPI_CLUSTER_GOSSIP_CLUSTER_LABEL</span><span class="o">=</span><span class="s2">&quot;prod&quot;</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nv">INFRAPI_CLUSTER_GOSSIP_ZONE_AWARE_ROUTING_ENABLED</span><span class="o">=</span><span class="s2">&quot;true&quot;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="nv">INFRAPI_CLUSTER_ZONE</span><span class="o">=</span><span class="s2">&quot;dc1&quot;</span><span class="w">           </span><span class="c1"># or dc2, dc3</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># most of them</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="nv">INFRAPI_CLUSTER_GOSSIP_ZONE_ROLE</span><span class="o">=</span><span class="s2">&quot;member&quot;</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># at least one per zone</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="nv">INFRAPI_CLUSTER_GOSSIP_ZONE_ROLE</span><span class="o">=</span><span class="s2">&quot;bridge&quot;</span>
+</code></pre></div>
+<p>A <code>member</code> selects <strong>only</strong> peers in its own zone. A <code>bridge</code> selects its own
+zone, plus the bridges of other zones. So the bridges are the only path state
+takes between data centres.</p>
+<div class="admonition note">
+<p class="admonition-title">A zone without a live bridge degrades, it does not split</p>
+<p>dskit notices. When a zone has no bridge alive, it abandons zone-aware
+routing and goes back to selecting every peer, logging
+<code>memberlist zone-aware routing is skipped because a zone has no alive bridge</code>
+and counting it in
+<code>infrapi_cluster_memberlist_client_zone_aware_routing_select_nodes_skipped_total</code>.</p>
+<p>So losing a zone's bridges costs the traffic saving, not the cluster: the
+ring stays whole and keeps one leader. Verified by running
+<code>examples/cluster/zones</code> and killing a bridge — the remaining three replicas
+still agree on their membership and their leader.</p>
+<p>Run at least two bridges per zone anyway, and alert on that counter: a
+cluster silently gossiping full-mesh is doing the thing you turned this on
+to avoid.</p>
+</div>
+<h3 id="independent-clusters-one-per-data-centre">Independent clusters, one per data centre<a class="headerlink" href="#independent-clusters-one-per-data-centre" title="Permanent link">&para;</a></h3>
+<p>If replicas genuinely should not coordinate across data centres — a leader per
+DC rather than one leader overall — then do not reach for zone-aware routing at
+all. Give each DC its own <strong>gossip cluster label</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># dc1</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nv">INFRAPI_CLUSTER_GOSSIP_CLUSTER_LABEL</span><span class="o">=</span><span class="s2">&quot;prod-dc1&quot;</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># dc2</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="nv">INFRAPI_CLUSTER_GOSSIP_CLUSTER_LABEL</span><span class="o">=</span><span class="s2">&quot;prod-dc2&quot;</span>
+</code></pre></div>
+<p>memberlist discards any packet whose label does not match, so these are separate
+meshes with separate rings, by construction and not by configuration that could
+drift. No bridges, no split-brain risk, no cross-DC traffic. It is the right
+answer whenever the work itself is per-DC.</p>
+<p>Choosing between the last two comes down to one question: <strong>is there one leader
+for the whole deployment, or one per data centre?</strong> One overall needs a single
+mesh and bridges; one per DC needs separate labels. Note that the middle option
+is a traffic optimisation, not an isolation mechanism: every replica still ends
+up holding the whole cluster's state. If zones must not know about each other,
+only separate labels give you that.</p>
+<p><code>examples/cluster/zones</code> runs this topology on one machine — two zones, a bridge
+and a member in each — and its README walks through killing a bridge.</p>
+<h3 id="affinity-work-handled-in-its-own-data-centre">Affinity: work handled in its own data centre<a class="headerlink" href="#affinity-work-handled-in-its-own-data-centre" title="Permanent link">&para;</a></h3>
+<p>Zone-aware routing does <strong>not</strong> give you this. It decides who gossips with whom,
+not who acts: the ring spans every zone and elects one leader wherever the token
+lands, which may well be the other side of the country. Two ways to get affinity
+instead, and they differ in whether the data centres can still see each other.</p>
+<p><strong>One ring per data centre, one mesh.</strong> A role is a ring, so a role named after
+the zone gives each data centre its own leader election while every replica
+stays in one cluster — and can therefore read every other zone's ring on the
+status pages.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nx">zone</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">clusterConfig</span><span class="p">.</span><span class="nx">Zone</span><span class="w"> </span><span class="c1">// or appConfig.AppLocation</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">appConfig</span><span class="p">,</span><span class="w"> </span><span class="nx">clusterConfig</span><span class="p">,</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">Options</span><span class="p">{</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="nx">Roles</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="nx">cluster</span><span class="p">.</span><span class="nx">RoleSpec</span><span class="p">{</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">        </span><span class="c1">// Every zone the binary may run in, declared up front.</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">        </span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;scheduler-dc1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Mode</span><span class="p">:</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">ModeLeader</span><span class="p">},</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">        </span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;scheduler-dc2&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Mode</span><span class="p">:</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">ModeLeader</span><span class="p">},</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">        </span><span class="c1">// And one ring the whole deployment shares, if something does need a</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">        </span><span class="c1">// single leader overall.</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">        </span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;migrations&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Mode</span><span class="p">:</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">ModeLeader</span><span class="p">},</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="p">})</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># in dc1</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nv">INFRAPI_CLUSTER_ROLES</span><span class="o">=[</span><span class="s2">&quot;scheduler-dc1&quot;</span>,<span class="s2">&quot;migrations&quot;</span><span class="o">]</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c1"># in dc2</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="nv">INFRAPI_CLUSTER_ROLES</span><span class="o">=[</span><span class="s2">&quot;scheduler-dc2&quot;</span>,<span class="s2">&quot;migrations&quot;</span><span class="o">]</span>
+</code></pre></div>
+<p>Each <code>scheduler-dcN</code> ring holds only the replicas of that data centre and elects
+one of them; <code>migrations</code> spans all of them and elects one overall. A replica
+asking for a role it did not join gets <code>ErrRoleNotJoined</code>, so a misrouted
+deployment fails loudly rather than acting in the wrong place.</p>
+<p><strong>One cluster per data centre.</strong> If the zones should not see each other at all,
+give each its own <code>INFRAPI_CLUSTER_GOSSIP_CLUSTER_LABEL</code>, as above. Separate
+meshes, separate rings, nothing shared, no cross-DC traffic. Pick this when
+there is nothing a replica in one data centre would ever want to know about
+another.</p>
+<p>What neither gives you is key-level affinity — "this particular job belongs to
+dc1". That needs a sharded mode, where a key maps to a ring token, and it is not
+implemented here.</p>
+<h3 id="keeping-a-zone-out">Keeping a zone out<a class="headerlink" href="#keeping-a-zone-out" title="Permanent link">&para;</a></h3>
+<p><code>INFRAPI_CLUSTER_EXCLUDED_ZONES</code> filters instances out of <em>this</em> replica's view
+of the ring, whatever the gossip layer does. It is a blunt instrument for
+draining a data centre: the replicas there stay in the mesh and keep gossiping,
+but this replica stops counting them as members or electing them leader. Listing
+your own zone is refused, since it would leave this replica reading an empty
+ring and never acting.</p>
+<h2 id="status-pages">Status pages<a class="headerlink" href="#status-pages" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nx">engine</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">server</span><span class="p">.</span><span class="nx">NewServerGin</span><span class="p">(</span><span class="nx">appConfig</span><span class="p">)</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="p">}</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">RegisterGin</span><span class="p">(</span><span class="nx">engine</span><span class="p">,</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">HandlerOptions</span><span class="p">{});</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Serves</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /-/cluster</code></td>
+<td>This package's JSON summary: identity, store, label, and per role its mode, members, leader and whether this replica should act.</td>
+</tr>
+<tr>
+<td><code>GET /-/cluster/ring/{role}</code></td>
+<td>dskit's ring page. Honours <code>Accept: application/json</code>.</td>
+</tr>
+<tr>
+<td><code>GET /-/cluster/memberlist</code></td>
+<td>dskit's gossip page, or 404 when the store is not memberlist.</td>
+</tr>
+</tbody>
+</table>
+<p>The paths come from <code>HandlerOptions.PathPrefix</code>, which defaults to
+<code>DefaultPathPrefix</code>.</p>
+<p>They mount before <code>Start</code> and explain themselves until the cluster is up, so a
+service can wire its routes once at startup. A role that cannot be read reports
+its own error rather than failing the whole page: during a partition, which
+roles are readable is the useful part.</p>
+<p><code>HandlerOptions.ForgetEnabled</code> also mounts the ring page's <code>POST</code> route, which
+evicts a replica from the ring. That is an unauthenticated write to cluster
+state, so it is off unless a deployment asks for it.</p>
+<p><code>HandlerOptions.PathPrefix</code> relocates the whole set, for instance under
+<code>/debug/cluster</code>.</p>
+<h3 id="the-gossip-page-dskits-data-this-design">The gossip page: dskit's data, this design<a class="headerlink" href="#the-gossip-page-dskits-data-this-design" title="Permanent link">&para;</a></h3>
+<p><code>/-/cluster/memberlist</code> shows what dskit's own page shows — the key-value store,
+the gossip membership, and the message history — because that introspection
+could not be reproduced from outside dskit anyway: the data behind it is
+unexported.</p>
+<p>What is ours is the rendering. <code>memberlist.NewHTTPStatusHandler</code> takes a
+template, so the page is laid out in this package, in the same design as the
+others, instead of dskit's unstyled default. dskit's own actions survive with
+it: the <code>?viewKey=</code>, <code>?viewMsg=</code> and <code>?downloadKey=</code> links still work, because
+the handler is still dskit's and only the template was replaced. Those responses
+are text and raw dumps rather than pages, and come back untouched.</p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>What it tells you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Health score</td>
+<td>memberlist's own view of this node. <code>0</code> is healthy; anything higher means it is struggling to reach peers.</td>
+</tr>
+<tr>
+<td>Cluster members</td>
+<td>Who is in the <strong>mesh</strong>, with its gossip state — alive, suspect, dead, left. Not the same thing as a ring: a node appears here as soon as it joined, whatever rings it registered in.</td>
+</tr>
+<tr>
+<td>Key-value store</td>
+<td>One row per key, with the codec, the node-local version, the encoded size, and links to inspect or download the value.</td>
+</tr>
+<tr>
+<td>Message history</td>
+<td>What this node sent and received. Empty unless <code>INFRAPI_CLUSTER_MESSAGE_HISTORY_BUFFER_BYTES</code> is set, which is off by default because it buffers every message in memory; the page names the key rather than rendering empty tables.</td>
+</tr>
+</tbody>
+</table>
+<p><code>Role.LifecyclerHandler</code> is the one page still rendered by dskit, so that one
+gets the stylesheet injected into its head rather than a template of its own.</p>
+<h3 id="mounting-them-where-you-already-look">Mounting them where you already look<a class="headerlink" href="#mounting-them-where-you-already-look" title="Permanent link">&para;</a></h3>
+<p>The <code>/-/</code> prefix is this library's convention, and the ring page is per role
+because there are now several rings. Other dskit-based services — Mimir, and
+acme-manager — put a single ring at <code>/ring</code> and the gossip page at
+<code>/memberlist</code>, and runbooks and dashboards point there.</p>
+<p>Both handlers take no path parameter, so that layout is four lines:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nx">engine</span><span class="p">.</span><span class="nx">GET</span><span class="p">(</span><span class="s">&quot;/memberlist&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">MemberlistHandler</span><span class="p">())</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="nx">scheduler</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">Role</span><span class="p">(</span><span class="s">&quot;scheduler&quot;</span><span class="p">)</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="p">}</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="nx">engine</span><span class="p">.</span><span class="nx">GET</span><span class="p">(</span><span class="s">&quot;/ring&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">scheduler</span><span class="p">.</span><span class="nx">RingHandler</span><span class="p">())</span>
+</code></pre></div>
+<p><code>Role.LifecyclerHandler</code> renders the same page from this replica's lifecycler
+instead of from the ring service. The only difference is the source: the
+lifecycler reads the key-value store on every request, the ring serves the
+snapshot it already watches. Prefer <code>RingHandler</code>; <code>LifecyclerHandler</code> is there
+for a deployment that wants the uncached view, or that previously mounted the
+lifecycler and wants the same bytes.</p>
+<p>The <code>serve</code> mode of the example mounts both layouts side by side, so the two
+can be compared on a live cluster.</p>
+<h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
+<p>Everything dskit registers is prefixed <code>infrapi_cluster_</code> and goes on
+<code>prometheus.DefaultRegisterer</code>, which the <a href="../server/">server</a> package already
+exposes at <code>/-/metrics</code>. Nothing else to wire.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>infrapi_cluster_ring_members{name=&quot;scheduler&quot;,state=&quot;ACTIVE&quot;}
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>infrapi_cluster_ring_member_heartbeats_total{name=&quot;scheduler&quot;}
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>infrapi_cluster_kv_request_duration_seconds{kv_name=&quot;scheduler-ring&quot;}
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>infrapi_cluster_memberlist_client_cluster_members_count
+</code></pre></div>
+<p>The prefix is not decoration: dskit names its collectors <code>ring_members</code>,
+<code>kv_request_duration_seconds</code> and <code>dns_lookups_total</code>, with no namespace of
+their own.</p>
+<p>Only one cluster per registerer. <code>dns_lookups_total</code> carries no label that would
+tell two of them apart, so a second cluster on the same registerer is refused by
+<code>New</code> rather than left to panic — pass <code>Options.Registerer</code> if a process really
+needs two.</p>
+<h2 id="sharing-application-state">Sharing application state<a class="headerlink" href="#sharing-application-state" title="Permanent link">&para;</a></h2>
+<p>The store the rings use also carries application state. The codec must be
+declared up front: the gossip store only learns its codecs when the replica
+joins, and a client built later for an unregistered codec is refused.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nx">stateCodec</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">codec</span><span class="p">.</span><span class="nx">NewProtoCodec</span><span class="p">(</span><span class="s">&quot;fleet-state&quot;</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="nx">proto</span><span class="p">.</span><span class="nx">Message</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">FleetState</span><span class="p">{}</span><span class="w"> </span><span class="p">})</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">appConfig</span><span class="p">,</span><span class="w"> </span><span class="nx">clusterConfig</span><span class="p">,</span><span class="w"> </span><span class="nx">cluster</span><span class="p">.</span><span class="nx">Options</span><span class="p">{</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span><span class="nx">Roles</span><span class="p">:</span><span class="w">  </span><span class="nx">roles</span><span class="p">,</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span><span class="nx">Codecs</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="nx">codec</span><span class="p">.</span><span class="nx">Codec</span><span class="p">{</span><span class="nx">stateCodec</span><span class="p">},</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="p">})</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="o">...</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="nx">client</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">KVClient</span><span class="p">(</span><span class="s">&quot;fleet-state&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>With the <strong>gossip</strong> store the value must also implement
+<code>memberlist.Mergeable</code>, and its <code>Merge</code> must be idempotent, commutative and
+associative — a CRDT. Gossip delivers updates out of order and more than once,
+and nothing reconciles afterwards, so a merge without those properties leaves
+replicas in different states permanently. A value that is not <code>Mergeable</code> fails
+loudly (<code>invalid type: …, expected Mergeable</code>), but a <code>Mergeable</code> whose merge is
+subtly wrong fails silently: test the three properties directly.</p>
+<p>The etcd and in-memory clients impose no such thing — they encode, decode and
+compare-and-swap — so a bare protobuf message works there, and will not move to
+the gossip store later.</p>
+<p><code>examples/cluster/state-proto</code> carries a worked example: the proto, the
+hand-written type, and the property tests.</p>
+<h3 id="deleting-what-actually-happens-and-when-it-is-really-gone">Deleting: what actually happens, and when it is really gone<a class="headerlink" href="#deleting-what-actually-happens-and-when-it-is-really-gone" title="Permanent link">&para;</a></h3>
+<p>This is the part worth understanding before designing around it, because a
+deletion is real but it is not immediate, and three different settings govern
+three different stages.</p>
+<p><strong>Deleting is an update.</strong> Do not remove the entry — write it back with a
+<code>deleted</code> flag. Two reasons, and both are hard:</p>
+<ul>
+<li><code>WatchPrefix</code> does not report deletions. dskit skips its callback when the
+  value comes back nil, which is exactly what a key whose value was deleted
+  gives. (<code>WatchKey</code> does report them, with a nil value, but you can only watch
+  a key you already know about.) An entry carrying a flag is never nil, so every
+  watcher is told like any other change.</li>
+<li>On gossip, a peer that never heard about the removal would re-add the entry at
+  the next merge. The flag is what lets <code>Merge</code> decide that "deleted at T2"
+  supersedes "present at T1".</li>
+</ul>
+<p><strong>Then it is gone in three stages</strong>, and only the last one frees anything:</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Governed by</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hidden from the application</td>
+<td>nothing — every read</td>
+<td>—</td>
+<td>The store calls <code>RemoveTombstones</code> with a zero limit before handing a value over, so a deleted entry never reaches your code.</td>
+</tr>
+<tr>
+<td>Still gossiped</td>
+<td><code>INFRAPI_CLUSTER_TOMBSTONE_TIMEOUT</code></td>
+<td><code>5m</code></td>
+<td>The entry stays in the value and keeps propagating, so a replica that was down or partitioned still learns of the deletion when it comes back. After this it may be dropped for good.</td>
+</tr>
+<tr>
+<td>The whole key removed</td>
+<td><code>INFRAPI_CLUSTER_OBSOLETE_ENTRIES_TIMEOUT</code></td>
+<td><code>30s</code></td>
+<td>Only applies to a key whose <em>entire</em> value was deleted, which is what <code>kv.Client.Delete</code> does. Not your per-entry flag.</td>
+</tr>
+</tbody>
+</table>
+<p>The one to reason about is the middle row. <code>INFRAPI_CLUSTER_TOMBSTONE_TIMEOUT</code> is
+how long the cluster remembers that something was deleted — so it is also the
+longest a replica may be absent and still come back converged. A replica away
+for longer than that can rejoin holding an entry everyone else has forgotten,
+and re-introduce it. Set it longer than your worst realistic outage, not
+shorter: the cost is a little state and bandwidth, and the alternative is an item
+coming back from the dead.</p>
+<p>dskit names that setting <code>-memberlist.left-ingesters-timeout</code> and documents it in
+ring terms, which is why it is easy to miss: it is the limit passed to
+<code>RemoveTombstones</code> on <em>any</em> gossiped value, not just on ring membership.</p>
+<div class="admonition danger">
+<p class="admonition-title">The store is a membership store, not a cache</p>
+<p>Every key costs a broadcast worker and a slot in the state each replica
+gossips, on every push/pull. Keys must be <strong>few and long-lived</strong>.</p>
+<p>A key per request, per job or per challenge is how this becomes an
+out-of-memory incident: the workers accumulate, and the state each replica
+carries grows without bound. If state is per-item and short-lived, it does
+not belong here.</p>
+</div>
+<h2 id="shutdown-and-the-failover-delay">Shutdown, and the failover delay<a class="headerlink" href="#shutdown-and-the-failover-delay" title="Permanent link">&para;</a></h2>
+<p><code>Stop</code> leaves every role ring and then the store, in reverse order. It ignores
+cancellation of its context on purpose: a shutdown is normally triggered
+<em>because</em> the caller's context was cancelled, and honouring it would abandon the
+gossip leave.</p>
+<p>Budget it properly. The gossip leave costs the broadcast drain
+(<code>INFRAPI_CLUSTER_BROADCAST_TIMEOUT_ON_SHUTDOWN</code>, <code>10s</code>) plus the leave itself
+(<code>INFRAPI_CLUSTER_LEAVE_TIMEOUT</code>, <code>20s</code>), and each role's lifecycler takes its
+turn before any of that. <code>INFRAPI_CLUSTER_STOP_TIMEOUT</code> below the sum of the
+first two is refused at load time, because it would guarantee a truncated leave:
+this replica would then be remembered as <em>dead</em> rather than gone, and every peer
+would keep it in the ring until its heartbeat went stale. The budget is a
+ceiling, so a shutdown with nothing left to say still returns at once.</p>
+<div class="admonition warning">
+<p class="admonition-title">A dying leader keeps its token</p>
+<p>With <code>INFRAPI_CLUSTER_KEEP_INSTANCE_IN_RING_ON_SHUTDOWN=true</code>, the default,
+a stopping replica sits in <code>LEAVING</code> — which a leader role counts as
+eligible. <strong>A dying leader therefore keeps the leader token until its
+heartbeat goes stale, up to <code>INFRAPI_CLUSTER_HEARTBEAT_TIMEOUT</code>.</strong></p>
+<p>That is the trade: far fewer leader changes across a rolling restart, at the
+price of up to a minute of nothing running at the defaults. Shorten the
+heartbeat timeout, or set the key to <code>false</code> to make planned failover
+immediate at the cost of a leader change on every restart.</p>
+</div>
+<p>A cluster is single use: dskit services cannot be restarted. A <code>Start</code> that
+fails means the process should exit, not rebuild the <code>Cluster</code> — the collectors
+of the failed attempt are already registered. <code>Err</code> delivers the first
+asynchronous failure of any underlying service, and a value on it means the same
+thing.</p>
+<h2 id="running-the-examples">Running the examples<a class="headerlink" href="#running-the-examples" title="Permanent link">&para;</a></h2>
+<p><code>examples/cluster</code> holds one directory per use case, each runnable on its own:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nb">cd</span><span class="w"> </span>examples/cluster/leader<span class="w">     </span><span class="o">&amp;&amp;</span><span class="w"> </span>go<span class="w"> </span>run<span class="w"> </span>.<span class="w">   </span><span class="c1"># leader mode</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nb">cd</span><span class="w"> </span>examples/cluster/broadcast<span class="w">  </span><span class="o">&amp;&amp;</span><span class="w"> </span>go<span class="w"> </span>run<span class="w"> </span>.<span class="w">   </span><span class="c1"># broadcast mode</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="nb">cd</span><span class="w"> </span>examples/cluster/roles<span class="w">      </span><span class="o">&amp;&amp;</span><span class="w"> </span>go<span class="w"> </span>run<span class="w"> </span>.<span class="w">   </span><span class="c1"># several roles, a ring each</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nb">cd</span><span class="w"> </span>examples/cluster/gated<span class="w">      </span><span class="o">&amp;&amp;</span><span class="w"> </span>go<span class="w"> </span>run<span class="w"> </span>.<span class="w">   </span><span class="c1"># Role.Run</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="nb">cd</span><span class="w"> </span>examples/cluster/state<span class="w">      </span><span class="o">&amp;&amp;</span><span class="w"> </span>go<span class="w"> </span>run<span class="w"> </span>.<span class="w">   </span><span class="c1"># sharing state through the store</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="nb">cd</span><span class="w"> </span>examples/cluster/pages<span class="w">      </span><span class="o">&amp;&amp;</span><span class="w"> </span>go<span class="w"> </span>run<span class="w"> </span>.<span class="w">   </span><span class="c1"># these status pages</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="nb">cd</span><span class="w"> </span>examples/cluster/shutdown<span class="w">   </span><span class="o">&amp;&amp;</span><span class="w"> </span>go<span class="w"> </span>run<span class="w"> </span>.<span class="w">   </span><span class="c1"># Stop, and what queries say after</span>
+</code></pre></div>
+<p>Each carries its own <code>app.env</code>, so one directory tells you exactly which keys
+that case needs. They are a Go module of their own, so they run from their own
+directory rather than with <code>go run ./examples/...</code>.</p>
+<p>All seven use the in-memory store: no socket, no peer, done in under a second.
+They show the API. The one that shows the behaviour is <code>node/</code>.</p>
+<h3 id="two-real-replicas">Two real replicas<a class="headerlink" href="#two-real-replicas" title="Permanent link">&para;</a></h3>
+<p>Clustering is the one thing here that cannot be shown in one process. Two
+terminals, from <code>examples/cluster/node</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nv">INFRAPI_CONFIG_DOTENV_FILE</span><span class="o">=</span>node1.env<span class="w"> </span>go<span class="w"> </span>run<span class="w"> </span>.
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="nv">INFRAPI_CONFIG_DOTENV_FILE</span><span class="o">=</span>node2.env<span class="w"> </span>go<span class="w"> </span>run<span class="w"> </span>.
+</code></pre></div>
+<p><code>node2.env</code> differs from <code>node1.env</code> only in its identity, its two ports, and
+the seed node it joins. Each replica prints what it believes once a second:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>node-1 | scheduler(leader): members=2 leader=node-1 -&gt; ACTING  | collector(broadcast): members=2 -&gt; ACTING
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>node-2 | scheduler(leader): members=2 leader=node-1 -&gt; passive | collector(broadcast): members=2 -&gt; ACTING
+</code></pre></div>
+<p>Interrupt the leader and watch the two modes part company. The broadcast role
+drops it from its membership immediately; the leader role keeps counting it,
+because it is <code>LEAVING</code> and a leader role treats that as eligible, until its
+heartbeat goes stale and the survivor takes the token. The status pages are on
+<code>http://127.0.0.1:8081/-/cluster</code> and <code>:8082</code>.</p>
+<p>The dotenv files shorten the heartbeats so that an election and a failover
+happen while you watch. A real deployment leaves them alone.</p>
+<p><code>examples/cluster/README.md</code> walks through every case in detail, including what
+each line of output means.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 5, 2026 08:52:16 UTC">October 5, 2026</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 1, 2026 15:18:57 UTC">October 1, 2026</span>
+  </span>
+
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2026 InfraPI - MIT License
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "navigation.sections", "navigation.top", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

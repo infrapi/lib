@@ -1,3 +1,9 @@
+---
+title: tofu
+description: Drives OpenTofu-protocol provider plugins for any resource type and applies a declarative set of providers and resources.
+weight: 90
+---
+
 # tofu
 
 ```go

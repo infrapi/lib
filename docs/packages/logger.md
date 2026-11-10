@@ -1,3 +1,9 @@
+---
+title: logger
+description: Builds the logger a service's own code logs through, with one shared set of logging conventions.
+weight: 70
+---
+
 # logger
 
 ```go

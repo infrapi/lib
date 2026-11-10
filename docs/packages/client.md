@@ -1,3 +1,9 @@
+---
+title: client
+description: Resty-based client of the APIs server exposes, with bearer token, TLS/mTLS, retry and optional hedging.
+weight: 30
+---
+
 # client
 
 ```go
@@ -136,9 +142,9 @@ client, err := infraclient.NewClient(&infraclient.ClientOptions{
 | `MaxPerSecond` | Rate cap across hedged requests, fractional allowed. `0` is unlimited. |
 | `NonReadOnlyAllowed` | Also hedge `POST`, `PUT`, `PATCH` and `DELETE`. |
 
-!!! warning
-    Hedging duplicates requests. It is limited to `GET`, `HEAD`, `OPTIONS` and `TRACE`
-    unless `NonReadOnlyAllowed` is set, and resty disables retry while hedging is on.
+> [!WARNING]
+> Hedging duplicates requests. It is limited to `GET`, `HEAD`, `OPTIONS` and `TRACE`
+> unless `NonReadOnlyAllowed` is set, and resty disables retry while hedging is on.
 
 ## TLS and mTLS
 

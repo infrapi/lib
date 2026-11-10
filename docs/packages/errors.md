@@ -1,3 +1,9 @@
+---
+title: errors
+description: One error type for everything a service hands back to an API client, served as an RFC 9457 problem detail.
+weight: 50
+---
+
 # errors
 
 ```go
@@ -123,10 +129,12 @@ return infraerrors.Wrap(err, http.StatusBadGateway, "config.Read",
 	"unable to read %s", path)
 ```
 
-!!! warning "Do not flatten the cause"
-    `New(code, origin, err.Error())` compiles and reads fine, but it turns the
-    cause into a string: every `errors.Is` above that point stops matching. Use
-    `Wrap`.
+> [!WARNING]
+> **Do not flatten the cause**
+>
+> `New(code, origin, err.Error())` compiles and reads fine, but it turns the
+> cause into a string: every `errors.Is` above that point stops matching. Use
+> `Wrap`.
 
 ## Finding an Error in a chain
 
@@ -192,21 +200,27 @@ func handle(c *gin.Context) {
 }
 ```
 
-!!! note "Nil in, nil out"
-    `ErrorCast(nil)` returns a nil `*Error`. Never assign it straight to a
-    variable of type `error`: a nil pointer in an error interface is not nil.
+> [!NOTE]
+> **Nil in, nil out**
+>
+> `ErrorCast(nil)` returns a nil `*Error`. Never assign it straight to a
+> variable of type `error`: a nil pointer in an error interface is not nil.
 
-!!! warning "What reaches the client"
-    `Err` is `json:"-"`, so the cause is never serialised. Its *text* still can
-    be: `Wrap` with an empty format copies `err.Error()` into `detail`, and
-    `ErrorCast` does the same for a foreign error. When the cause may carry a
-    path, a DSN or a hostname, pass an explicit format and let the real message
-    live in your logs.
+> [!WARNING]
+> **What reaches the client**
+>
+> `Err` is `json:"-"`, so the cause is never serialised. Its *text* still can
+> be: `Wrap` with an empty format copies `err.Error()` into `detail`, and
+> `ErrorCast` does the same for a foreign error. When the cause may carry a
+> path, a DSN or a hostname, pass an explicit format and let the real message
+> live in your logs.
 
 `examples/errors` runs all of it, payloads included.
 
-!!! note "Writing one to an HTTP response"
-    This package only builds the value. Rendering it - `application/problem+json`,
-    the correlation id, logging an error nobody identified without leaking its
-    text to the caller - is [`server.WriteError`/`server.AbortError`](server.md),
-    which is gin-aware; this package is not.
+> [!NOTE]
+> **Writing one to an HTTP response**
+>
+> This package only builds the value. Rendering it - `application/problem+json`,
+> the correlation id, logging an error nobody identified without leaking its
+> text to the caller - is [`server.WriteError`/`server.AbortError`](server.md),
+> which is gin-aware; this package is not.

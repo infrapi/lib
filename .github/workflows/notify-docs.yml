@@ -1,0 +1,25 @@
+# Copy to <product repo>/.github/workflows/notify-docs.yml.
+#
+# Rebuilds the portal (infrapi/docs) as soon as this repository's docs change
+# on main. Without it, the portal still picks changes up in its nightly build.
+#
+# Needs the DOCS_DISPATCH_TOKEN secret (org level is simplest): a GitHub App
+# token, or a fine-grained token with "Contents: read and write" on
+# infrapi/docs only, and a lifetime under 366 days (enforced by the org).
+name: Notify docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh api repos/infrapi/docs/dispatches -f event_type=docs-updated -f "client_payload[repo]=${{ github.repository }}"
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_DISPATCH_TOKEN }}

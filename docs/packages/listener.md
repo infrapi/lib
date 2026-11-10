@@ -1,3 +1,9 @@
+---
+title: listener
+description: Opens the socket a service accepts connections on, TCP or systemd socket activation, from the AppConfig.
+weight: 60
+---
+
 # listener
 
 ```go
@@ -63,7 +69,9 @@ pulled in for this.
 
 A matching unit pair looks like:
 
-```ini title="myservice.socket"
+`myservice.socket`:
+
+```ini
 [Socket]
 ListenStream=127.0.0.1:8080
 
@@ -71,7 +79,9 @@ ListenStream=127.0.0.1:8080
 WantedBy=sockets.target
 ```
 
-```ini title="myservice.service"
+`myservice.service`:
+
+```ini
 [Service]
 ExecStart=/usr/bin/myservice
 Environment=INFRAPI_APP_LISTEN_TYPE=systemd

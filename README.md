@@ -2,18 +2,13 @@
 
 Opinionated Go building blocks shared by InfraPI services.
 
-| Package | Import path | What it does |
-|---------|-------------|--------------|
-| [`api`](https://infrapi.github.io/lib/packages/api/) | `github.com/infrapi/lib/pkg/api` | The URL layout every service exposes, `/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}`, shared by `server`, `client` and `auth`. |
-| [`auth`](https://infrapi.github.io/lib/packages/auth/) | `github.com/infrapi/lib/pkg/auth` | Authenticates requests against an upstream authentication service's `/oauth2/userinfo` endpoint, with an in-memory cache, as a gin middleware. |
-| [`client`](https://infrapi.github.io/lib/packages/client/) | `github.com/infrapi/lib/pkg/client` | Resty-based client of the APIs `server` exposes, with TLS/mTLS, retry and hedging. |
-| [`config`](https://infrapi.github.io/lib/packages/config/) | `github.com/infrapi/lib/pkg/config` | Reads a dotenv file, validates values, exposes a typed `AppConfig`. |
-| [`errors`](https://infrapi.github.io/lib/packages/errors/) | `github.com/infrapi/lib/pkg/errors` | RFC 9457 application error with an HTTP status, a cause, a remediation hint, a stable code and an explicit retryable flag. |
-| [`listener`](https://infrapi.github.io/lib/packages/listener/) | `github.com/infrapi/lib/pkg/listener` | Opens the service socket, TCP or systemd socket activation. |
-| [`server`](https://infrapi.github.io/lib/packages/server/) | `github.com/infrapi/lib/pkg/server` | `gin.Engine` pre-wired with CORS, trusted proxies, Prometheus metrics, a span per request, generated OpenAPI docs or the service's own contracts — enforced on every request — and rendering an `errors.Error` as `application/problem+json`. |
-| [`tofu`](https://infrapi.github.io/lib/packages/tofu/) | `github.com/infrapi/lib/pkg/tofu` | Drives any OpenTofu provider plugin and resource type, and applies a declarative set of providers and resources on top. |
-| [`tracing`](https://infrapi.github.io/lib/packages/tracing/) | `github.com/infrapi/lib/pkg/tracing` | Sends the traces over OTLP (HTTP or gRPC), from the `INFRAPI_TRACING_*` keys. |
-| [`vault`](https://infrapi.github.io/lib/packages/vault/) | `github.com/infrapi/lib/pkg/vault` | Wraps `vault-client-go` with TLS/mTLS, retry, AppRole/token login, and an opinionated KV v2 and PKI surface. |
+Packages: [`api`](docs/packages/api.md), [`auth`](docs/packages/auth.md),
+[`client`](docs/packages/client.md), [`config`](docs/packages/config.md),
+[`errors`](docs/packages/errors.md), [`listener`](docs/packages/listener.md),
+[`logger`](docs/packages/logger.md), [`server`](docs/packages/server.md),
+[`tofu`](docs/packages/tofu.md), [`tracing`](docs/packages/tracing.md) and
+[`vault`](docs/packages/vault.md). The [package table](docs/index.md#packages) says what
+each one does and lists its import path.
 
 ## Install
 
@@ -57,7 +52,7 @@ func main() {
 }
 ```
 
-Continue with [Getting started](https://infrapi.github.io/lib/getting-started/).
+Continue with [Getting started](docs/getting-started.md), or browse the [documentation](docs/index.md).
 
 ## License
 

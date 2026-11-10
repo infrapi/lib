@@ -1,3 +1,9 @@
+---
+title: config
+description: Reads a dotenv file once, then hands out typed and validated values, including the AppConfig.
+weight: 40
+---
+
 # config
 
 ```go
@@ -15,10 +21,12 @@ vars, err := config.NewConfig()
 `NewConfig()` reads the file named by `INFRAPI_CONFIG_DOTENV_FILE`, or `.env` when that
 variable is unset, and returns an error if the file cannot be read.
 
-!!! note "The process environment is not a fallback"
-    Values are taken from the dotenv file only. An `INFRAPI_APP_NAME` exported in the
-    shell is invisible to `GetString`; put it in the dotenv file, or point
-    `INFRAPI_CONFIG_DOTENV_FILE` at a file that contains it.
+> [!NOTE]
+> **The process environment is not a fallback**
+>
+> Values are taken from the dotenv file only. An `INFRAPI_APP_NAME` exported in the
+> shell is invisible to `GetString`; put it in the dotenv file, or point
+> `INFRAPI_CONFIG_DOTENV_FILE` at a file that contains it.
 
 The returned `Variables` exposes the raw map, the file path and the default rule set:
 

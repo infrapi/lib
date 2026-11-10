@@ -1,3 +1,9 @@
+---
+title: server
+description: One constructor that turns an AppConfig into a ready gin.Engine with metrics, tracing, OpenAPI docs and error rendering.
+weight: 80
+---
+
 # server
 
 ```go
@@ -320,11 +326,13 @@ the same way.
 `info.title` is `AppName`, `info.version` is the version of the binary as reported by
 `runtime/debug`, and `servers` holds `AppUrl`.
 
-!!! note "What the route table cannot tell"
-    Gin knows methods, paths and path parameters. It does not know request bodies, query
-    parameters, response schemas or status codes, so the document does not invent them:
-    every operation carries a single `default` response marked as undocumented. It is an
-    accurate map of the surface, not a contract.
+> [!NOTE]
+> **What the route table cannot tell**
+>
+> Gin knows methods, paths and path parameters. It does not know request bodies, query
+> parameters, response schemas or status codes, so the document does not invent them:
+> every operation carries a single `default` response marked as undocumented. It is an
+> accurate map of the surface, not a contract.
 
 The engine's own endpoints - `/-/healthz`, `/-/readyz`, `/-/metrics`, `/-/metadata`,
 `/-/openapi.json`, `/-/docs` - are documented: a summary, their status codes, content
@@ -344,11 +352,13 @@ server.WithOperations(server.Operation{
 `NewServerGin` refuses an operation without a method, with a path outside `/-/`, or
 without a response.
 
-!!! warning "The docs page loads Swagger UI from a CDN"
-    `/-/docs` is a small HTML page pulling a pinned Swagger UI release from
-    `cdn.jsdelivr.net`. A browser without internet access renders an empty page, while
-    the documents themselves - `/-/openapi.json`, or those under `/-/openapi/` - keep
-    working: they are served in process and depend on nothing external.
+> [!WARNING]
+> **The docs page loads Swagger UI from a CDN**
+>
+> `/-/docs` is a small HTML page pulling a pinned Swagger UI release from
+> `cdn.jsdelivr.net`. A browser without internet access renders an empty page, while
+> the documents themselves - `/-/openapi.json`, or those under `/-/openapi/` - keep
+> working: they are served in process and depend on nothing external.
 
 ## Configuration in memory
 

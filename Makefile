@@ -31,14 +31,6 @@ test:
 	$(GO_CMD) tool cover -func=cover.out
 	$(GO_CMD) tool cover -html=cover.out -o coverage.html
 
-docs:
-	@echo "Building documentation with MkDocs..."
-	@command -v mkdocs >/dev/null 2>&1 || (echo "Error: mkdocs not found. Install with: pip install mkdocs-material mkdocs-git-revision-date-localized-plugin" && exit 1)
-	@mkdocs build
-	@echo "Documentation built in site/"
-	@echo "To serve locally, run: make docs-serve"
-
-docs-serve:
-	@echo "Serving documentation at http://localhost:8000"
-	@command -v mkdocs >/dev/null 2>&1 || (echo "Error: mkdocs not found. Install with: pip install mkdocs-material mkdocs-git-revision-date-localized-plugin" && exit 1)
-	@mkdocs serve
+docs: ## Preview these docs in the InfraPI portal (needs infrapi/docs checked out next to this repo)
+	@[ -d ../docs ] || (echo "Docs are published by the portal: clone infrapi/docs next to this repo, then re-run make docs" && exit 1)
+	@$(MAKE) -C ../docs dev

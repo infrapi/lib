@@ -1,3 +1,9 @@
+---
+title: tracing
+description: Sends a service's traces over OTLP, setting up OpenTelemetry from the INFRAPI_TRACING_* keys.
+weight: 100
+---
+
 # tracing
 
 ```go

@@ -1,3 +1,9 @@
+---
+title: vault
+description: Wraps vault-client-go with TLS/mTLS, retry, AppRole/token login, and an opinionated KV v2 and PKI surface.
+weight: 110
+---
+
 # vault
 
 ```go

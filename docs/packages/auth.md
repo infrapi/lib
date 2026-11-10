@@ -1,3 +1,9 @@
+---
+title: auth
+description: Authenticates requests against an upstream authentication service's /oauth2/userinfo endpoint, as a gin middleware.
+weight: 20
+---
+
 # auth
 
 ```go

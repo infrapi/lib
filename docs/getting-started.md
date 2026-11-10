@@ -1,3 +1,9 @@
+---
+title: Getting started
+description: Add the dependency, write a dotenv file, load the configuration, serve an API group and call another service.
+weight: 20
+---
+
 # Getting started
 
 ## 1. Add the dependency
@@ -12,7 +18,9 @@ Configuration comes from a dotenv file, not from the process environment. The on
 environment variable the library reads directly is `INFRAPI_CONFIG_DOTENV_FILE`, which
 points at that file (default: `.env` in the working directory).
 
-```bash title=".env"
+`.env`:
+
+```bash
 INFRAPI_APP_NAME="my-service"
 INFRAPI_APP_PLATFORM="sandbox"
 INFRAPI_APP_REGION="eu-west-1"

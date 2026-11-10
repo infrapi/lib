@@ -1,3 +1,9 @@
+---
+title: api
+description: The URL layout every InfraPI service exposes its resources under, shared by server, client and auth.
+weight: 10
+---
+
 # api
 
 ```go
