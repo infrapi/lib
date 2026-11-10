@@ -3,9 +3,11 @@
 # Rebuilds the portal (infrapi/docs) as soon as this repository's docs change
 # on main. Without it, the portal still picks changes up in its nightly build.
 #
-# Needs the DOCS_DISPATCH_TOKEN secret (org level is simplest): a GitHub App
-# token, or a fine-grained token with "Contents: read and write" on
-# infrapi/docs only, and a lifetime under 366 days (enforced by the org).
+# Needs the "InfraPI docs" GitHub App (Repository permissions: Contents read
+# and write, installed on infrapi/docs only), and at org level, shared with
+# this repository:
+#   - variable DOCS_APP_ID          the App ID
+#   - secret   DOCS_APP_PRIVATE_KEY the app's private key (.pem contents)
 name: Notify docs
 
 on:
@@ -20,6 +22,15 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
+      # short-lived (1 h) token, limited to infrapi/docs
+      - id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DOCS_APP_ID }}
+          private-key: ${{ secrets.DOCS_APP_PRIVATE_KEY }}
+          owner: infrapi
+          repositories: docs
+
       - run: gh api repos/infrapi/docs/dispatches -f event_type=docs-updated -f "client_payload[repo]=${{ github.repository }}"
         env:
-          GH_TOKEN: ${{ secrets.DOCS_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
