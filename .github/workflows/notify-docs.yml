@@ -1,11 +1,17 @@
 # Copy to <product repo>/.github/workflows/notify-docs.yml.
 #
-# Rebuilds the portal (infrapi/docs) as soon as this repository's docs change
-# on main. Without it, the portal still picks changes up in its nightly build.
+# Tells infrapi/docs (the portal) and infrapi/.github (the org profile) that
+# this product changed, so they rebuild with its latest docs and release:
+#   - on main, when docs/ change
+#   - after a release: the CI workflow's `notify` job calls this workflow.
+#     A release made by go-semantic-release uses GITHUB_TOKEN, and GitHub
+#     never starts other workflows from that token's events, so neither a
+#     `release` nor a `push: tags` trigger would fire here.
+# Without it, both still pick changes up in their nightly run.
 #
 # Needs the "InfraPI docs" GitHub App (Repository permissions: Contents read
-# and write, installed on infrapi/docs only), and at org level, shared with
-# this repository:
+# and write, installed on infrapi/docs and infrapi/.github), and at org
+# level, shared with this repository:
 #   - variable DOCS_APP_ID          the App ID
 #   - secret   DOCS_APP_PRIVATE_KEY the app's private key (.pem contents)
 name: Notify docs
@@ -15,6 +21,8 @@ on:
     branches: [main]
     paths:
       - docs/**
+  workflow_call:
+  workflow_dispatch:
 
 permissions: {}
 
@@ -22,15 +30,20 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      # short-lived (1 h) token, limited to infrapi/docs
+      # short-lived (1 h) token, limited to infrapi/docs and infrapi/.github
       - id: app-token
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.DOCS_APP_ID }}
           private-key: ${{ secrets.DOCS_APP_PRIVATE_KEY }}
           owner: infrapi
-          repositories: docs
+          repositories: docs,.github
 
-      - run: gh api repos/infrapi/docs/dispatches -f event_type=docs-updated -f "client_payload[repo]=${{ github.repository }}"
+      - name: Notify infrapi/docs and infrapi/.github
+        run: |
+          for target in docs .github; do
+            gh api "repos/infrapi/$target/dispatches" -f event_type=docs-updated -f "client_payload[repo]=$GITHUB_REPOSITORY"
+            echo "notified infrapi/$target"
+          done
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

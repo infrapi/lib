@@ -98,3 +98,5 @@ Styling lives in the portal, not here.
   A plugin framework resource that keeps its prior `id` while requiring
   replacement (`random_string`) is missed. See that method's godoc before
   changing it.
+- never use other domain than infrapi.io in examples.
+
