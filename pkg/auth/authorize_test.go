@@ -104,3 +104,45 @@ func TestAuthorize_unreachable(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, http.StatusServiceUnavailable, infraerrors.ErrorCode(err))
 }
+
+func TestAuthorizePathFor(t *testing.T) {
+	assert.Equal(t, AuthorizePath, AuthorizePathFor(""))
+	assert.Equal(t, AuthorizePath, AuthorizePathFor(DefaultAPIDomain))
+	assert.Equal(t, "/apis/authorization.example.com/v1/check", AuthorizePathFor("example.com"))
+}
+
+// A client for another API domain asks that domain's check endpoint, from
+// Authorize and from RequireAccess alike.
+func TestAuthorize_apiDomain(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"allowed":true}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(ClientOptions{BaseURL: srv.URL, APIDomain: "example.com"})
+	require.NoError(t, err)
+
+	allowed, _, err := client.Authorize(context.Background(), "good-token", AuthorizeRequest{
+		Namespace: "core", Api: "compute.example.com", Resource: "vm", Verb: "list",
+	})
+	require.NoError(t, err)
+	assert.True(t, allowed)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/apis/compute.example.com/v1/namespaces/core/vm", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	testAccessEngine(t, client).ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	assert.Equal(t, []string{"/apis/authorization.example.com/v1/check", "/apis/authorization.example.com/v1/check"}, paths)
+}
+
+func TestNewClient_rejectsInvalidAPIDomain(t *testing.T) {
+	for _, domain := range []string{"not a domain", "Example.COM", "-bad.io"} {
+		_, err := NewClient(ClientOptions{BaseURL: "http://unused.invalid", APIDomain: domain})
+		assert.Error(t, err, domain)
+	}
+}

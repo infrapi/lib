@@ -27,6 +27,19 @@ client, err := infraauth.NewClient(infraauth.ClientOptions{
 call; `HTTPClient` overrides it entirely, for TLS, proxy or transport settings `Timeout`
 alone cannot express.
 
+`APIDomain` is the service's own API domain, Kayra's `app.api_domain`: the check
+endpoint [`RequireAccess`](#authorizing-apiresourceverb-access) asks lives on it, at
+`/apis/authorization.<APIDomain>/v1/check` (`infraauth.AuthorizePathFor`). It defaults
+to `infraauth.DefaultAPIDomain`, `infrapi.io`, whose path is `infraauth.AuthorizePath`;
+a value that is not a DNS name is an error from `NewClient`.
+
+```go
+client, err := infraauth.NewClient(infraauth.ClientOptions{
+	BaseURL:   "https://kayra.example.com",
+	APIDomain: "example.com", // Kayra's app.api_domain: /apis/authorization.example.com/v1/check
+})
+```
+
 ## Verifying a token directly
 
 ```go
@@ -134,7 +147,8 @@ vms.POST("/vm/:id/reboot", rebootVM)
 `RequireAccess` takes the request path apart with `api.Parse` - the API URN
 (`compute.infrapi.io`) and the namespace come from it, `Resource`/`Verb` from the rest
 of the path and the HTTP method (see below) - and calls the authentication/authorization
-service's `POST AuthorizePath` (`/apis/authorization.infrapi.io/v1/check`) with the
+service's check endpoint (`POST /apis/authorization.<APIDomain>/v1/check`, see
+[Creating a client](#creating-a-client)) with the
 caller's own bearer token to get an allow/deny decision; the actual RBAC rules never leave
 that service, this package only shapes the request. It reads the request path rather than
 route parameters, so any route pattern works, a `*resource` wildcard as well as named

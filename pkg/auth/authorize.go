@@ -7,18 +7,38 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/infrapi/lib/pkg/api"
 	infraerrors "github.com/infrapi/lib/pkg/errors"
 )
 
+// DefaultAPIDomain is the API domain a Client asks when ClientOptions
+// leaves APIDomain unset: Kayra's app.api_domain default.
+const DefaultAPIDomain = "infrapi.io"
+
 // AuthorizePath is the endpoint an authorization decision is made
-// against — Kayra's (github.com/infrapi/kayra) rbac.RegisterAuthorizeRoute.
-// It sits in the same
-// api group ("authorization.infrapi.io") as the groups/roles/
-// rolebindings it decides against, but — like Kubernetes'
-// SelfSubjectAccessReview — needs no RBAC grant of its own: the answer
-// never reveals more than the caller's own already-resolved identity
-// already could.
-const AuthorizePath = "/apis/authorization.infrapi.io/v1/check"
+// against on DefaultAPIDomain — Kayra's (github.com/infrapi/kayra)
+// rbac.RegisterAuthorizeRoute. A Client for another domain asks
+// AuthorizePathFor(ClientOptions.APIDomain) instead. It sits in the same
+// api group (authorization.<domain>) as the groups/roles/rolebindings it
+// decides against, but — like Kubernetes' SelfSubjectAccessReview — needs
+// no RBAC grant of its own: the answer never reveals more than the
+// caller's own already-resolved identity already could.
+const AuthorizePath = "/apis/authorization." + DefaultAPIDomain + "/v1/check"
+
+// authorizationGroup is the api group the check endpoint sits in, on domain.
+func authorizationGroup(domain string) api.Group {
+	return api.Group{Name: "authorization", Domain: domain, Version: "v1"}
+}
+
+// AuthorizePathFor is the check endpoint of a Kayra whose app.api_domain
+// is domain: /apis/authorization.<domain>/v1/check. An empty domain is
+// DefaultAPIDomain. It does not validate domain: NewClient does.
+func AuthorizePathFor(domain string) string {
+	if domain == "" {
+		domain = DefaultAPIDomain
+	}
+	return authorizationGroup(domain).Root() + "/check"
+}
 
 // AuthorizeRequest mirrors Kayra's rbac.AuthorizeRequest: Namespace and
 // Api normally come straight from a request's own :namespace/:api route
@@ -56,7 +76,7 @@ func (a *Client) Authorize(ctx context.Context, token string, req AuthorizeReque
 		return false, "", infraerrors.Wrap(err, http.StatusInternalServerError, "auth.Authorize", "")
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+AuthorizePath, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+a.authorizePath, bytes.NewReader(body))
 	if err != nil {
 		return false, "", infraerrors.Wrap(err, http.StatusInternalServerError, "auth.Authorize", "")
 	}

@@ -45,6 +45,12 @@ type ClientOptions struct {
 	// reaches the authentication service and a revoked token or a
 	// changed group membership is reflected immediately.
 	CacheTTL time.Duration
+
+	// APIDomain is the authorization service's own API domain — Kayra's
+	// app.api_domain — that Authorize and RequireAccess reach its check
+	// endpoint on, AuthorizePathFor(APIDomain) (default: DefaultAPIDomain,
+	// so AuthorizePath). A DNS name, like infrapi.io.
+	APIDomain string
 }
 
 // Client calls an authentication service's POST /oauth2/userinfo endpoint
@@ -53,12 +59,21 @@ type Client struct {
 	baseURL string
 	http    *http.Client
 	cache   *cache // nil when ClientOptions.CacheTTL is negative
+	// authorizePath is AuthorizePathFor(ClientOptions.APIDomain)
+	authorizePath string
 }
 
 // NewClient returns a Client calling opts.BaseURL.
 func NewClient(opts ClientOptions) (*Client, error) {
 	if opts.BaseURL == "" {
 		return nil, fmt.Errorf("auth: NewClient requires BaseURL")
+	}
+
+	if opts.APIDomain == "" {
+		opts.APIDomain = DefaultAPIDomain
+	}
+	if err := authorizationGroup(opts.APIDomain).Validate(); err != nil {
+		return nil, fmt.Errorf("auth: NewClient: APIDomain: %w", err)
 	}
 
 	httpClient := opts.HTTPClient
@@ -70,7 +85,11 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		httpClient = &http.Client{Timeout: timeout}
 	}
 
-	c := &Client{baseURL: strings.TrimRight(opts.BaseURL, "/"), http: httpClient}
+	c := &Client{
+		baseURL:       strings.TrimRight(opts.BaseURL, "/"),
+		http:          httpClient,
+		authorizePath: AuthorizePathFor(opts.APIDomain),
+	}
 	switch {
 	case opts.CacheTTL == 0:
 		c.cache = newCache(DefaultCacheTTL)
