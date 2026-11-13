@@ -32,7 +32,7 @@ jobs:
     steps:
       # short-lived (1 h) token, limited to infrapi/docs and infrapi/.github
       - id: app-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.DOCS_APP_ID }}
           private-key: ${{ secrets.DOCS_APP_PRIVATE_KEY }}
