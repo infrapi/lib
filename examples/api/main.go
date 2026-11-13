@@ -15,7 +15,7 @@ import (
 )
 
 // compute is the API every example below builds, parses or serves.
-var compute = api.Group{Name: "compute", Domain: "giservices.io", Version: "v1"}
+var compute = api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"}
 
 func main() {
 	fmt.Println("=== InfraPI api Package Examples ===")
@@ -57,9 +57,9 @@ func example2() {
 	fmt.Println("--- Example 2: Refused Groups and Paths ---")
 
 	for _, g := range []api.Group{
-		{Name: "Compute", Domain: "giservices.io", Version: "v1"}, // upper case
-		{Name: "compute", Domain: "giservices.io", Version: "1"},  // no v
-		{Name: "compute", Version: "v1"},                          // no domain
+		{Name: "Compute", Domain: "infrapi.io", Version: "v1"}, // upper case
+		{Name: "compute", Domain: "infrapi.io", Version: "1"},  // no v
+		{Name: "compute", Version: "v1"},                       // no domain
 	} {
 		fmt.Printf("%-47s → %v\n", fmt.Sprintf("%+v", g), g.Validate())
 	}
@@ -80,9 +80,9 @@ func example3() {
 	fmt.Println("--- Example 3: Parsing Request Paths ---")
 
 	for _, path := range []string{
-		"/apis/compute.giservices.io/v1/namespaces/core/vm/123/reboot",
-		"/apis/storage.giservices.io/v2beta1/namespaces/edge/volume",
-		"/apis/authorization.giservices.io/v1/check", // cluster-wide: not namespaced
+		"/apis/compute.infrapi.io/v1/namespaces/core/vm/123/reboot",
+		"/apis/storage.infrapi.io/v2beta1/namespaces/edge/volume",
+		"/apis/authorization.infrapi.io/v1/check", // cluster-wide: not namespaced
 		"/api/v1/widgets", // the old layout
 	} {
 		p, err := api.Parse(path)

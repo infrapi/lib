@@ -19,9 +19,9 @@ this package, so the three never disagree on a path:
 ```
 
 ```text
-/apis/compute.giservices.io/v1/namespaces/core/vm
-/apis/compute.giservices.io/v1/namespaces/core/vm/123
-/apis/compute.giservices.io/v1/namespaces/core/vm/123/reboot
+/apis/compute.infrapi.io/v1/namespaces/core/vm
+/apis/compute.infrapi.io/v1/namespaces/core/vm/123
+/apis/compute.infrapi.io/v1/namespaces/core/vm/123/reboot
 ```
 
 After the namespace, segments alternate a resource or action name and an instance id.
@@ -33,28 +33,28 @@ The package has no dependency, so a client importing it does not pull in gin.
 ## Group
 
 ```go
-compute := api.Group{Name: "compute", Domain: "giservices.io", Version: "v1"}
+compute := api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"}
 ```
 
 | Field | Form | Example |
 |-------|------|---------|
 | `Name` | lower case DNS label | `compute` |
-| `Domain` | lower case DNS name | `giservices.io` |
+| `Domain` | lower case DNS name | `infrapi.io` |
 | `Version` | `v{n}`, optionally `alpha{n}` or `beta{n}` | `v1`, `v2beta1` |
 
 | Method | Returns |
 |--------|---------|
-| `URN()` | `compute.giservices.io`, the API name `auth` authorizes against |
+| `URN()` | `compute.infrapi.io`, the API name `auth` authorizes against |
 | `Validate()` | the first field out of form |
-| `Root()` | `/apis/compute.giservices.io/v1` |
-| `NamespacePath(ns)` | `/apis/compute.giservices.io/v1/namespaces/{ns}`, `ns` as given, so `":namespace"` makes a route pattern |
+| `Root()` | `/apis/compute.infrapi.io/v1` |
+| `NamespacePath(ns)` | `/apis/compute.infrapi.io/v1/namespaces/{ns}`, `ns` as given, so `":namespace"` makes a route pattern |
 | `Path(ns, resource)` | the full path, each segment of `resource` escaped, or an error |
 
 ## Parse
 
 ```go
 p, err := api.Parse(r.URL.Path)
-// p.API       "compute.giservices.io"
+// p.API       "compute.infrapi.io"
 // p.Version   "v1"
 // p.Namespace "core"
 // p.Resource  "vm/123/reboot"

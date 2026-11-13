@@ -81,11 +81,11 @@ Every InfraPI service exposes its resources under [`api`](api.md)'s layout,
 `APIGroup` mounts it:
 
 ```go
-vms, err := server.APIGroup(engine, api.Group{Name: "compute", Domain: "giservices.io", Version: "v1"})
+vms, err := server.APIGroup(engine, api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"})
 if err != nil {
 	log.Fatal(err) // an invalid group, at start
 }
-vms.GET("/vm", listVMs)               // /apis/compute.giservices.io/v1/namespaces/:namespace/vm
+vms.GET("/vm", listVMs)               // /apis/compute.infrapi.io/v1/namespaces/:namespace/vm
 vms.GET("/vm/:id", getVM)             // .../vm/:id
 vms.POST("/vm/:id/reboot", rebootVM)  // .../vm/:id/reboot
 ```

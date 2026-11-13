@@ -45,8 +45,8 @@ type ClientOptions struct {
 	// InfraPI token, should be set
 	Token string
 
-	// API called: compute, giservices.io, v1 for
-	// /apis/compute.giservices.io/v1/...
+	// API called: compute, infrapi.io, v1 for
+	// /apis/compute.infrapi.io/v1/...
 	API api.Group
 
 	// Namespace requests go to when RequestOptions leaves it empty. A

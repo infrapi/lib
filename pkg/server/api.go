@@ -14,7 +14,7 @@ const NamespaceParam = "namespace"
 // /apis/{name}.{domain}/{version}/namespaces/:namespace, for the service to
 // add its routes to, relative to it:
 //
-//	vms, err := server.APIGroup(engine, api.Group{Name: "compute", Domain: "giservices.io", Version: "v1"})
+//	vms, err := server.APIGroup(engine, api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"})
 //	vms.GET("/vm", list)               // .../namespaces/:namespace/vm
 //	vms.GET("/vm/:id", get)            // .../namespaces/:namespace/vm/:id
 //	vms.POST("/vm/:id/reboot", reboot) // .../namespaces/:namespace/vm/:id/reboot

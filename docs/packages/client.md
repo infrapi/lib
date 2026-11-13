@@ -18,7 +18,7 @@ TLS 1.2 floor, retry on transient failures and optional hedging - that builds th
 ## Creating a client
 
 ```go
-compute := api.Group{Name: "compute", Domain: "giservices.io", Version: "v1"}
+compute := api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"}
 
 client, err := infraclient.NewClient(&infraclient.ClientOptions{
 	Server:    "compute.example.com",
@@ -57,7 +57,7 @@ Requests name a resource, and the client builds:
 ```
 
 So on the client above, `client.Get("vm/123", nil)` requests
-`https://compute.example.com:443/apis/compute.giservices.io/v1/namespaces/core/vm/123`,
+`https://compute.example.com:443/apis/compute.infrapi.io/v1/namespaces/core/vm/123`,
 and `client.Post("vm/123/reboot", nil)` its `reboot` action. Each segment of the
 resource is escaped. A resource with an empty, `.` or `..` segment, or a request without
 a namespace, fails before anything is sent.
@@ -174,7 +174,7 @@ An mTLS keypair needs both halves: cert and key must come from the same source.
 ## Routes outside the layout
 
 `Do` always builds a namespaced path. A route of the same service outside it - a
-cluster-wide endpoint such as `auth`'s `/apis/authorization.giservices.io/v1/check`, or
+cluster-wide endpoint such as `auth`'s `/apis/authorization.infrapi.io/v1/check`, or
 one under `/-/` - goes through `NewRequest`, which keeps this client's TLS, retry, header
 and timeout configuration without exposing resty to the caller:
 

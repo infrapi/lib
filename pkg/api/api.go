@@ -4,7 +4,7 @@
 //
 //	/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}[/{id}[/{action}[/{id}...]]]
 //
-// for instance /apis/compute.giservices.io/v1/namespaces/core/vm/123/reboot.
+// for instance /apis/compute.infrapi.io/v1/namespaces/core/vm/123/reboot.
 // After the namespace, segments alternate a resource or action name and an
 // instance id. The package has no dependency, so a client does not pull in
 // the server's.
@@ -36,13 +36,13 @@ var (
 type Group struct {
 	// Name of the API, a DNS label: compute.
 	Name string
-	// Domain it belongs to, a DNS name: giservices.io.
+	// Domain it belongs to, a DNS name: infrapi.io.
 	Domain string
 	// Version served: v1, v2beta1.
 	Version string
 }
 
-// URN is the full name of the group, {Name}.{Domain}: compute.giservices.io.
+// URN is the full name of the group, {Name}.{Domain}: compute.infrapi.io.
 func (g Group) URN() string {
 	return g.Name + "." + g.Domain
 }
@@ -61,13 +61,13 @@ func (g Group) Validate() error {
 	return nil
 }
 
-// Root is the path of the group: /apis/compute.giservices.io/v1.
+// Root is the path of the group: /apis/compute.infrapi.io/v1.
 func (g Group) Root() string {
 	return Prefix + "/" + g.URN() + "/" + g.Version
 }
 
 // NamespacePath is the path namespace's resources sit under:
-// /apis/compute.giservices.io/v1/namespaces/core. namespace is used as
+// /apis/compute.infrapi.io/v1/namespaces/core. namespace is used as
 // given, so that a router pattern such as ":namespace" goes through.
 func (g Group) NamespacePath(namespace string) string {
 	return g.Root() + "/" + namespacesSegment + "/" + namespace
@@ -75,7 +75,7 @@ func (g Group) NamespacePath(namespace string) string {
 
 // Path is the path of resource in namespace, each segment of resource
 // escaped: Path("core", "vm/123") is
-// /apis/compute.giservices.io/v1/namespaces/core/vm/123.
+// /apis/compute.infrapi.io/v1/namespaces/core/vm/123.
 func (g Group) Path(namespace, resource string) (string, error) {
 	if err := g.Validate(); err != nil {
 		return "", err
@@ -95,7 +95,7 @@ func (g Group) Path(namespace, resource string) (string, error) {
 
 // Path is an API path taken apart.
 type Path struct {
-	// API is the group's URN: compute.giservices.io.
+	// API is the group's URN: compute.infrapi.io.
 	API string
 	// Version of the group: v1.
 	Version string

@@ -13,19 +13,19 @@ import (
 // AuthorizePath is the endpoint an authorization decision is made
 // against — Kayra's (github.com/infrapi/kayra) rbac.RegisterAuthorizeRoute.
 // It sits in the same
-// api group ("authorization.giservices.io") as the groups/roles/
+// api group ("authorization.infrapi.io") as the groups/roles/
 // rolebindings it decides against, but — like Kubernetes'
 // SelfSubjectAccessReview — needs no RBAC grant of its own: the answer
 // never reveals more than the caller's own already-resolved identity
 // already could.
-const AuthorizePath = "/apis/authorization.giservices.io/v1/check"
+const AuthorizePath = "/apis/authorization.infrapi.io/v1/check"
 
 // AuthorizeRequest mirrors Kayra's rbac.AuthorizeRequest: Namespace and
 // Api normally come straight from a request's own :namespace/:api route
 // params, Resource/Verb from ParseResource/VerbFor against the rest of
 // the path and the HTTP method. Api is the calling app's own full API
-// group URN (e.g. "compute.giservices.io"), matching how it's actually
-// reachable (/apis/compute.giservices.io/v1/...) — never the bare app
+// group URN (e.g. "compute.infrapi.io"), matching how it's actually
+// reachable (/apis/compute.infrapi.io/v1/...) — never the bare app
 // name.
 type AuthorizeRequest struct {
 	Namespace string `json:"namespace"`

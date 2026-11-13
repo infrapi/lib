@@ -125,16 +125,16 @@ them on `Client.RequireAccess()` instead of hand-rolling its own RBAC storage an
 matching:
 
 ```go
-vms, err := server.APIGroup(engine, api.Group{Name: "compute", Domain: "giservices.io", Version: "v1"})
+vms, err := server.APIGroup(engine, api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"})
 vms.Use(client.RequireAccess())
 vms.GET("/vm/:id", getVM)
 vms.POST("/vm/:id/reboot", rebootVM)
 ```
 
 `RequireAccess` takes the request path apart with `api.Parse` - the API URN
-(`compute.giservices.io`) and the namespace come from it, `Resource`/`Verb` from the rest
+(`compute.infrapi.io`) and the namespace come from it, `Resource`/`Verb` from the rest
 of the path and the HTTP method (see below) - and calls the authentication/authorization
-service's `POST AuthorizePath` (`/apis/authorization.giservices.io/v1/check`) with the
+service's `POST AuthorizePath` (`/apis/authorization.infrapi.io/v1/check`) with the
 caller's own bearer token to get an allow/deny decision; the actual RBAC rules never leave
 that service, this package only shapes the request. It reads the request path rather than
 route parameters, so any route pattern works, a `*resource` wildcard as well as named
@@ -165,7 +165,7 @@ regardless of id (`POST`→`"create"`, `PUT`→`"update"`,
 
 ```go
 allowed, reason, err := client.Authorize(ctx, token, infraauth.AuthorizeRequest{
-	Namespace: "core", Api: "compute.giservices.io", Resource: "vm", Verb: "list",
+	Namespace: "core", Api: "compute.infrapi.io", Resource: "vm", Verb: "list",
 })
 ```
 

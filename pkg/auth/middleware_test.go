@@ -101,7 +101,7 @@ func TestRequireAccess_allowed(t *testing.T) {
 
 	app := testAccessEngine(t, client)
 
-	req := httptest.NewRequest(http.MethodGet, "/apis/compute.giservices.io/v1/namespaces/core/vm", nil)
+	req := httptest.NewRequest(http.MethodGet, "/apis/compute.infrapi.io/v1/namespaces/core/vm", nil)
 	req.Header.Set("Authorization", "Bearer good-token")
 	w := httptest.NewRecorder()
 	app.ServeHTTP(w, req)
@@ -118,7 +118,7 @@ func TestRequireAccess_denied(t *testing.T) {
 
 	app := testAccessEngine(t, client)
 
-	req := httptest.NewRequest(http.MethodDelete, "/apis/compute.giservices.io/v1/namespaces/core/vm/123", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/apis/compute.infrapi.io/v1/namespaces/core/vm/123", nil)
 	req.Header.Set("Authorization", "Bearer good-token")
 	w := httptest.NewRecorder()
 	app.ServeHTTP(w, req)
@@ -136,7 +136,7 @@ func TestRequireAccess_missingHeader(t *testing.T) {
 	app := testAccessEngine(t, client)
 
 	w := httptest.NewRecorder()
-	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/apis/compute.giservices.io/v1/namespaces/core/vm", nil))
+	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/apis/compute.infrapi.io/v1/namespaces/core/vm", nil))
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -156,19 +156,19 @@ func TestRequireAccess_apiGroup(t *testing.T) {
 	require.NoError(t, err)
 
 	app := gin.New()
-	vms, err := server.APIGroup(app, api.Group{Name: "compute", Domain: "giservices.io", Version: "v2beta1"})
+	vms, err := server.APIGroup(app, api.Group{Name: "compute", Domain: "infrapi.io", Version: "v2beta1"})
 	require.NoError(t, err)
 	vms.Use(client.RequireAccess())
 	vms.POST("/vm/:id/reboot", func(c *gin.Context) { c.Status(http.StatusAccepted) })
 
-	req := httptest.NewRequest(http.MethodPost, "/apis/compute.giservices.io/v2beta1/namespaces/core/vm/123/reboot", nil)
+	req := httptest.NewRequest(http.MethodPost, "/apis/compute.infrapi.io/v2beta1/namespaces/core/vm/123/reboot", nil)
 	req.Header.Set("Authorization", "Bearer good-token")
 	w := httptest.NewRecorder()
 	app.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
 	assert.Equal(t, AuthorizeRequest{
-		Namespace: "core", Api: "compute.giservices.io", Resource: "vm/reboot", Verb: "create",
+		Namespace: "core", Api: "compute.infrapi.io", Resource: "vm/reboot", Verb: "create",
 	}, got)
 }
 
