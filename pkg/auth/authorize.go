@@ -99,8 +99,7 @@ func (a *Client) Authorize(ctx context.Context, token string, req AuthorizeReque
 	case resp.StatusCode == http.StatusUnauthorized:
 		return false, "", infraerrors.New(http.StatusUnauthorized, "auth.Authorize", "authorization service rejected the token")
 	case resp.StatusCode != http.StatusOK:
-		return false, "", infraerrors.Upstream(resp.StatusCode >= http.StatusInternalServerError,
-			"auth: authorization service answered %s", http.StatusText(resp.StatusCode))
+		return false, "", serviceError(resp.StatusCode, respBody)
 	}
 
 	var out authorizeResponse
@@ -108,4 +107,43 @@ func (a *Client) Authorize(ctx context.Context, token string, req AuthorizeReque
 		return false, "", infraerrors.Wrap(err, http.StatusBadGateway, "auth.Authorize", "decode authorization service response")
 	}
 	return out.Allowed, out.Reason, nil
+}
+
+// problem is the part of an RFC 9457 problem the authorization service
+// answers with that a caller can act on.
+type problem struct {
+	Detail   string `json:"detail"`
+	Solution string `json:"solution"`
+}
+
+// serviceError is the error for a check the service answered with status,
+// other than 200 and 401. A 4xx is about the request itself — Kayra's
+// unknown namespace or registration (404), resource missing from the API's
+// spec (404), verb the resource lacks (405), namespace not subscribed
+// (403): it is passed on with its status, detail and solution, for the
+// caller to fix its request. Anything else is the service failing: a 502,
+// retryable for a 5xx, with the service's detail when it gave one.
+func serviceError(status int, body []byte) *infraerrors.Error {
+	var p problem
+	_ = json.Unmarshal(body, &p) // not a problem: no detail to pass on
+
+	if status >= http.StatusBadRequest && status < http.StatusInternalServerError {
+		detail := p.Detail
+		if detail == "" {
+			detail = "authorization service answered " + http.StatusText(status)
+		}
+		err := infraerrors.New(status, "auth.Authorize", "%s", detail)
+		if p.Solution != "" {
+			err = err.WithSolution("%s", p.Solution)
+		}
+		return err
+	}
+
+	err := infraerrors.Upstream(status >= http.StatusInternalServerError,
+		"auth: authorization service answered %s", http.StatusText(status))
+	if p.Detail != "" {
+		err = infraerrors.Upstream(status >= http.StatusInternalServerError,
+			"auth: authorization service answered %s: %s", http.StatusText(status), p.Detail)
+	}
+	return err
 }

@@ -154,6 +154,12 @@ that service, this package only shapes the request. It reads the request path ra
 route parameters, so any route pattern works, a `*resource` wildcard as well as named
 `:id` segments; a path outside the layout answers `404`.
 
+When the service refuses the check itself with a `4xx` — Kayra's unknown namespace or
+API registration, a resource missing from the API's spec (`404`), a verb the resource
+lacks (`405`), a namespace not subscribed to the API (`403`) — the caller gets that
+problem as is: its status, `detail` and `solution`. Only a `5xx`, or no answer at all, is
+the service failing: `502` (retryable) or `503`.
+
 A denial answers `403` with the service's own reason in `detail`; it does not depend on
 `Middleware` having run first (each guards a different concern — identity vs. access —
 and reaches the service independently), and it is never cached, so an edited role or

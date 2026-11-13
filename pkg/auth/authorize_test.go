@@ -146,3 +146,79 @@ func TestNewClient_rejectsInvalidAPIDomain(t *testing.T) {
 		assert.Error(t, err, domain)
 	}
 }
+
+// A 4xx from the check is about the request: Kayra's problem is passed on,
+// status, detail and solution, rather than hidden behind a 502.
+func TestAuthorize_passesOnRequestProblems(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, detail, solution string
+		status                       int
+	}{
+		{"unknown namespace", `{"status":404,"title":"Not Found","detail":"namespace \"core\" not found","origin":"catalog.CheckNamespace"}`,
+			`namespace "core" not found`, "", http.StatusNotFound},
+		{"unknown resource", `{"status":404,"title":"Not Found","detail":"api \"compute.infrapi.io\" has no resource \"keys\"","solution":"list its resources with kayra-cli apis"}`,
+			`api "compute.infrapi.io" has no resource "keys"`, "list its resources with kayra-cli apis", http.StatusNotFound},
+		{"not subscribed", `{"status":403,"title":"Forbidden","detail":"namespace \"core\" is not subscribed to api \"compute.infrapi.io\""}`,
+			`namespace "core" is not subscribed to api "compute.infrapi.io"`, "", http.StatusForbidden},
+		{"no body", ``, "authorization service answered Method Not Allowed", "", http.StatusMethodNotAllowed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/problem+json")
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			client, err := NewClient(ClientOptions{BaseURL: srv.URL})
+			require.NoError(t, err)
+
+			_, _, err = client.Authorize(context.Background(), "token", AuthorizeRequest{})
+			require.Error(t, err)
+			e := infraerrors.ErrorCast(err)
+			require.NotNil(t, e)
+			assert.Equal(t, tc.status, e.Code)
+			assert.Equal(t, tc.detail, e.Message)
+			assert.Equal(t, tc.solution, e.Solution)
+		})
+	}
+}
+
+// RequireAccess answers the caller with the check's own problem.
+func TestRequireAccess_passesOnRequestProblems(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"status":404,"title":"Not Found","detail":"namespace \"core\" not found"}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(ClientOptions{BaseURL: srv.URL})
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/apis/compute.infrapi.io/v1/namespaces/core/vm", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	testAccessEngine(t, client).ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), `namespace \"core\" not found`)
+}
+
+// A 5xx is the service failing: a retryable 502, with its detail.
+func TestAuthorize_serviceFailureDetail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"status":503,"detail":"no openapi spec stored for api \"compute.infrapi.io\""}`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(ClientOptions{BaseURL: srv.URL})
+	require.NoError(t, err)
+
+	_, _, err = client.Authorize(context.Background(), "token", AuthorizeRequest{})
+	e := infraerrors.ErrorCast(err)
+	require.NotNil(t, e)
+	assert.Equal(t, http.StatusBadGateway, e.Code)
+	assert.Contains(t, e.Message, `Service Unavailable: no openapi spec stored for api "compute.infrapi.io"`)
+	require.NotNil(t, e.Retryable)
+	assert.True(t, *e.Retryable)
+}
