@@ -133,8 +133,8 @@ func TestAuthorize_passesOnRequestProblems(t *testing.T) {
 	}{
 		{"unknown namespace", `{"status":404,"title":"Not Found","detail":"namespace \"core\" not found","origin":"catalog.CheckNamespace"}`,
 			`namespace "core" not found`, "", http.StatusNotFound},
-		{"unknown resource", `{"status":404,"title":"Not Found","detail":"api \"compute.infrapi.io\" has no resource \"keys\"","solution":"list its resources with kayra-cli apis"}`,
-			`api "compute.infrapi.io" has no resource "keys"`, "list its resources with kayra-cli apis", http.StatusNotFound},
+		{"unknown resource", `{"status":404,"title":"Not Found","detail":"api \"compute.infrapi.io\" has no resource \"keys\"","solution":"list its resources with infrapi-cli apis"}`,
+			`api "compute.infrapi.io" has no resource "keys"`, "list its resources with infrapi-cli apis", http.StatusNotFound},
 		{"not subscribed", `{"status":403,"title":"Forbidden","detail":"namespace \"core\" is not subscribed to api \"compute.infrapi.io\""}`,
 			`namespace "core" is not subscribed to api "compute.infrapi.io"`, "", http.StatusForbidden},
 		{"no body", ``, "authorization service answered Method Not Allowed", "", http.StatusMethodNotAllowed},
