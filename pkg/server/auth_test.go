@@ -21,12 +21,12 @@ func gateDeny(c *gin.Context) {
 // the middleware applies to routes the service adds, never to the engine's
 // own /-/ endpoints registered before it.
 func TestWithAuth_gatesOnlyRoutesAddedAfter(t *testing.T) {
-	app, err := NewServerGin(testAppConfig(t), WithAuth(gateDeny))
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithAuth(gateDeny))
 	require.NoError(t, err)
 
 	app.GET("/widgets", func(c *gin.Context) { c.Status(http.StatusOK) })
 
-	w := get(t, app, "/-/healthz")
+	w := get(t, app, testRoot+"/-/healthz")
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	w = get(t, app, "/widgets")
@@ -34,7 +34,7 @@ func TestWithAuth_gatesOnlyRoutesAddedAfter(t *testing.T) {
 }
 
 func TestWithAuth_allows(t *testing.T) {
-	app, err := NewServerGin(testAppConfig(t), WithAuth(gateAllow))
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithAuth(gateAllow))
 	require.NoError(t, err)
 
 	app.GET("/widgets", func(c *gin.Context) { c.Status(http.StatusOK) })
@@ -43,12 +43,12 @@ func TestWithAuth_allows(t *testing.T) {
 }
 
 func TestWithAuth_refusesNilMiddleware(t *testing.T) {
-	_, err := NewServerGin(testAppConfig(t), WithAuth(nil))
+	_, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithAuth(nil))
 	assert.Error(t, err)
 }
 
 func TestWithAuth_none(t *testing.T) {
-	app, err := NewServerGin(testAppConfig(t))
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot})
 	require.NoError(t, err)
 	app.GET("/widgets", func(c *gin.Context) { c.Status(http.StatusOK) })
 	assert.Equal(t, http.StatusOK, get(t, app, "/widgets").Code)

@@ -49,10 +49,7 @@ func (g Group) Validate() error {
 	if err := ValidateGroupName(g.Name); err != nil {
 		return err
 	}
-	if !version.MatchString(g.Version) {
-		return fmt.Errorf("api: version %q is not like v1 or v2beta1", g.Version)
-	}
-	return nil
+	return ValidateVersion(g.Version)
 }
 
 // Root is the path of the group: /apis/compute.infrapi.io/v1.
@@ -124,6 +121,14 @@ func Parse(p string) (Path, error) {
 		return Path{}, err
 	}
 	return Path{API: group, Version: ver, Namespace: ns, Resource: strings.Join(segments, "/")}, nil
+}
+
+// ValidateVersion reports whether version is like v1 or v2beta1.
+func ValidateVersion(v string) error {
+	if !version.MatchString(v) {
+		return fmt.Errorf("api: version %q is not like v1 or v2beta1", v)
+	}
+	return nil
 }
 
 // ValidateNamespace reports whether namespace is a lower case DNS label, the

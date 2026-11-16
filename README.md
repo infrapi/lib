@@ -26,9 +26,13 @@ package main
 import (
 	"log"
 
+	"github.com/infrapi/lib/pkg/api"
 	"github.com/infrapi/lib/pkg/config"
 	"github.com/infrapi/lib/pkg/server"
 )
+
+// the engine's own endpoints are served under its root: /apis/widgets.infrapi.io/v1/-/
+var group = api.Group{Name: "widgets.infrapi.io", Version: "v1"}
 
 func main() {
 	vars, err := config.NewConfig()
@@ -41,7 +45,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	engine, err := server.NewServerGin(cfg)
+	engine, err := server.NewServerGin(cfg, []string{group.Root()})
 	if err != nil {
 		log.Fatal(err)
 	}

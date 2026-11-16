@@ -11,7 +11,12 @@ import (
 	infraerrors "github.com/infrapi/lib/pkg/errors"
 )
 
+// The paths of the engine's own endpoints are relative to the root
+// NewServerGin is given: <root>/-/healthz.
 const (
+	// MetadataPath answers the service's name and where it runs.
+	MetadataPath = "/-/metadata"
+
 	// HealthzPath answers 200 while the process serves: what a gateway or a
 	// load balancer checks to know a replica is alive.
 	HealthzPath = "/-/healthz"
@@ -47,8 +52,9 @@ func WithReadiness(checks ...ReadinessCheck) Option {
 	}
 }
 
-// healthHandlers registers HealthzPath and ReadyzPath.
-func healthHandlers(app *gin.Engine, checks []ReadinessCheck) {
+// healthHandlers registers HealthzPath and ReadyzPath on app, the root's
+// group.
+func healthHandlers(app gin.IRouter, checks []ReadinessCheck) {
 	ok := func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) }
 	app.GET(HealthzPath, ok)
 	app.GET(ReadyzPath, func(c *gin.Context) {

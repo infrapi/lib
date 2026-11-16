@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/infrapi/lib/pkg/api"
 	infraauth "github.com/infrapi/lib/pkg/auth"
 	"github.com/infrapi/lib/pkg/config"
 	infraserver "github.com/infrapi/lib/pkg/server"
@@ -82,7 +83,8 @@ func example2(authURL string) {
 		log.Fatalf("NewClient: %v", err)
 	}
 
-	engine, err := infraserver.NewServerGin(appConfig, infraserver.WithAuth(client.Middleware()))
+	root := api.Group{Name: "widgets.infrapi.io", Version: "v1"}.Root()
+	engine, err := infraserver.NewServerGin(appConfig, []string{root}, infraserver.WithAuth(client.Middleware()))
 	if err != nil {
 		log.Fatalf("NewServerGin: %v", err)
 	}
@@ -95,9 +97,9 @@ func example2(authURL string) {
 	srv := httptest.NewServer(engine)
 	defer srv.Close()
 
-	// No token: the engine's own /-/healthz still answers (registered
-	// before WithAuth), the service's /widgets does not.
-	fmt.Printf("GET /-/healthz (no token) -> %d\n", mustGet(srv.URL+"/-/healthz", ""))
+	// No token: the engine's own <root>/-/healthz still answers
+	// (registered before WithAuth), the service's /widgets does not.
+	fmt.Printf("GET <root>/-/healthz (no token) -> %d\n", mustGet(srv.URL+root+infraserver.HealthzPath, ""))
 	fmt.Printf("GET /widgets   (no token) -> %d\n", mustGet(srv.URL+"/widgets", ""))
 	fmt.Printf("GET /widgets   (bad token) -> %d\n", mustGet(srv.URL+"/widgets", "wrong-token"))
 	fmt.Printf("GET /widgets   (valid token) -> %d\n\n", mustGet(srv.URL+"/widgets", "valid-token"))

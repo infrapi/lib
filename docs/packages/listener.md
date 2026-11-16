@@ -39,7 +39,8 @@ if err != nil {
 	return err
 }
 
-engine, err := server.NewServerGin(cfg)
+// group: the service's api.Group, see server
+engine, err := server.NewServerGin(cfg, []string{group.Root()})
 if err != nil {
 	return err
 }

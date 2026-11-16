@@ -138,12 +138,14 @@ infraauth.ClientOptions{BaseURL: "...", CacheTTL: -1}               // disable i
 Pass it to [`server.WithAuth`](server.md) instead of wiring it onto each route:
 
 ```go
-engine, err := server.NewServerGin(cfg, server.WithAuth(client.Middleware()))
+engine, err := server.NewServerGin(cfg, []string{group.Root()}, server.WithAuth(client.Middleware()))
 ```
 
-Every route the service adds after this call requires a token the auth service accepts;
-the engine's own endpoints under `/-/` - registered before it, same as `WithOpenAPI`'s
-contract validation - are not gated.
+Every route requires a token the auth service accepts but the operational ones: anything
+under a root's `-/`, the engine's (health, metrics, metadata, OpenAPI, docs) and the
+service's own, and `/.well-known/api.json`, never gated, same as `WithOpenAPI`'s contract
+validation. An operational route of the service's that needs a token puts
+`client.Middleware()` on itself.
 
 `examples/auth` runs all of this against a stub authentication server.
 

@@ -12,7 +12,7 @@ import (
 )
 
 func TestAPIGroup(t *testing.T) {
-	app, err := NewServerGin(testAppConfig(t))
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot})
 	require.NoError(t, err)
 
 	vms, err := APIGroup(app, api.Group{Name: "compute.infrapi.io", Version: "v1"})

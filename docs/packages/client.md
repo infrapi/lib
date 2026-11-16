@@ -175,11 +175,11 @@ An mTLS keypair needs both halves: cert and key must come from the same source.
 
 `Do` always builds a namespaced path. A route of the same service outside it - a
 cluster-wide endpoint such as `auth`'s `/apis/authorization.infrapi.io/v1/check`, or
-one under `/-/` - goes through `NewRequest`, which keeps this client's TLS, retry, header
+one of the engine's own under `/apis/<group>/<version>/-/` - goes through `NewRequest`, which keeps this client's TLS, retry, header
 and timeout configuration without exposing resty to the caller:
 
 ```go
-resp, err := client.NewRequest(ctx).Get("https://compute.example.com/-/metadata")
+resp, err := client.NewRequest(ctx).Get("https://compute.example.com/apis/compute.infrapi.io/v1/-/metadata")
 ```
 
 `NewRequest(ctx)` returns a `*Request` with `Get`, `Post`, `Put`, `Patch` and `Delete`,

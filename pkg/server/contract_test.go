@@ -59,7 +59,7 @@ func call(t *testing.T, h http.Handler, method, path, body string, header map[st
 // problem document before any handler runs; a request it does not describe
 // goes through.
 func TestWithOpenAPI_validatesRequests(t *testing.T) {
-	app, err := NewServerGin(testAppConfig(t), WithOpenAPI(bookmarksV1))
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI(bookmarksV1))
 	require.NoError(t, err)
 	reached := 0
 	handler := func(c *gin.Context) { reached++; c.Status(http.StatusNoContent) }
@@ -94,7 +94,7 @@ func TestWithOpenAPI_validatesRequests(t *testing.T) {
 // A document that is not valid OpenAPI stops the service at start: it would
 // be served and documented, and not enforced.
 func TestWithOpenAPI_refusesAnInvalidContract(t *testing.T) {
-	_, err := NewServerGin(testAppConfig(t), WithOpenAPI(OpenAPISpec{Name: "broken", Path: "broken.yaml",
+	_, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI(OpenAPISpec{Name: "broken", Path: "broken.yaml",
 		Content: []byte("openapi: 3.0.3\ninfo: {}\npaths: {}\n")}))
 	assert.ErrorContains(t, err, `OpenAPI document "broken"`)
 }

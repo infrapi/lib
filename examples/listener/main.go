@@ -82,12 +82,13 @@ func example2() {
 	}
 
 	gin.SetMode(gin.ReleaseMode)
-	engine, err := infraserver.NewServerGin(appConfig)
+	group := api.Group{Name: "widgets.infrapi.io", Version: "v1"}
+	engine, err := infraserver.NewServerGin(appConfig, []string{group.Root()})
 	if err != nil {
 		log.Fatalf("NewServerGin: %v", err)
 	}
 
-	widgets, err := infraserver.APIGroup(engine, api.Group{Name: "widgets.infrapi.io", Version: "v1"})
+	widgets, err := infraserver.APIGroup(engine, group)
 	if err != nil {
 		log.Fatalf("APIGroup: %v", err)
 	}
@@ -100,7 +101,7 @@ func example2() {
 
 	fmt.Printf("Serving on %s\n", ln.Addr())
 
-	for _, path := range []string{"/-/metadata", "/apis/widgets.infrapi.io/v1/namespaces/demo/widget"} {
+	for _, path := range []string{group.Root() + infraserver.MetadataPath, "/apis/widgets.infrapi.io/v1/namespaces/demo/widget"} {
 		resp, err := http.Get(fmt.Sprintf("http://%s%s", ln.Addr(), path))
 		if err != nil {
 			log.Fatalf("GET %s: %v", path, err)

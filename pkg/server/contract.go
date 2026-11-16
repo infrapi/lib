@@ -49,7 +49,7 @@ func newContractRouter(specs []OpenAPISpec) (*contractRouter, error) {
 // validate checks each request against the operation of the contract it
 // belongs to — its path and query parameters, its headers, its body — before
 // any handler runs, and answers 400 with the reason when it does not hold. A
-// request no contract describes — /-/metrics, a route the service adds on its
+// request no contract describes — <root>/-/metrics, a route the service adds on its
 // own — goes through untouched.
 func (cr *contractRouter) validate(c *gin.Context) {
 	for _, r := range cr.routers {

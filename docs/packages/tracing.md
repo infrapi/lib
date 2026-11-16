@@ -69,7 +69,7 @@ gRPC.
   call that arrives with one continues its caller's trace.
 - **The request** (from [`server`](server.md)): one span per call, named after its
   route — `GET /widgets/:id` — with the method, the status and the request's
-  `X-Request-Id`. The engine's own endpoints, under `/-/`, open none.
+  `X-Request-Id`. The engine's own endpoints, under `<root>/-/`, open none.
 
 ## Logs and traces
 

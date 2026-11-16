@@ -50,12 +50,14 @@ if err != nil {
 ## 4. Serve
 
 ```go
-engine, err := server.NewServerGin(cfg)
+group := api.Group{Name: "widgets.infrapi.io", Version: "v1"}
+
+engine, err := server.NewServerGin(cfg, []string{group.Root()})
 if err != nil {
 	log.Fatal(err)
 }
 
-widgets, err := server.APIGroup(engine, api.Group{Name: "widgets.infrapi.io", Version: "v1"})
+widgets, err := server.APIGroup(engine, group)
 if err != nil {
 	log.Fatal(err)
 }
@@ -68,8 +70,9 @@ if err := engine.Run(cfg.AppListenAddress); err != nil {
 }
 ```
 
-The engine already answers `GET /-/metadata` with the application identity, and the
-route above is `GET /apis/widgets.infrapi.io/v1/namespaces/:namespace/widget`.
+The engine already answers `GET /apis/widgets.infrapi.io/v1/-/metadata` with the
+application identity, its health, metrics and docs beside it under `-/`, and the route
+above is `GET /apis/widgets.infrapi.io/v1/namespaces/:namespace/widget`.
 
 ## 5. Call another service
 

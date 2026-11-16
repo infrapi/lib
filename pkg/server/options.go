@@ -25,17 +25,20 @@ type OpenAPISpec struct {
 	// Name labels the document in Swagger UI's selector, e.g. "orders v1".
 	Name string
 	// Path places it under OpenAPIPrefix, e.g. "orders/v1.yaml" is served at
-	// /-/openapi/orders/v1.yaml. Its extension sets the content type: .json,
+	// <root>/-/openapi/orders/v1.yaml. Its extension sets the content type: .json,
 	// or .yaml / .yml.
 	Path string
 	// Content is the document itself.
 	Content []byte
+	// Root is the engine's root the document describes the API of, served
+	// and offered under it: the primary root when empty.
+	Root string
 }
 
 // WithOpenAPI serves the service's own OpenAPI documents under OpenAPIPrefix
 // and points the documentation page at them, in a selector — one per major
 // version, say. Beside them, the generated specification at OpenAPIPath keeps
-// to the operational endpoints, those under /-/, and comes last in the
+// to the operational endpoints, those under <root>/-/, and comes last in the
 // selector as OperationsName: the API has one description, not two.
 func WithOpenAPI(specs ...OpenAPISpec) Option {
 	return func(o *options) error {
@@ -68,12 +71,13 @@ func WithOpenAPI(specs ...OpenAPISpec) Option {
 	}
 }
 
-// WithAuth adds mw as global middleware in front of every route the
-// service adds after NewServerGin returns - typically
-// [pkg/auth.Client.Middleware]. Like WithOpenAPI's contract validation,
-// it does not reach the engine's own endpoints under /-/ (health, metrics,
-// metadata, OpenAPI, docs): those are registered before it and are meant
-// to be reachable without a token.
+// WithAuth adds mw as global middleware in front of every route but the
+// operational ones - typically [pkg/auth.Client.Middleware]. Like
+// WithOpenAPI's contract validation, it never reaches a route under a root's
+// -/, the engine's (metadata, health, metrics, OpenAPI, docs) or the
+// service's, nor /.well-known/api.json, told by the route pattern: they
+// answer without a token. To ask for one on an operational route of its own,
+// the service puts the middleware on that route.
 func WithAuth(mw gin.HandlerFunc) Option {
 	return func(o *options) error {
 		if mw == nil {

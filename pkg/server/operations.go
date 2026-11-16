@@ -6,11 +6,12 @@ import (
 	"strings"
 )
 
-// Operation documents a route under /-/ in the specification of the
+// Operation documents a route under <root>/-/ in the specification of the
 // operational endpoints, which otherwise knows of it only its method and
 // path, from the route table.
 type Operation struct {
-	// Method and Path are the route's, as registered: GET, /-/workers/:id.
+	// Method and Path are the route's, Path relative to the root NewServerGin
+	// is given: GET, /-/workers/:id for <root>/-/workers/:id.
 	Method string
 	Path   string
 	// Summary says what the route is for, in a line.
@@ -29,14 +30,16 @@ type Response struct {
 	Schema map[string]any
 }
 
-// WithOperations documents routes the service adds under /-/, beside the
-// engine's own, which are documented already. A route left out is still
-// listed, undocumented.
+// WithOperations documents routes the service adds under <root>/-/, beside
+// the engine's own, which are documented already. A route left out is still
+// listed, undocumented. The service adds them on the root's group:
+//
+//	engine.Group(root).GET("/-/workers/:id", worker)
 func WithOperations(ops ...Operation) Option {
 	return func(o *options) error {
 		for _, op := range ops {
 			if op.Method == "" || !strings.HasPrefix(op.Path, "/-/") {
-				return fmt.Errorf("server: operation %s %q: a method and a path under /-/ are required", op.Method, op.Path)
+				return fmt.Errorf("server: operation %s %q: a method and a path under /-/, relative to the root, are required", op.Method, op.Path)
 			}
 			if len(op.Responses) == 0 {
 				return fmt.Errorf("server: operation %s %s documents no response", op.Method, op.Path)
@@ -98,7 +101,7 @@ var engineOperations = []Operation{
 		},
 	},
 	{
-		Method: http.MethodGet, Path: "/-/metadata", Summary: "Where this instance runs",
+		Method: http.MethodGet, Path: MetadataPath, Summary: "Where this instance runs",
 		Responses: map[string]Response{
 			"200": {Description: "The service's name and location", ContentType: "application/json", Schema: map[string]any{
 				"type":       "object",

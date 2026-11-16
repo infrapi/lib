@@ -138,13 +138,13 @@ func TestNewServerGin_jsonLogs(t *testing.T) {
 	gin.DefaultWriter = &out
 	t.Cleanup(func() { gin.DefaultWriter = previous })
 
-	app, err := NewServerGin(cfg)
+	app, err := NewServerGin(cfg, []string{testRoot})
 	require.NoError(t, err)
-	serve(app, "/-/metadata", nil)
+	serve(app, testRoot+"/-/metadata", nil)
 
 	got := lines(t, &out)
 	require.Len(t, got, 1)
-	assert.Equal(t, "/-/metadata", got[0]["route"])
+	assert.Equal(t, testRoot+"/-/metadata", got[0]["route"])
 }
 
 func TestLogFields(t *testing.T) {

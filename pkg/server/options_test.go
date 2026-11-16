@@ -28,67 +28,67 @@ func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 func TestWithOpenAPI_servesTheServicesDocuments(t *testing.T) {
 	ordersV2 := OpenAPISpec{Name: "orders v2", Path: "orders/v2.json",
 		Content: []byte(`{"openapi":"3.0.3","info":{"title":"Orders","version":"2"},"paths":{}}`)}
-	app, err := NewServerGin(testAppConfig(t), WithOpenAPI(ordersV1, ordersV2))
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI(ordersV1, ordersV2))
 	require.NoError(t, err)
 
-	w := get(t, app, "/-/openapi/orders/v1.yaml")
+	w := get(t, app, testRoot+"/-/openapi/orders/v1.yaml")
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/yaml", w.Header().Get("Content-Type"))
 	assert.Equal(t, string(ordersV1.Content), w.Body.String())
 
-	w = get(t, app, "/-/openapi/orders/v2.json")
+	w = get(t, app, testRoot+"/-/openapi/orders/v2.json")
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	page, err := io.ReadAll(get(t, app, DocsPath).Body)
+	page, err := io.ReadAll(get(t, app, testRoot+DocsPath).Body)
 	require.NoError(t, err)
 	body := string(page)
-	assert.Contains(t, body, `urls: [{"name":"orders v1","url":"/-/openapi/orders/v1.yaml"},`+
-		`{"name":"orders v2","url":"/-/openapi/orders/v2.json"},`+
-		`{"name":"operations","url":"/-/openapi.json"}]`)
+	assert.Contains(t, body, `urls: [{"name":"orders v1","url":"/apis/test.infrapi.io/v1/-/openapi/orders/v1.yaml"},`+
+		`{"name":"orders v2","url":"/apis/test.infrapi.io/v1/-/openapi/orders/v2.json"},`+
+		`{"name":"operations","url":"/apis/test.infrapi.io/v1/-/openapi.json"}]`)
 	assert.Contains(t, body, "swagger-ui-standalone-preset.js")
 	assert.Contains(t, body, `layout: "StandaloneLayout"`)
 	assert.Contains(t, body, "validatorUrl: null")
-	assert.NotContains(t, body, `url: "`+OpenAPIPath+`"`)
+	assert.NotContains(t, body, `url: "`+testRoot+OpenAPIPath+`"`)
 }
 
 // Beside the service's documents, the generated specification describes
 // the operational endpoints only, those the service adds under /-/ too: the
 // service's documents are the only description of its API.
 func TestWithOpenAPI_operations(t *testing.T) {
-	app, err := NewServerGin(testAppConfig(t), WithOpenAPI(ordersV1), WithOperations(Operation{
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI(ordersV1), WithOperations(Operation{
 		Method: http.MethodGet, Path: "/-/workers/:id", Summary: "A worker",
 		Responses: map[string]Response{"200": {Description: "The worker", ContentType: "application/json",
 			Schema: map[string]any{"type": "object"}}},
 	}))
 	require.NoError(t, err)
 	app.GET("/orders/:id", func(c *gin.Context) {})
-	app.GET("/-/workers", func(c *gin.Context) {})
-	app.GET("/-/workers/:id", func(c *gin.Context) {})
+	app.GET(testRoot+"/-/workers", func(c *gin.Context) {})
+	app.GET(testRoot+"/-/workers/:id", func(c *gin.Context) {})
 
-	w := get(t, app, OpenAPIPath)
+	w := get(t, app, testRoot+OpenAPIPath)
 	require.Equal(t, http.StatusOK, w.Code)
 	var spec openAPI
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&spec))
 	assert.Contains(t, spec.Info.Title, OperationsName)
-	assert.Contains(t, spec.Paths, HealthzPath)
-	assert.Contains(t, spec.Paths, ReadyzPath)
-	assert.Contains(t, spec.Paths, MetricsPath)
-	assert.Contains(t, spec.Paths, "/-/metadata")
-	assert.Contains(t, spec.Paths, "/-/workers")
+	assert.Contains(t, spec.Paths, testRoot+HealthzPath)
+	assert.Contains(t, spec.Paths, testRoot+ReadyzPath)
+	assert.Contains(t, spec.Paths, testRoot+MetricsPath)
+	assert.Contains(t, spec.Paths, testRoot+"/-/metadata")
+	assert.Contains(t, spec.Paths, testRoot+"/-/workers")
 	assert.NotContains(t, spec.Paths, "/orders/{id}")
-	assert.NotContains(t, spec.Paths, "/-/openapi/orders/v1.yaml")
+	assert.NotContains(t, spec.Paths, testRoot+"/-/openapi/orders/v1.yaml")
 
 	// The engine's endpoints are documented, and those the service
 	// documents; the others are listed only.
-	readyz := spec.Paths[ReadyzPath]["get"]
+	readyz := spec.Paths[testRoot+ReadyzPath]["get"]
 	assert.NotEmpty(t, readyz.Summary)
 	assert.Contains(t, readyz.Responses["503"].Content, "application/problem+json")
-	assert.Contains(t, spec.Paths[MetricsPath]["get"].Responses["200"].Content, "text/plain")
-	worker := spec.Paths["/-/workers/{id}"]["get"]
+	assert.Contains(t, spec.Paths[testRoot+MetricsPath]["get"].Responses["200"].Content, "text/plain")
+	worker := spec.Paths[testRoot+"/-/workers/{id}"]["get"]
 	assert.Equal(t, "A worker", worker.Summary)
 	assert.Len(t, worker.Parameters, 1)
 	assert.Equal(t, map[string]any{"type": "object"}, worker.Responses["200"].Content["application/json"].Schema)
-	assert.Contains(t, spec.Paths["/-/workers"]["get"].Responses, "default")
+	assert.Contains(t, spec.Paths[testRoot+"/-/workers"]["get"].Responses, "default")
 }
 
 func TestWithOperations_refuses(t *testing.T) {
@@ -99,7 +99,7 @@ func TestWithOperations_refuses(t *testing.T) {
 		"no response":   {Method: http.MethodGet, Path: "/-/x"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := NewServerGin(testAppConfig(t), WithOperations(op))
+			_, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOperations(op))
 			assert.Error(t, err)
 		})
 	}
@@ -108,17 +108,17 @@ func TestWithOperations_refuses(t *testing.T) {
 func TestWithOpenAPI_refusesTheOperationsName(t *testing.T) {
 	spec := ordersV1
 	spec.Name = OperationsName
-	_, err := NewServerGin(testAppConfig(t), WithOpenAPI(spec))
+	_, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI(spec))
 	assert.ErrorContains(t, err, "operational endpoints")
 }
 
 // Without documents, nothing changes: the page reads the generated one.
 func TestWithOpenAPI_none(t *testing.T) {
-	app, err := NewServerGin(testAppConfig(t), WithOpenAPI())
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI())
 	require.NoError(t, err)
-	body := get(t, app, DocsPath).Body.String()
-	assert.Contains(t, body, `url: "`+OpenAPIPath+`"`)
-	assert.Equal(t, http.StatusOK, get(t, app, OpenAPIPath).Code)
+	body := get(t, app, testRoot+DocsPath).Body.String()
+	assert.Contains(t, body, `url: "`+testRoot+OpenAPIPath+`"`)
+	assert.Equal(t, http.StatusOK, get(t, app, testRoot+OpenAPIPath).Code)
 	assert.NotContains(t, body, "standalone-preset")
 }
 
@@ -126,9 +126,9 @@ func TestWithOpenAPI_none(t *testing.T) {
 func TestWithOpenAPI_escapesNames(t *testing.T) {
 	spec := ordersV1
 	spec.Name = "</script><script>alert(1)</script>"
-	app, err := NewServerGin(testAppConfig(t), WithOpenAPI(spec))
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI(spec))
 	require.NoError(t, err)
-	assert.NotContains(t, get(t, app, DocsPath).Body.String(), "<script>alert(1)</script>")
+	assert.NotContains(t, get(t, app, testRoot+DocsPath).Body.String(), "<script>alert(1)</script>")
 }
 
 func TestWithOpenAPI_refusesBadDocuments(t *testing.T) {
@@ -140,11 +140,11 @@ func TestWithOpenAPI_refusesBadDocuments(t *testing.T) {
 		"no known type": {Name: "a", Path: "a.txt", Content: []byte("x")},
 		"empty":         {Name: "a", Path: "a.yaml"},
 	} {
-		_, err := NewServerGin(testAppConfig(t), WithOpenAPI(spec))
+		_, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI(spec))
 		assert.Error(t, err, name)
 	}
 
-	_, err := NewServerGin(testAppConfig(t), WithOpenAPI(ordersV1, ordersV1))
+	_, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI(ordersV1, ordersV1))
 	assert.ErrorContains(t, err, "share")
 	assert.True(t, strings.Contains(err.Error(), "orders v1"))
 }

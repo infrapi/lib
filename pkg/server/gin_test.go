@@ -16,6 +16,9 @@ import (
 	"github.com/infrapi/lib/pkg/config"
 )
 
+// testRoot is the root the tests' engines serve their own endpoints under.
+const testRoot = "/apis/test.infrapi.io/v1"
+
 const testEnvContent = `
 INFRAPI_APP_NAME=test-app
 INFRAPI_APP_PLATFORM=sandbox
@@ -43,13 +46,13 @@ func testAppConfig(t *testing.T) *config.AppConfig {
 }
 
 func TestNewServerGin_routes(t *testing.T) {
-	app, err := NewServerGin(testAppConfig(t))
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot})
 	require.NoError(t, err)
 	require.NotNil(t, app)
 
 	found := false
 	for _, route := range app.Routes() {
-		if route.Path == "/-/metadata" && route.Method == "GET" {
+		if route.Path == testRoot+"/-/metadata" && route.Method == "GET" {
 			found = true
 			break
 		}
@@ -59,11 +62,11 @@ func TestNewServerGin_routes(t *testing.T) {
 
 func TestNewServerGin_metadata(t *testing.T) {
 	cfg := testAppConfig(t)
-	app, err := NewServerGin(cfg)
+	app, err := NewServerGin(cfg, []string{testRoot})
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/-/metadata", nil)
+	req := httptest.NewRequest(http.MethodGet, testRoot+"/-/metadata", nil)
 	app.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -84,12 +87,12 @@ func TestNewServerGin_trustedProxies_invalid(t *testing.T) {
 	// exercise the error path in NewServerGin.
 	cfg.AppTrustedProxies = []string{"not-a-valid-cidr/99"}
 
-	_, err := NewServerGin(cfg)
+	_, err := NewServerGin(cfg, []string{testRoot})
 	assert.Error(t, err)
 }
 
 func TestNewServerGin_metrics(t *testing.T) {
-	app, err := NewServerGin(testAppConfig(t))
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot})
 	require.NoError(t, err)
 
 	// a handled request, and one that matches no route
@@ -100,7 +103,7 @@ func TestNewServerGin_metrics(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, MetricsPath, nil))
+	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, testRoot+MetricsPath, nil))
 	require.Equal(t, http.StatusOK, w.Code)
 
 	body := w.Body.String()
@@ -114,7 +117,7 @@ func TestNewServerGin_metrics(t *testing.T) {
 
 func TestNewServerGin_openAPI(t *testing.T) {
 	cfg := testAppConfig(t)
-	app, err := NewServerGin(cfg)
+	app, err := NewServerGin(cfg, []string{testRoot})
 	require.NoError(t, err)
 
 	// routes registered after the engine was built must show up
@@ -122,7 +125,7 @@ func TestNewServerGin_openAPI(t *testing.T) {
 	app.POST("/widgets", func(c *gin.Context) {})
 
 	w := httptest.NewRecorder()
-	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, OpenAPIPath, nil))
+	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, testRoot+OpenAPIPath, nil))
 	require.Equal(t, http.StatusOK, w.Code)
 
 	var spec openAPI
@@ -134,8 +137,8 @@ func TestNewServerGin_openAPI(t *testing.T) {
 	require.Len(t, spec.Servers, 1)
 	assert.Equal(t, cfg.AppUrl, spec.Servers[0].URL)
 
-	assert.Contains(t, spec.Paths, "/-/metadata")
-	assert.Contains(t, spec.Paths, MetricsPath)
+	assert.Contains(t, spec.Paths, testRoot+"/-/metadata")
+	assert.Contains(t, spec.Paths, testRoot+MetricsPath)
 	assert.Contains(t, spec.Paths["/widgets"], "post")
 
 	widget := spec.Paths["/widgets/{id}"]["get"]
@@ -153,10 +156,10 @@ func TestNewServerGin_openAPI_noServerURL(t *testing.T) {
 	cfg := testAppConfig(t)
 	cfg.AppUrl = ""
 
-	app, err := NewServerGin(cfg)
+	app, err := NewServerGin(cfg, []string{testRoot})
 	require.NoError(t, err)
 
-	assert.Empty(t, openAPISpec(app, cfg, false, nil).Servers)
+	assert.Empty(t, openAPISpec(app, roots{list: []string{testRoot}}, testRoot, cfg, false, nil).Servers)
 }
 
 func TestOpenAPIPath(t *testing.T) {
@@ -204,11 +207,11 @@ func TestModuleVersion(t *testing.T) {
 
 func TestNewServerGin_docs(t *testing.T) {
 	cfg := testAppConfig(t)
-	app, err := NewServerGin(cfg)
+	app, err := NewServerGin(cfg, []string{testRoot})
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
-	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, DocsPath, nil))
+	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, testRoot+DocsPath, nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
@@ -216,7 +219,7 @@ func TestNewServerGin_docs(t *testing.T) {
 	body := w.Body.String()
 	assert.Contains(t, body, "<title>"+cfg.AppName+" API</title>")
 	assert.Contains(t, body, "swagger-ui-dist@"+swaggerUI)
-	assert.Contains(t, body, `url: "`+OpenAPIPath+`"`)
+	assert.Contains(t, body, `url: "`+testRoot+OpenAPIPath+`"`)
 	assert.Contains(t, body, "validatorUrl: null")
 }
 
@@ -226,7 +229,7 @@ func TestNewServerGin_docs_escapesAppName(t *testing.T) {
 	cfg := testAppConfig(t)
 	cfg.AppName = "</title><script>alert(1)</script>"
 
-	page, err := newDocsPage(cfg, nil)
+	page, err := newDocsPage(testRoot, cfg, nil)
 	require.NoError(t, err)
 	assert.NotContains(t, string(page), "<script>alert(1)</script>")
 }
@@ -245,4 +248,26 @@ func TestGinMode(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ginMode(log.InfoLevel)
 	assert.Equal(t, gin.TestMode, gin.Mode(), "a mode chosen before is kept")
+}
+
+func TestNewServerGin_root(t *testing.T) {
+	for _, root := range []string{"", "/", "apis/x.infrapi.io/v1", "/apis/x.infrapi.io/v1/", "/apis/:group/v1", "/apis/{group}/v1", "/apis/x/-/v1"} {
+		_, err := NewServerGin(testAppConfig(t), []string{root})
+		assert.Error(t, err, "root %q", root)
+	}
+	for name, rs := range map[string][]string{
+		"none":   nil,
+		"twice":  {testRoot, testRoot},
+		"nested": {testRoot, testRoot + "/sub"},
+		"parent": {testRoot + "/sub", testRoot},
+	} {
+		_, err := NewServerGin(testAppConfig(t), rs)
+		assert.Error(t, err, name)
+	}
+
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot})
+	require.NoError(t, err)
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, httptest.NewRequest(http.MethodGet, HealthzPath, nil))
+	assert.Equal(t, http.StatusNotFound, w.Code, "nothing under /-/ at the engine's root")
 }

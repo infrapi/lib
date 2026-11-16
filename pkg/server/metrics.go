@@ -9,7 +9,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// MetricsPath is where the engine serves the Prometheus exposition format.
+// MetricsPath is where the engine serves the Prometheus exposition format,
+// relative to a root: the requests of that root's routes.
 const MetricsPath = "/-/metrics"
 
 // unmatchedPath keeps the path label bounded: labelling with the raw URL would
@@ -50,22 +51,49 @@ func newMetrics(fqdn string) *metrics {
 	return m
 }
 
-// middleware records every request once it has been handled.
-func (m *metrics) middleware() gin.HandlerFunc {
+// record counts one handled request, by its route pattern.
+func (m *metrics) record(method, path string, status int, took time.Duration) {
+	m.requests.WithLabelValues(method, path, strconv.Itoa(status)).Inc()
+	m.duration.WithLabelValues(method, path).Observe(took.Seconds())
+}
+
+// rootMetrics keeps a metrics per root: a root's <root>/-/metrics counts the
+// requests of its routes, those under no root counting as the primary's.
+type rootMetrics struct {
+	roots  roots
+	byRoot map[string]*metrics
+}
+
+func newRootMetrics(fqdn string, rs roots) *rootMetrics {
+	m := &rootMetrics{roots: rs, byRoot: map[string]*metrics{}}
+	for _, root := range rs.list {
+		m.byRoot[root] = newMetrics(fqdn)
+	}
+	return m
+}
+
+// middleware records every request in its root's metrics, the route's
+// pattern telling which, or the path for a request that matched none.
+func (m *rootMetrics) middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 
 		c.Next()
 
-		// the route pattern, not the URL, so /users/:id stays one series
 		path := c.FullPath()
+		owner := m.roots.owner(c.Request.URL.Path)
 		if path == "" {
 			path = unmatchedPath
+		} else {
+			owner = m.roots.owner(path)
 		}
-
-		m.requests.WithLabelValues(c.Request.Method, path, strconv.Itoa(c.Writer.Status())).Inc()
-		m.duration.WithLabelValues(c.Request.Method, path).Observe(time.Since(start).Seconds())
+		m.byRoot[owner].record(c.Request.Method, path, c.Writer.Status(), time.Since(start))
 	}
+}
+
+// handler serves root's metrics.
+func (m *rootMetrics) handler(root string) gin.HandlerFunc {
+	return m.byRoot[root].handler()
 }
 
 // handler serves the exposition format. A collector that misbehaves is reported

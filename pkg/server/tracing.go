@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -38,10 +37,11 @@ func CorrelationID(ctx context.Context) string {
 // spans opens a span per request with the global tracer provider — the one
 // pkg/tracing sets up; none, and the spans are not recorded — continuing the
 // trace a traceparent header carries in. A span is named after the route.
-// The engine's own endpoints, under /-/, open none: a scrape is not a call.
-func spans(service string) gin.HandlerFunc {
+// The engine's own endpoints, under a root's -/, open none: a scrape is not
+// a call.
+func spans(service string, rs roots) gin.HandlerFunc {
 	return otelgin.Middleware(service, otelgin.WithGinFilter(func(c *gin.Context) bool {
-		return !strings.HasPrefix(c.Request.URL.Path, "/-/")
+		return !rs.operational(c.Request.URL.Path)
 	}))
 }
 

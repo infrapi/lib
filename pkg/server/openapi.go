@@ -14,6 +14,7 @@ import (
 	"github.com/infrapi/lib/pkg/config"
 )
 
+// Like the engine's other endpoints, these paths are relative to its root.
 const (
 	// OpenAPIPath is where the engine serves the specification it generates
 	// from its route table: of every route, or, beside the documents supplied
@@ -121,24 +122,29 @@ func openAPIPath(route string) (string, []parameter) {
 	return strings.Join(segments, "/"), params
 }
 
-// openAPISpec describes the routes currently registered on app. It is built per
+// openAPISpec describes the routes currently registered on app under root
+// (see roots.owner). It is built per
 // request, so routes the service adds after NewServerGin are included. With
-// operations, it describes only those under /-/, the engine's own and any the
+// operations, it describes only those under root/-/, the engine's own and any the
 // service adds there, but the documents served under OpenAPIPrefix: the API
 // is in those documents. A route in documented, by method and path, carries
 // its summary and responses; the others an undocumented default.
-func openAPISpec(app *gin.Engine, cfg *config.AppConfig, operations bool, documented map[string]Operation) *openAPI {
+func openAPISpec(app *gin.Engine, rs roots, root string, cfg *config.AppConfig, operations bool, documented map[string]Operation) *openAPI {
+	title := cfg.AppName
+	if len(rs.list) > 1 {
+		title += " " + root
+	}
 	spec := &openAPI{
 		OpenAPI: "3.1.0",
 		Info: openAPIInfo{
-			Title:       cfg.AppName,
+			Title:       title,
 			Version:     buildVersion(),
 			Description: "Generated from the route table of " + cfg.AppFqdn + ".",
 		},
 		Paths: map[string]map[string]operation{},
 	}
 	if operations {
-		spec.Info.Title = cfg.AppName + " " + OperationsName
+		spec.Info.Title = title + " " + OperationsName
 		spec.Info.Description = "The operational endpoints of " + cfg.AppFqdn + ", generated from its route table."
 	}
 
@@ -147,7 +153,10 @@ func openAPISpec(app *gin.Engine, cfg *config.AppConfig, operations bool, docume
 	}
 
 	for _, route := range app.Routes() {
-		if operations && (!strings.HasPrefix(route.Path, "/-/") || strings.HasPrefix(route.Path, OpenAPIPrefix)) {
+		if rs.owner(route.Path) != root {
+			continue
+		}
+		if operations && (!strings.HasPrefix(route.Path, root+"/-/") || strings.HasPrefix(route.Path, root+OpenAPIPrefix)) {
 			continue
 		}
 		path, params := openAPIPath(route.Path)
@@ -218,20 +227,20 @@ type docsURL struct {
 	URL  string `json:"url"`
 }
 
-// newDocsPage renders the documentation page served at DocsPath.
-func newDocsPage(cfg *config.AppConfig, specs []OpenAPISpec) ([]byte, error) {
+// newDocsPage renders the documentation page served at root + DocsPath.
+func newDocsPage(root string, cfg *config.AppConfig, specs []OpenAPISpec) ([]byte, error) {
 	var urls []docsURL
 	for _, s := range specs {
-		urls = append(urls, docsURL{Name: s.Name, URL: OpenAPIPrefix + s.Path})
+		urls = append(urls, docsURL{Name: s.Name, URL: root + OpenAPIPrefix + s.Path})
 	}
 	if len(urls) > 0 {
-		urls = append(urls, docsURL{Name: OperationsName, URL: OpenAPIPath})
+		urls = append(urls, docsURL{Name: OperationsName, URL: root + OpenAPIPath})
 	}
 
 	var page bytes.Buffer
 	if err := docsPage.Execute(&page, map[string]any{
 		"Title":     cfg.AppName,
-		"SpecPath":  OpenAPIPath,
+		"SpecPath":  root + OpenAPIPath,
 		"SwaggerUI": swaggerUI,
 		"URLs":      urls,
 	}); err != nil {
@@ -240,9 +249,11 @@ func newDocsPage(cfg *config.AppConfig, specs []OpenAPISpec) ([]byte, error) {
 	return page.Bytes(), nil
 }
 
-// openAPIHandlers registers the specifications and the documentation page.
-func openAPIHandlers(app *gin.Engine, cfg *config.AppConfig, specs []OpenAPISpec, ops []Operation) error {
-	page, err := newDocsPage(cfg, specs)
+// openAPIHandlers registers root's specifications and documentation page on
+// ops, the root's group; the specification describes app's routes that are
+// root's.
+func openAPIHandlers(app *gin.Engine, ops gin.IRouter, rs roots, root string, cfg *config.AppConfig, specs []OpenAPISpec, documentedOps []Operation) error {
+	page, err := newDocsPage(root, cfg, specs)
 	if err != nil {
 		return err
 	}
@@ -252,21 +263,21 @@ func openAPIHandlers(app *gin.Engine, cfg *config.AppConfig, specs []OpenAPISpec
 	// second, poorer description of it.
 	operations := len(specs) > 0
 	documented := map[string]Operation{}
-	for _, op := range append(slices.Clone(engineOperations), ops...) {
-		documented[op.Method+" "+op.Path] = op
+	for _, op := range append(slices.Clone(engineOperations), documentedOps...) {
+		documented[op.Method+" "+root+op.Path] = op
 	}
-	app.GET(OpenAPIPath, func(c *gin.Context) {
-		c.JSON(http.StatusOK, openAPISpec(app, cfg, operations, documented))
+	ops.GET(OpenAPIPath, func(c *gin.Context) {
+		c.JSON(http.StatusOK, openAPISpec(app, rs, root, cfg, operations, documented))
 	})
 
 	for _, s := range specs {
 		content, contentType := s.Content, specContentType(s.Path)
-		app.GET(OpenAPIPrefix+s.Path, func(c *gin.Context) {
+		ops.GET(OpenAPIPrefix+s.Path, func(c *gin.Context) {
 			c.Data(http.StatusOK, contentType, content)
 		})
 	}
 
-	app.GET(DocsPath, func(c *gin.Context) {
+	ops.GET(DocsPath, func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", page)
 	})
 	return nil

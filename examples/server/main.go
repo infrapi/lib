@@ -18,6 +18,10 @@ import (
 	infraserver "github.com/infrapi/lib/pkg/server"
 )
 
+// widgets is the API group the examples serve: the engine's own endpoints
+// go under its root, /apis/widgets.infrapi.io/v1/-/.
+var widgets = api.Group{Name: "widgets.infrapi.io", Version: "v1"}
+
 func main() {
 	fmt.Println("=== InfraPi Server Package Examples ===")
 	fmt.Println()
@@ -59,7 +63,7 @@ func example1() {
 	fmt.Println("--- Example 1: Basic Server Setup ---")
 
 	appConfig := loadConfig()
-	engine, err := infraserver.NewServerGin(appConfig)
+	engine, err := infraserver.NewServerGin(appConfig, []string{widgets.Root()})
 	if err != nil {
 		log.Fatalf("NewServerGin: %v", err)
 	}
@@ -73,7 +77,7 @@ func example1() {
 func example2() {
 	fmt.Println("--- Example 2: Registered Routes ---")
 
-	engine, err := infraserver.NewServerGin(loadConfig())
+	engine, err := infraserver.NewServerGin(loadConfig(), []string{widgets.Root()})
 	if err != nil {
 		log.Fatalf("NewServerGin: %v", err)
 	}
@@ -89,14 +93,14 @@ func example3() {
 	fmt.Println("--- Example 3: Custom Routes ---")
 
 	appConfig := loadConfig()
-	engine, err := infraserver.NewServerGin(appConfig)
+	engine, err := infraserver.NewServerGin(appConfig, []string{widgets.Root()})
 	if err != nil {
 		log.Fatalf("NewServerGin: %v", err)
 	}
 
 	// Add application routes on top of the pre-configured engine, under
 	// /apis/widgets.infrapi.io/v1/namespaces/:namespace.
-	v1, err := infraserver.APIGroup(engine, api.Group{Name: "widgets.infrapi.io", Version: "v1"})
+	v1, err := infraserver.APIGroup(engine, widgets)
 	if err != nil {
 		log.Fatalf("APIGroup: %v", err)
 	}
@@ -128,7 +132,7 @@ func example4() {
 	appConfig.AppCorsAllowMethods = []string{"GET", "POST", "DELETE"}
 	appConfig.AppTrustedProxies = []string{"10.0.0.0/8"}
 
-	engine, err := infraserver.NewServerGin(appConfig)
+	engine, err := infraserver.NewServerGin(appConfig, []string{widgets.Root()})
 	if err != nil {
 		log.Fatalf("NewServerGin: %v", err)
 	}
@@ -154,7 +158,7 @@ func example5() {
 	appConfig.AppListenAddress = addr
 
 	gin.SetMode(gin.ReleaseMode)
-	engine, err := infraserver.NewServerGin(appConfig)
+	engine, err := infraserver.NewServerGin(appConfig, []string{widgets.Root()})
 	if err != nil {
 		log.Fatalf("NewServerGin: %v", err)
 	}
@@ -165,18 +169,19 @@ func example5() {
 	go func() { _ = srv.Serve(listener) }()
 	fmt.Printf("Server listening on %s\n", addr)
 
-	// Hit the endpoints every InfraPI service exposes out of the box.
+	// Hit the endpoints every InfraPI service exposes out of the box,
+	// under its group's root.
 	for _, path := range []string{
-		infraserver.MetricsPath,
-		infraserver.OpenAPIPath,
-		infraserver.DocsPath,
-		"/-/metadata",
+		widgets.Root() + infraserver.MetricsPath,
+		widgets.Root() + infraserver.OpenAPIPath,
+		widgets.Root() + infraserver.DocsPath,
+		widgets.Root() + infraserver.MetadataPath,
 	} {
 		resp, err := http.Get(fmt.Sprintf("http://%s%s", addr, path))
 		if err != nil {
 			log.Fatalf("GET %s: %v", path, err)
 		}
-		fmt.Printf("GET %-16s → %d %s\n", path, resp.StatusCode, resp.Header.Get("Content-Type"))
+		fmt.Printf("GET %-42s → %d %s\n", path, resp.StatusCode, resp.Header.Get("Content-Type"))
 		_ = resp.Body.Close()
 	}
 

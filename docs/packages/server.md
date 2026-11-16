@@ -10,10 +10,14 @@ weight: 80
 import "github.com/infrapi/lib/pkg/server"
 ```
 
-One constructor that turns an `*config.AppConfig` into a ready `*gin.Engine`.
+One constructor that turns an `*config.AppConfig` into a ready `*gin.Engine`, serving
+its own endpoints under the root of the service's API group:
 
 ```go
-engine, err := server.NewServerGin(cfg)
+var group = api.Group{Name: "compute.infrapi.io", Version: "v1"}
+
+// health, metrics, docs...: /apis/compute.infrapi.io/v1/-/
+engine, err := server.NewServerGin(cfg, []string{group.Root()})
 if err != nil {
 	return err
 }
@@ -39,25 +43,80 @@ if err := engine.Run(cfg.AppListenAddress); err != nil {
   provider — the one [`tracing`](tracing.md) sets up; none, and the spans are not
   recorded. It continues the trace a `traceparent` header carries in, carries the
   request id, and puts its `trace_id` and `span_id` in the access log line. The
-  engine's own endpoints, under `/-/`, open none.
+  engine's own endpoints, under `<root>/-/`, open none.
 - **Gin in release mode** — no debug line per route at start — unless
   `INFRAPI_APP_LOG_LEVEL` is `debug` or `trace`, or the mode was chosen already
   (`GIN_MODE`, or `gin.SetMode` before `NewServerGin`, as a test's `gin.TestMode`).
-- **Six endpoints**, with nothing to configure:
+- **Six endpoints per root**, with nothing to configure, under `<root>/-/`, open to
+  anyone: no token, no contract validation (see [Authentication](#authentication)).
+  The roots are the second argument, one per API group the service serves
+  (`group.Root()`, `/apis/compute.infrapi.io/v1`): a gateway that routes
+  `/apis/<group>/<version>/*` to the service reaches them with that group's API, and
+  Kayra reads `<root>/-/openapi.json` there. Nothing is served under a bare `/-/`.
+  `NewServerGin` refuses no root, a root that is not an absolute, clean path, is `/`,
+  carries parameters or a `-` segment, and two roots one inside the other.
+
+A service serving several groups, as Kayra does, passes them all; each gets its own
+endpoints, about its own routes. The first is the primary root: a route under no root
+(`/oauth2/userinfo`, a discovery document) counts as its.
+
+```go
+engine, err := server.NewServerGin(cfg, []string{
+	"/apis/system.infrapi.io/v1", // primary
+	"/apis/catalog.infrapi.io/v1",
+})
+// /apis/catalog.infrapi.io/v1/-/openapi.json: the catalog's routes only
+// /apis/catalog.infrapi.io/v1/-/metrics:      the catalog's requests only
+```
+
+| Per root | |
+|---|---|
+| `metadata`, `healthz`, `readyz` | The same for every root: the process's identity and health. |
+| `metrics` | The requests of the root's routes. The process's own collectors (Go runtime, `promauto`) appear under every root. |
+| `openapi.json`, `docs` | The root's routes, and the `WithOpenAPI` documents given that `Root`. |
 
 | Endpoint | Serves |
 |----------|--------|
-| `GET /-/metadata` | The application identity. |
-| `GET /-/healthz` | `200` while the process serves: liveness. |
-| `GET /-/readyz` | `200` when ready for traffic, `503` when a `WithReadiness` check fails: readiness. |
-| `GET /-/metrics` | Prometheus exposition format. |
-| `GET /-/openapi.json` | OpenAPI 3.1, generated from the route table - of the endpoints under `/-/` only when the service passes its own documents with `WithOpenAPI`. |
-| `GET /-/docs` | Swagger UI reading that specification, or the documents passed with `WithOpenAPI`. |
+| `GET <root>/-/metadata` | The application identity. |
+| `GET <root>/-/healthz` | `200` while the process serves: liveness. |
+| `GET <root>/-/readyz` | `200` when ready for traffic, `503` when a `WithReadiness` check fails: readiness. |
+| `GET <root>/-/metrics` | Prometheus exposition format, the root's requests. |
+| `GET <root>/-/openapi.json` | OpenAPI 3.1, generated from the root's routes - of its endpoints under `<root>/-/` only when the service passes its own documents with `WithOpenAPI`. |
+| `GET <root>/-/docs` | Swagger UI reading that specification, or the documents passed with `WithOpenAPI`. |
 
-The paths are exported as `server.MetricsPath`, `server.HealthzPath`,
-`server.ReadyzPath`, `server.OpenAPIPath` and `server.DocsPath`.
+At its own root, not under a group's, the engine lists its groups, for a caller who
+knows only its address, without a token:
 
-`/-/metadata` answers with:
+```bash
+curl -s http://compute.example.com/.well-known/api.json
+```
+
+```json
+{
+  "app": "kayra",
+  "groups": [
+    {"name": "system", "api": "system.infrapi.io", "version": "v1",
+     "root": "/apis/system.infrapi.io/v1", "url": "https://kayra.example.com/apis/system.infrapi.io/v1",
+     "primary": true,
+     "links": {"docs": "https://kayra.example.com/apis/system.infrapi.io/v1/-/docs",
+               "openapi": "…/-/openapi.json", "metrics": "…/-/metrics",
+               "healthz": "…/-/healthz", "readyz": "…/-/readyz", "metadata": "…/-/metadata"}},
+    {"name": "catalog", "api": "catalog.infrapi.io", "version": "v1", "…": "…"}
+  ]
+}
+```
+
+`url` is the root on `AppUrl`, the root alone when it is not set. A root outside the
+`/apis/<group>/<version>` layout, such as tofu-api's `/grafana/v1`, has an empty `api`:
+its `name` and `version` are its last segments. The path is `server.APIIndexPath`, the
+document `server.APIIndex`.
+
+The paths are exported relative to the root, as `server.MetadataPath`,
+`server.MetricsPath`, `server.HealthzPath`, `server.ReadyzPath`, `server.OpenAPIPath`
+and `server.DocsPath`: `group.Root() + server.HealthzPath` is
+`/apis/compute.infrapi.io/v1/-/healthz`.
+
+`<root>/-/metadata` answers with:
 
 ```json
 {
@@ -99,23 +158,25 @@ DNS label is answered `404` before any handler of the group runs.
 ## Your own OpenAPI documents
 
 The generated specification knows paths and parameters, not bodies or schemas. A
-service whose contract is written by hand passes it with `WithOpenAPI`, and `/-/docs`
+service whose contract is written by hand passes it with `WithOpenAPI`, and `<root>/-/docs`
 documents that instead:
 
 ```go
 //go:embed api/orders/v1.yaml
 var ordersV1 []byte
 
-engine, err := server.NewServerGin(cfg, server.WithOpenAPI(
+engine, err := server.NewServerGin(cfg, []string{group.Root()}, server.WithOpenAPI(
 	server.OpenAPISpec{Name: "orders v1", Path: "orders/v1.yaml", Content: ordersV1},
 ))
 ```
 
 - Each document is served as it is under `server.OpenAPIPrefix`, here
-  `/-/openapi/orders/v1.yaml`, as `application/yaml` (`.yaml`, `.yml`) or
+  `<root>/-/openapi/orders/v1.yaml`, as `application/yaml` (`.yaml`, `.yml`) or
   `application/json` (`.json`).
+- A document is its `Root`'s, served and offered under that root only; without one, the
+  primary root's. A `Root` that is none of the engine's is refused.
 - Swagger UI offers them in a selector — one file per major version, say — followed by
-  `operations`: `/-/openapi.json`, which then describes only the endpoints under `/-/`,
+  `operations`: `<root>/-/openapi.json`, which then describes only the endpoints under `<root>/-/`,
   the engine's own and those the service adds there. The API has one description, not
   two.
 - `NewServerGin` refuses a document without a name or content, or named `operations`, a
@@ -136,7 +197,7 @@ answered `400 invalid_request`, as a problem document whose `detail` says why:
 
 - Handlers receive only what the contract allows: no hand-written checks for what the
   contract already says.
-- A request no document describes — `/-/metrics`, a route the service adds on its own —
+- A request no document describes — `<root>/-/metrics`, a route the service adds on its own —
   goes through untouched.
 - Authentication is not checked here: a security scheme in the contract is
   documentation, and what stands in front of the service enforces it.
@@ -243,25 +304,37 @@ none, and a call that reaches it without one has none.
 
 ## Authentication
 
-`WithAuth` puts a `gin.HandlerFunc` in front of every route the service adds after
-`NewServerGin` returns - typically [`auth.Client.Middleware`](auth.md), which
+`WithAuth` puts a `gin.HandlerFunc` in front of every route but the operational ones -
+typically [`auth.Client.Middleware`](auth.md), which
 authenticates each request against an upstream authentication service:
 
 ```go
 client, err := auth.NewClient(auth.ClientOptions{BaseURL: "https://auth.example.com"})
-engine, err := server.NewServerGin(cfg, server.WithAuth(client.Middleware()))
+engine, err := server.NewServerGin(cfg, []string{group.Root()}, server.WithAuth(client.Middleware()))
 ```
 
-Same as `WithOpenAPI`'s contract validation, it never reaches the engine's own endpoints
-under `/-/` (health, metrics, metadata, OpenAPI, docs): those are registered before it
-and are meant to answer without a token.
+Same as `WithOpenAPI`'s contract validation, it never reaches an operational route:
+anything under a root's `-/`, the engine's (metadata, health, metrics, OpenAPI, the
+`WithOpenAPI` documents, docs) and the service's own (`/-/workers` below), and
+`/.well-known/api.json`. They answer without a token. They are told by their route
+pattern, not by the order routes are registered in, so a request cannot pass for one
+of them.
+
+An operational route of the service's that needs a token says so itself, with the
+middleware on the route:
+
+```go
+ops := engine.Group(group.Root())
+ops.GET("/-/workers", listWorkers)                      // open
+ops.GET("/-/secrets", client.Middleware(), listSecrets) // a token
+```
 
 ## Health
 
-A gateway or a load balancer checks `/-/readyz` to know whether to send a replica
-traffic, and `/-/healthz` to know it is alive at all. Both answer `{"status":"ok"}`.
+A gateway or a load balancer checks `<root>/-/readyz` to know whether to send a replica
+traffic, and `<root>/-/healthz` to know it is alive at all. Both answer `{"status":"ok"}`.
 
-`/-/readyz` runs the checks the service passes with `WithReadiness`, in order, each
+`<root>/-/readyz` runs the checks the service passes with `WithReadiness`, in order, each
 bounded by `server.ReadinessTimeout` (2s); the first that fails answers `503` as a
 retryable problem document saying why:
 
@@ -277,7 +350,7 @@ without:
 ```go
 var draining atomic.Bool
 
-engine, err := server.NewServerGin(cfg, server.WithReadiness(
+engine, err := server.NewServerGin(cfg, []string{group.Root()}, server.WithReadiness(
 	func(context.Context) error {
 		if draining.Load() {
 			return errors.New("draining")
@@ -290,7 +363,7 @@ engine, err := server.NewServerGin(cfg, server.WithReadiness(
 // on SIGTERM: draining.Store(true), wait for the gateway to notice, then srv.Shutdown
 ```
 
-Without checks, `/-/readyz` answers `200` like `/-/healthz`.
+Without checks, `<root>/-/readyz` answers `200` like `<root>/-/healthz`.
 
 ## Metrics
 
@@ -334,12 +407,15 @@ the same way.
 > every operation carries a single `default` response marked as undocumented. It is an
 > accurate map of the surface, not a contract.
 
-The engine's own endpoints - `/-/healthz`, `/-/readyz`, `/-/metrics`, `/-/metadata`,
-`/-/openapi.json`, `/-/docs` - are documented: a summary, their status codes, content
-types and schemas. A service documents the routes it adds under `/-/` with
-`WithOperations`, by the method and path it registers them with:
+The engine's own endpoints - `<root>/-/healthz`, `<root>/-/readyz`, `<root>/-/metrics`, `<root>/-/metadata`,
+`<root>/-/openapi.json`, `<root>/-/docs` - are documented: a summary, their status codes, content
+types and schemas. A service adds its own under `<root>/-/`, on the root's group, and
+documents them with `WithOperations`, by their method and their path relative to the
+root:
 
 ```go
+engine.Group(group.Root()).GET("/-/workers", listWorkers)
+
 server.WithOperations(server.Operation{
 	Method: http.MethodGet, Path: "/-/workers", Summary: "The workers and their state",
 	Responses: map[string]server.Response{
@@ -355,9 +431,9 @@ without a response.
 > [!WARNING]
 > **The docs page loads Swagger UI from a CDN**
 >
-> `/-/docs` is a small HTML page pulling a pinned Swagger UI release from
+> `<root>/-/docs` is a small HTML page pulling a pinned Swagger UI release from
 > `cdn.jsdelivr.net`. A browser without internet access renders an empty page, while
-> the documents themselves - `/-/openapi.json`, or those under `/-/openapi/` - keep
+> the documents themselves - `<root>/-/openapi.json`, or those under `<root>/-/openapi/` - keep
 > working: they are served in process and depend on nothing external.
 
 ## Configuration in memory
@@ -369,7 +445,7 @@ useful for tests and for values that are not worth a dotenv key:
 cfg.AppCorsAllowOrigins = []string{"https://app.example.com"}
 cfg.AppTrustedProxies = []string{"10.0.0.0/8"}
 
-engine, err := server.NewServerGin(cfg)
+engine, err := server.NewServerGin(cfg, []string{group.Root()})
 ```
 
 ## Graceful shutdown
@@ -402,4 +478,4 @@ if err := srv.Shutdown(ctx); err != nil {
 }
 ```
 
-`examples/server` runs this end to end, including a live request against `/-/metadata`.
+`examples/server` runs this end to end, including a live request against `<root>/-/metadata`.

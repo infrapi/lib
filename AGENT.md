@@ -13,7 +13,7 @@ pkg/client    resty v3 client of pkg/server APIs (TLS/mTLS, retry, hedging)
 pkg/config    dotenv loading, go-playground validation, typed AppConfig
 pkg/errors    application error: RFC 9457 payload, cause, remediation
 pkg/listener  service socket, TCP or systemd socket activation
-pkg/server    gin.Engine factory (CORS, proxies, /-/metadata /-/metrics /-/openapi.json /-/docs), APIGroup
+pkg/server    gin.Engine factory (CORS, proxies, <root>/-/{metadata,healthz,readyz,metrics,openapi.json,docs} per API group root, /.well-known/api.json, all open), APIGroup
 pkg/tofu      drive any OpenTofu provider plugin/resource type, and a declarative apply/destroy on top
 examples/     one runnable program per package
 docs/         Markdown pages, published by the infrapi/docs Hugo portal
@@ -79,7 +79,7 @@ Styling lives in the portal, not here.
   paths relative to the repository root, so run them from there.
 - `pkg/client` tests take around 40s of the Makefile's 60s budget, most of it real
   retry backoff. Keep new timing tests short.
-- `/-/docs` serves Swagger UI from `cdn.jsdelivr.net`, pinned by version in
+- `<root>/-/docs` serves Swagger UI from `cdn.jsdelivr.net`, pinned by version in
   `pkg/server/openapi.go`. The specification itself is generated in process and
   needs nothing external.
 - Known behaviour, deliberate until someone decides otherwise: the HTTP client's

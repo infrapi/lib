@@ -5,7 +5,7 @@
 //	/apis/{group}/{version}/namespaces/{namespace}/{resource}
 //
 // from a namespace and a resource. A route of such a service outside that
-// layout - a cluster-wide endpoint, one under /-/ - goes through
+// layout - a cluster-wide endpoint, one under /apis/{group}/{version}/-/ - goes through
 // [Client.NewRequest], which keeps this client's TLS, retry and header
 // configuration without exposing resty.
 package client
@@ -409,7 +409,8 @@ type Request struct {
 }
 
 // NewRequest returns a Request bound to ctx, for a route outside the
-// namespaced layout Do builds: a cluster-wide endpoint, one under /-/.
+// namespaced layout Do builds: a cluster-wide endpoint, one under
+// /apis/{group}/{version}/-/.
 func (c *Client) NewRequest(ctx context.Context) *Request {
 	return &Request{resty: c.RestyClient.R().SetContext(ctx)}
 }

@@ -18,7 +18,7 @@ import (
 
 // The request's id reaches the problem documents.
 func TestCorrelate(t *testing.T) {
-	app, err := NewServerGin(testAppConfig(t))
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot})
 	require.NoError(t, err)
 	app.GET("/fail", func(c *gin.Context) { AbortError(c, assert.AnError) })
 	_, body := call(t, app, http.MethodGet, "/fail", "", map[string]string{RequestIDHeader: "req-9"})
@@ -44,7 +44,7 @@ func TestSpans(t *testing.T) {
 
 	cfg := testAppConfig(t)
 	cfg.AppLogFormat = LogFormatJSON
-	app, err := NewServerGin(cfg)
+	app, err := NewServerGin(cfg, []string{testRoot})
 	require.NoError(t, err)
 	app.GET("/widgets/:id", func(c *gin.Context) { c.Status(http.StatusNoContent) })
 
@@ -52,7 +52,7 @@ func TestSpans(t *testing.T) {
 	req.Header.Set(RequestIDHeader, "req-7")
 	req.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
 	app.ServeHTTP(httptest.NewRecorder(), req)
-	app.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, MetricsPath, nil))
+	app.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, testRoot+MetricsPath, nil))
 
 	ended := recorder.Ended()
 	require.Len(t, ended, 1, "one span, none for /-/metrics")
