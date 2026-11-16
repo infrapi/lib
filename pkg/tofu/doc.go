@@ -31,6 +31,10 @@
 // [Provider.ResourceSchema] describes a resource type, and [Provider.Import]
 // rebuilds a [Resource] from the id of an object that already exists.
 //
+// [Provider.Plan] says what Update or Create would do, without applying it:
+// the action and the attributes that would change, which, against the
+// resource as it is now, is also its drift.
+//
 // Data sources are read, as data blocks are: [Provider.DataSourceTypes]
 // names them, [Provider.DataSourceSchema] describes one, and
 // [Provider.ReadDataSource] reads it from its arguments, keeping nothing:
