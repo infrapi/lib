@@ -198,11 +198,36 @@ func (p *Provider) Delete(ctx context.Context, state Resource) error {
 // Update: only the prior state and internal blob differ between bringing a
 // new instance into existence and changing an existing one.
 func (p *Provider) planApply(ctx context.Context, origin string, rt resourceType, priorVal cty.Value, priorInternal []byte, config map[string]any) (Resource, error) {
+	pl, err := p.plan(ctx, origin, rt, priorVal, priorInternal, config)
+	if err != nil {
+		return Resource{}, err
+	}
+	if replacing(priorVal, pl.planned) {
+		return Resource{}, infraerrors.Wrap(ErrReplaceRequired, http.StatusConflict, origin,
+			"changing %s of resource type %q requires replacing the resource", changedAttributes(priorVal, pl.planned), rt.name).
+			WithSlug("replace_required").WithTitle("Replacement required").
+			WithSolution("delete the resource and create it again; Apply does so")
+	}
+	return p.apply(ctx, origin, rt, pl)
+}
+
+// planned is a plan the provider made, with what applying it needs.
+type planned struct {
+	prior    providerschema.DynamicValueIn
+	config   providerschema.DynamicValueIn
+	planned  cty.Value
+	internal []byte
+}
+
+// plan validates config and asks the provider to plan the change from
+// priorVal to it: the validate and plan steps of planApply, shared with
+// Plan, which stops there.
+func (p *Provider) plan(ctx context.Context, origin string, rt resourceType, priorVal cty.Value, priorInternal []byte, config map[string]any) (planned, error) {
 	priorDV := providerschema.NewDynamicValue(priorVal, rt.ty)
 
 	configVal, err := valueFromGo(rt.ty, config)
 	if err != nil {
-		return Resource{}, infraerrors.Wrap(err, http.StatusUnprocessableEntity, origin, "invalid configuration for resource type %q", rt.name)
+		return planned{}, infraerrors.Wrap(err, http.StatusUnprocessableEntity, origin, "invalid configuration for resource type %q", rt.name)
 	}
 	configDV := providerschema.NewDynamicValue(configVal, rt.ty)
 
@@ -211,10 +236,10 @@ func (p *Provider) planApply(ctx context.Context, origin string, rt resourceType
 		Config:       configDV,
 	})
 	if err != nil {
-		return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "validate configuration for resource type %q", rt.name)
+		return planned{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "validate configuration for resource type %q", rt.name)
 	}
 	if err := diagnosticsError(origin, PhaseValidate, validateResp.Diagnostics()); err != nil {
-		return Resource{}, err
+		return planned{}, err
 	}
 
 	proposed := proposeNewState(rt.schema, rt.ty, priorVal, configVal)
@@ -228,29 +253,27 @@ func (p *Provider) planApply(ctx context.Context, origin string, rt resourceType
 		ProposedNewState:      proposedDV,
 	})
 	if err != nil {
-		return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "plan resource type %q", rt.name)
+		return planned{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "plan resource type %q", rt.name)
 	}
 	if err := diagnosticsError(origin, PhasePlan, planResp.Diagnostics()); err != nil {
-		return Resource{}, err
+		return planned{}, err
 	}
 
 	plannedVal, err := planResp.PlannedNewState().AsCtyValue(rt.ty)
 	if err != nil {
-		return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "decode plan for resource type %q", rt.name)
+		return planned{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "decode plan for resource type %q", rt.name)
 	}
-	if replacing(priorVal, plannedVal) {
-		return Resource{}, infraerrors.Wrap(ErrReplaceRequired, http.StatusConflict, origin,
-			"changing %s of resource type %q requires replacing the resource", changedAttributes(priorVal, plannedVal), rt.name).
-			WithSlug("replace_required").WithTitle("Replacement required").
-			WithSolution("delete the resource and create it again; Apply does so")
-	}
+	return planned{prior: priorDV, config: configDV, planned: plannedVal, internal: planResp.PlannedProviderInternal()}, nil
+}
 
+// apply applies a plan, the last step of planApply.
+func (p *Provider) apply(ctx context.Context, origin string, rt resourceType, pl planned) (Resource, error) {
 	applyResp, err := p.client.ApplyManagedResourceChange(ctx, &providerops.ApplyManagedResourceChangeRequest{
 		ResourceType:            rt.name,
-		PriorState:              priorDV,
-		Config:                  configDV,
-		PlannedNewState:         providerschema.NewDynamicValue(plannedVal, rt.ty),
-		PlannedProviderInternal: planResp.PlannedProviderInternal(),
+		PriorState:              pl.prior,
+		Config:                  pl.config,
+		PlannedNewState:         providerschema.NewDynamicValue(pl.planned, rt.ty),
+		PlannedProviderInternal: pl.internal,
 	})
 	if err != nil {
 		return Resource{}, infraerrors.Wrap(err, http.StatusBadGateway, origin, "apply resource type %q", rt.name)

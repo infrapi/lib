@@ -120,6 +120,44 @@ framework resource using `UseStateForUnknown`, such as `random_string`) is
 not detected, and is updated in place with state that does not match its
 configuration.
 
+## Planning without applying
+
+`Plan` is `terraform plan` for one resource: what `Update` (or `Create`,
+without a state) would do, with nothing applied. Give it the resource as it
+is now, from `Read` or `Import`, and the configuration you want it to have:
+
+```go
+current, err := provider.Import(ctx, "grafana_folder", id)
+plan, err := provider.Plan(ctx, current, map[string]any{"title": "Ops"})
+
+switch plan.Action {
+case tofu.ActionNone:    // it matches: no drift
+case tofu.ActionUpdate:  // it differs: Update would change it in place
+case tofu.ActionReplace: // it differs in a way that needs deleting and creating it again
+case tofu.ActionCreate:  // no state was given: Create would make this
+}
+for _, c := range plan.Changes {
+	fmt.Println(c.Path, c.Before, "→", c.After) // "title Renamed by hand → Ops"
+}
+```
+
+| Field | Holds |
+|-------|-------|
+| `Changes` | one `Change` per attribute that would change, by path: `title`, `settings.theme`, `permission[0].role`, `labels["env"]`; a set changes as a whole |
+| `Planned` | the planned state, as `Resource.Attributes`, with what only applying knows left null |
+| `Unknown` | the paths of those values: `id`, `url`… |
+
+A `Change` of a sensitive attribute has `Sensitive` set and neither value; a
+value only applying knows has `Unknown` set and no `After`. Null and empty
+(`""`, `[]`) differ, as in Terraform. The diff hides nothing else: leaving
+out what a caller does not show, or what a provider cannot read back, is
+the caller's choice, by path.
+
+Since `Changes` compares the resource as it is now with the plan, it
+includes what was changed outside of this package: planning the
+configuration a resource was created with shows its drift. The replacement
+is inferred as for `Update` (below), with the same limit.
+
 ## Multiple providers
 
 A [`Registry`](https://pkg.go.dev/github.com/infrapi/lib/pkg/tofu#Registry)
