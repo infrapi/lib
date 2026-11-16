@@ -27,8 +27,7 @@ One Go module.
 make all                      # setup clean tidy fmt lint security test
 make fmt lint security test   # the gate to run before handing work off
 go test ./pkg/config          # a single package
-make docs                     # build the site into site/
-make docs-serve               # live reload on :8000
+make docs                     # preview docs/ in the portal (../docs, Hugo): live reload on :1313
 go run ./examples/client      # one runnable program per package
 ```
 
@@ -49,7 +48,7 @@ a broken link or anchor fails its build.
   arrive with tests in the same style.
 - Conventional commit messages. `go-semantic-release` cuts versions from pushes
   to `main`, so `feat:` and `fix:` prefixes decide the next tag.
-- `site/`, `cover*.out` and `coverage.html` are build output and gitignored.
+- `cover*.out` and `coverage.html` are build output and gitignored.
 - Resources are served under `pkg/api`'s layout,
   `/apis/{group}/{version}/namespaces/{namespace}/{resource}`, with
   name/id segments alternating after the namespace. `server.APIGroup` mounts

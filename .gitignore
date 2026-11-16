@@ -40,7 +40,6 @@ examples/cluster/kvapi/kvapi
 coverage*.html
 legacy/
 cover*.out
-site/
 
 # A local Go workspace is a developer's business, not the repository's: see
 # AGENT.md on why the submodules use replace directives instead.
