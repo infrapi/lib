@@ -95,8 +95,8 @@ func example3() {
 	}
 
 	// Add application routes on top of the pre-configured engine, under
-	// /apis/widgets.example.com/v1/namespaces/:namespace.
-	v1, err := infraserver.APIGroup(engine, api.Group{Name: "widgets", Domain: "example.com", Version: "v1"})
+	// /apis/widgets.infrapi.io/v1/namespaces/:namespace.
+	v1, err := infraserver.APIGroup(engine, api.Group{Name: "widgets.infrapi.io", Version: "v1"})
 	if err != nil {
 		log.Fatalf("APIGroup: %v", err)
 	}

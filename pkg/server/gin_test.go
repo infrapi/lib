@@ -21,7 +21,7 @@ INFRAPI_APP_NAME=test-app
 INFRAPI_APP_PLATFORM=sandbox
 INFRAPI_APP_REGION=eu-west-1
 INFRAPI_APP_LOCATION=dc1
-INFRAPI_APP_FQDN=test.example.com
+INFRAPI_APP_FQDN=test.infrapi.io
 INFRAPI_APP_URL=http://test.example.com
 `
 
@@ -104,9 +104,9 @@ func TestNewServerGin_metrics(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	body := w.Body.String()
-	assert.Contains(t, body, `http_requests_total{method="GET",name="test.example.com",path="/widgets/:id",status="200"} 1`)
+	assert.Contains(t, body, `http_requests_total{method="GET",name="test.infrapi.io",path="/widgets/:id",status="200"} 1`)
 	assert.Contains(t, body, `path="`+unmatchedPath+`",status="404"} 1`)
-	assert.Contains(t, body, `http_request_duration_seconds_bucket{method="GET",name="test.example.com",path="/widgets/:id"`)
+	assert.Contains(t, body, `http_request_duration_seconds_bucket{method="GET",name="test.infrapi.io",path="/widgets/:id"`)
 
 	// the default registry is gathered too, so promauto keeps working
 	assert.Contains(t, body, "go_goroutines")

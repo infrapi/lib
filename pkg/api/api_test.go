@@ -7,29 +7,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var compute = Group{Name: "compute", Domain: "infrapi.io", Version: "v1"}
+var compute = Group{Name: "compute.infrapi.io", Version: "v1"}
 
 func TestGroup(t *testing.T) {
-	assert.Equal(t, "compute.infrapi.io", compute.URN())
 	assert.Equal(t, "/apis/compute.infrapi.io/v1", compute.Root())
 	assert.Equal(t, "/apis/compute.infrapi.io/v1/namespaces/:namespace", compute.NamespacePath(":namespace"))
 	require.NoError(t, compute.Validate())
-	require.NoError(t, Group{Name: "a", Domain: "b", Version: "v2beta1"}.Validate())
+	require.NoError(t, Group{Name: "a.b", Version: "v2beta1"}.Validate())
+	require.NoError(t, Group{Name: "vault.infrapi.io", Version: "v1"}.Validate())
 }
 
 func TestGroup_Validate(t *testing.T) {
 	for name, g := range map[string]Group{
-		"empty name":      {Domain: "infrapi.io", Version: "v1"},
-		"upper name":      {Name: "Compute", Domain: "infrapi.io", Version: "v1"},
-		"dotted name":     {Name: "a.b", Domain: "infrapi.io", Version: "v1"},
-		"empty domain":    {Name: "compute", Version: "v1"},
-		"bad domain":      {Name: "compute", Domain: "gi_services.io", Version: "v1"},
-		"trailing dot":    {Name: "compute", Domain: "infrapi.io.", Version: "v1"},
-		"empty version":   {Name: "compute", Domain: "infrapi.io"},
-		"bare number":     {Name: "compute", Domain: "infrapi.io", Version: "1"},
-		"v0":              {Name: "compute", Domain: "infrapi.io", Version: "v0"},
-		"unknown level":   {Name: "compute", Domain: "infrapi.io", Version: "v1rc1"},
-		"level no number": {Name: "compute", Domain: "infrapi.io", Version: "v1beta"},
+		"empty name":      {Version: "v1"},
+		"single label":    {Name: "compute", Version: "v1"},
+		"upper name":      {Name: "Compute.infrapi.io", Version: "v1"},
+		"bad label":       {Name: "compute.gi_services.io", Version: "v1"},
+		"trailing dot":    {Name: "compute.infrapi.io.", Version: "v1"},
+		"leading dot":     {Name: ".infrapi.io", Version: "v1"},
+		"empty version":   {Name: "compute.infrapi.io"},
+		"bare number":     {Name: "compute.infrapi.io", Version: "1"},
+		"v0":              {Name: "compute.infrapi.io", Version: "v0"},
+		"unknown level":   {Name: "compute.infrapi.io", Version: "v1rc1"},
+		"level no number": {Name: "compute.infrapi.io", Version: "v1beta"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			assert.Error(t, g.Validate())
@@ -74,13 +74,13 @@ func TestParse(t *testing.T) {
 	require.NoError(t, err)
 	p, err = Parse(built)
 	require.NoError(t, err)
-	assert.Equal(t, Path{API: compute.URN(), Version: "v1", Namespace: "core", Resource: "vm"}, p)
+	assert.Equal(t, Path{API: compute.Name, Version: "v1", Namespace: "core", Resource: "vm"}, p)
 
 	for name, path := range map[string]string{
 		"no prefix":         "/api/compute.infrapi.io/v1/namespaces/core/vm",
 		"too short":         "/apis/compute.infrapi.io/v1/namespaces/core",
 		"no namespaces":     "/apis/compute.infrapi.io/v1/projects/core/vm",
-		"no domain":         "/apis/compute/v1/namespaces/core/vm",
+		"single label":      "/apis/compute/v1/namespaces/core/vm",
 		"bad version":       "/apis/compute.infrapi.io/1/namespaces/core/vm",
 		"bad namespace":     "/apis/compute.infrapi.io/v1/namespaces/Core/vm",
 		"empty resource":    "/apis/compute.infrapi.io/v1/namespaces/core/",

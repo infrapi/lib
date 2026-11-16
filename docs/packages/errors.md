@@ -106,7 +106,7 @@ describing that type rather than this occurrence:
 
 ```go
 return infraerrors.New(http.StatusConflict, "subscription.Create", "id %q is taken", id).
-	WithType("https://infrapi.example.com/errors/duplicate-subscription", "Duplicate subscription")
+	WithType("https://example.com/errors/duplicate-subscription", "Duplicate subscription")
 ```
 
 ## Wrapping a cause
@@ -190,7 +190,7 @@ func handle(c *gin.Context) {
 
 ```json
 {
-  "type": "https://infrapi.example.com/errors/unknown-user",
+  "type": "https://example.com/errors/unknown-user",
   "status": 404,
   "title": "Unknown user",
   "detail": "no user with id 42",

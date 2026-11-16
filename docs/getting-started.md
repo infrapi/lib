@@ -55,7 +55,7 @@ if err != nil {
 	log.Fatal(err)
 }
 
-widgets, err := server.APIGroup(engine, api.Group{Name: "widgets", Domain: "example.com", Version: "v1"})
+widgets, err := server.APIGroup(engine, api.Group{Name: "widgets.infrapi.io", Version: "v1"})
 if err != nil {
 	log.Fatal(err)
 }
@@ -69,14 +69,14 @@ if err := engine.Run(cfg.AppListenAddress); err != nil {
 ```
 
 The engine already answers `GET /-/metadata` with the application identity, and the
-route above is `GET /apis/widgets.example.com/v1/namespaces/:namespace/widget`.
+route above is `GET /apis/widgets.infrapi.io/v1/namespaces/:namespace/widget`.
 
 ## 5. Call another service
 
 ```go
 client, err := infraclient.NewClient(&infraclient.ClientOptions{
-	Server:    "widgets.example.com",
-	API:       api.Group{Name: "widgets", Domain: "example.com", Version: "v1"},
+	Server:    "widgets.infrapi.io",
+	API:       api.Group{Name: "widgets.infrapi.io", Version: "v1"},
 	Namespace: "demo",
 	Token:     os.Getenv("INFRAPI_TOKEN"),
 })
@@ -88,7 +88,7 @@ resp, err := client.Get("widget", nil)
 ```
 
 That request hits
-`https://widgets.example.com:443/apis/widgets.example.com/v1/namespaces/demo/widget`. See
+`https://widgets.example.com:443/apis/widgets.infrapi.io/v1/namespaces/demo/widget`. See
 the [client reference](packages/client.md) for TLS, retry and hedging options, and
 [api](packages/api.md) for the path layout.
 

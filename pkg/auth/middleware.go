@@ -52,10 +52,10 @@ func (a *Client) Middleware() gin.HandlerFunc {
 }
 
 // RequireAccess authorizes every request it wraps against the
-// authorization service's check endpoint (POST AuthorizePathFor the
-// client's APIDomain). The request path must follow
+// authorization service's check endpoint (POST, the path its discovery
+// document names, see Client.Discover). The request path must follow
 // pkg/api's layout,
-// /apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}, which
+// /apis/{group}/{version}/namespaces/{namespace}/{resource}, which
 // is what server.APIGroup mounts: the namespace and the API come from it,
 // Resource and Verb from the rest of the path and the HTTP method (see
 // ParseResource and VerbFor). Anything else is answered 404. The path is

@@ -13,8 +13,8 @@ import (
 )
 
 // myapp is the API the local server exposes: every request of the examples
-// goes to /apis/myapp.example.com/v1/namespaces/demo/{resource}.
-var myapp = api.Group{Name: "myapp", Domain: "example.com", Version: "v1"}
+// goes to /apis/myapp.infrapi.io/v1/namespaces/demo/{resource}.
+var myapp = api.Group{Name: "myapp.infrapi.io", Version: "v1"}
 
 func main() {
 	fmt.Println("=== InfraPI client Package Examples ===")
@@ -286,7 +286,7 @@ func example7() {
 
 	// Approach A: provide PEM bytes directly (e.g. from Vault)
 	_, err := infraclient.NewClient(&infraclient.ClientOptions{
-		Server:            "internal.example.com",
+		Server:            "internal.infrapi.io",
 		API:               myapp,
 		Namespace:         "demo",
 		Protocol:          "https",
@@ -301,7 +301,7 @@ func example7() {
 
 	// Approach B: reference cert/key files on disk
 	_, err = infraclient.NewClient(&infraclient.ClientOptions{
-		Server:         "internal.example.com",
+		Server:         "internal.infrapi.io",
 		API:            myapp,
 		Namespace:      "demo",
 		Protocol:       "https",

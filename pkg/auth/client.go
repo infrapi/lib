@@ -3,7 +3,10 @@
 // service's POST /oauth2/userinfo endpoint - the same check it runs on
 // every request it protects itself - and resolves it to a [UserInfo].
 // [Client.Middleware] turns that into a gin middleware that authenticates
-// every route it wraps.
+// every route it wraps, [Client.RequireAccess] into one that asks Kayra's
+// check endpoint whether the caller may act. That endpoint is discovered
+// from Kayra's /.well-known/kayra.json ([Client.Discover]): a service
+// configures Kayra's URL, never its API domain.
 package auth
 
 import (
@@ -13,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	infraerrors "github.com/infrapi/lib/pkg/errors"
@@ -45,12 +49,6 @@ type ClientOptions struct {
 	// reaches the authentication service and a revoked token or a
 	// changed group membership is reflected immediately.
 	CacheTTL time.Duration
-
-	// APIDomain is the authorization service's own API domain — Kayra's
-	// app.api_domain — that Authorize and RequireAccess reach its check
-	// endpoint on, AuthorizePathFor(APIDomain) (default: DefaultAPIDomain,
-	// so AuthorizePath). A DNS name, like infrapi.io.
-	APIDomain string
 }
 
 // Client calls an authentication service's POST /oauth2/userinfo endpoint
@@ -59,21 +57,17 @@ type Client struct {
 	baseURL string
 	http    *http.Client
 	cache   *cache // nil when ClientOptions.CacheTTL is negative
-	// authorizePath is AuthorizePathFor(ClientOptions.APIDomain)
-	authorizePath string
+
+	// discovered is the service's discovery document, once Discover read
+	// it; discoverMu serializes the reads until then.
+	discoverMu sync.Mutex
+	discovered *Discovery
 }
 
 // NewClient returns a Client calling opts.BaseURL.
 func NewClient(opts ClientOptions) (*Client, error) {
 	if opts.BaseURL == "" {
 		return nil, fmt.Errorf("auth: NewClient requires BaseURL")
-	}
-
-	if opts.APIDomain == "" {
-		opts.APIDomain = DefaultAPIDomain
-	}
-	if err := authorizationGroup(opts.APIDomain).Validate(); err != nil {
-		return nil, fmt.Errorf("auth: NewClient: APIDomain: %w", err)
 	}
 
 	httpClient := opts.HTTPClient
@@ -85,11 +79,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		httpClient = &http.Client{Timeout: timeout}
 	}
 
-	c := &Client{
-		baseURL:       strings.TrimRight(opts.BaseURL, "/"),
-		http:          httpClient,
-		authorizePath: AuthorizePathFor(opts.APIDomain),
-	}
+	c := &Client{baseURL: strings.TrimRight(opts.BaseURL, "/"), http: httpClient}
 	switch {
 	case opts.CacheTTL == 0:
 		c.cache = newCache(DefaultCacheTTL)

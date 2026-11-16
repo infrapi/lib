@@ -65,7 +65,7 @@ The paths are exported as `server.MetricsPath`, `server.HealthzPath`,
   "appPlatform": "sandbox",
   "appRegion": "eu-west-1",
   "appLocation": "dc1",
-  "appFqdn": "my-service.example.com",
+  "appFqdn": "my-service.infrapi.io",
   "appUrl": "http://my-service.example.com:8080"
 }
 ```
@@ -76,12 +76,12 @@ middleware on top of it.
 ## API routes
 
 Every InfraPI service exposes its resources under [`api`](api.md)'s layout,
-`/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}`, the paths
+`/apis/{group}/{version}/namespaces/{namespace}/{resource}`, the paths
 [`client`](client.md) builds and [`auth`](auth.md)'s `RequireAccess` authorizes.
 `APIGroup` mounts it:
 
 ```go
-vms, err := server.APIGroup(engine, api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"})
+vms, err := server.APIGroup(engine, api.Group{Name: "compute.infrapi.io", Version: "v1"})
 if err != nil {
 	log.Fatal(err) // an invalid group, at start
 }
@@ -298,8 +298,8 @@ Two collectors are recorded for every request, carrying the service FQDN in a `n
 label:
 
 ```text
-http_requests_total{method="GET",name="my-service.example.com",path="/apis/widgets.example.com/v1/namespaces/:namespace/widget/:id",status="200"} 1
-http_request_duration_seconds_bucket{method="GET",name="my-service.example.com",path="/apis/widgets.example.com/v1/namespaces/:namespace/widget/:id",le="0.005"} 1
+http_requests_total{method="GET",name="my-service.infrapi.io",path="/apis/widgets.infrapi.io/v1/namespaces/:namespace/widget/:id",status="200"} 1
+http_request_duration_seconds_bucket{method="GET",name="my-service.infrapi.io",path="/apis/widgets.infrapi.io/v1/namespaces/:namespace/widget/:id",le="0.005"} 1
 ```
 
 `path` is the route pattern, not the URL, so `/widgets/1` and `/widgets/2` share one time

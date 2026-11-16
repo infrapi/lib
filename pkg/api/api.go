@@ -2,9 +2,12 @@
 // under, shared by pkg/server, which mounts it, pkg/client, which calls it,
 // and pkg/auth, which authorizes it:
 //
-//	/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}[/{id}[/{action}[/{id}...]]]
+//	/apis/{group}/{version}/namespaces/{namespace}/{resource}[/{id}[/{action}[/{id}...]]]
 //
-// for instance /apis/compute.infrapi.io/v1/namespaces/core/vm/123/reboot.
+// for instance /apis/compute.infrapi.io/v1/namespaces/core/vm/123/reboot. A
+// group is named in full, like a Kubernetes API group: compute.infrapi.io.
+// Only Kayra has a domain of its own, for its built-in
+// groups (system, catalog, authorization), which clients discover.
 // After the namespace, segments alternate a resource or action name and an
 // instance id. The package has no dependency, so a client does not pull in
 // the server's.
@@ -24,35 +27,26 @@ const Prefix = "/apis"
 const namespacesSegment = "namespaces"
 
 var (
-	// label is a DNS label, RFC 1123, lower case: an API name, each part of
-	// its domain, a namespace.
+	// label is a DNS label, RFC 1123, lower case: each part of a group's
+	// name, a namespace.
 	label = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 	// version is v1, v2, ... with an optional alpha or beta level, v1beta2.
 	version = regexp.MustCompile(`^v[1-9][0-9]*((alpha|beta)[1-9][0-9]*)?$`)
 )
 
-// Group is an API: what a service exposes, named {Name}.{Domain} and served
-// at Version.
+// Group is an API: what a service exposes, named in full and served at
+// Version.
 type Group struct {
-	// Name of the API, a DNS label: compute.
+	// Name of the group, a lower case DNS name of two labels or more, the
+	// name the API is registered under in Kayra: compute.infrapi.io.
 	Name string
-	// Domain it belongs to, a DNS name: infrapi.io.
-	Domain string
 	// Version served: v1, v2beta1.
 	Version string
 }
 
-// URN is the full name of the group, {Name}.{Domain}: compute.infrapi.io.
-func (g Group) URN() string {
-	return g.Name + "." + g.Domain
-}
-
 // Validate reports the first field that does not fit the layout.
 func (g Group) Validate() error {
-	if !label.MatchString(g.Name) {
-		return fmt.Errorf("api: name %q is not a lower case DNS label", g.Name)
-	}
-	if err := validateDomain(g.Domain); err != nil {
+	if err := ValidateGroupName(g.Name); err != nil {
 		return err
 	}
 	if !version.MatchString(g.Version) {
@@ -63,7 +57,7 @@ func (g Group) Validate() error {
 
 // Root is the path of the group: /apis/compute.infrapi.io/v1.
 func (g Group) Root() string {
-	return Prefix + "/" + g.URN() + "/" + g.Version
+	return Prefix + "/" + g.Name + "/" + g.Version
 }
 
 // NamespacePath is the path namespace's resources sit under:
@@ -95,7 +89,7 @@ func (g Group) Path(namespace, resource string) (string, error) {
 
 // Path is an API path taken apart.
 type Path struct {
-	// API is the group's URN: compute.infrapi.io.
+	// API is the group's name: compute.infrapi.io.
 	API string
 	// Version of the group: v1.
 	Version string
@@ -117,10 +111,9 @@ func Parse(p string) (Path, error) {
 	if len(parts) < 5 || parts[2] != namespacesSegment {
 		return Path{}, fmt.Errorf("api: path %q is not %s/{api}/{version}/namespaces/{namespace}/{resource}", p, Prefix)
 	}
-	urn, ver, ns := parts[0], parts[1], parts[3]
+	group, ver, ns := parts[0], parts[1], parts[3]
 
-	name, domain, _ := strings.Cut(urn, ".")
-	if err := (Group{Name: name, Domain: domain, Version: ver}).Validate(); err != nil {
+	if err := (Group{Name: group, Version: ver}).Validate(); err != nil {
 		return Path{}, err
 	}
 	if err := ValidateNamespace(ns); err != nil {
@@ -130,7 +123,7 @@ func Parse(p string) (Path, error) {
 	if err != nil {
 		return Path{}, err
 	}
-	return Path{API: urn, Version: ver, Namespace: ns, Resource: strings.Join(segments, "/")}, nil
+	return Path{API: group, Version: ver, Namespace: ns, Resource: strings.Join(segments, "/")}, nil
 }
 
 // ValidateNamespace reports whether namespace is a lower case DNS label, the
@@ -158,14 +151,16 @@ func splitResource(resource string) ([]string, error) {
 	return segments, nil
 }
 
-// validateDomain checks domain is dot separated DNS labels.
-func validateDomain(domain string) error {
-	if domain == "" {
-		return fmt.Errorf("api: empty domain")
+// ValidateGroupName reports whether name is a group's full name: a lower
+// case DNS name of two labels or more, compute.infrapi.io.
+func ValidateGroupName(name string) error {
+	labels := strings.Split(name, ".")
+	if len(labels) < 2 {
+		return fmt.Errorf("api: group %q is not a full name, like compute.infrapi.io", name)
 	}
-	for _, l := range strings.Split(domain, ".") {
+	for _, l := range labels {
 		if !label.MatchString(l) {
-			return fmt.Errorf("api: domain %q is not a lower case DNS name", domain)
+			return fmt.Errorf("api: group %q is not a lower case DNS name, like compute.infrapi.io", name)
 		}
 	}
 	return nil

@@ -15,7 +15,7 @@ func TestAPIGroup(t *testing.T) {
 	app, err := NewServerGin(testAppConfig(t))
 	require.NoError(t, err)
 
-	vms, err := APIGroup(app, api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"})
+	vms, err := APIGroup(app, api.Group{Name: "compute.infrapi.io", Version: "v1"})
 	require.NoError(t, err)
 	vms.GET("/vm/:id", func(c *gin.Context) {
 		c.String(http.StatusOK, "%s/%s", Namespace(c), c.Param("id"))
@@ -31,6 +31,6 @@ func TestAPIGroup(t *testing.T) {
 }
 
 func TestAPIGroup_invalid(t *testing.T) {
-	_, err := APIGroup(gin.New(), api.Group{Name: "compute", Domain: "infrapi.io"})
+	_, err := APIGroup(gin.New(), api.Group{Name: "compute.infrapi.io"})
 	assert.Error(t, err)
 }

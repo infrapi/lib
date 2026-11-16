@@ -22,13 +22,13 @@ func TestError_message(t *testing.T) {
 
 func TestError_allMembers(t *testing.T) {
 	err := New(http.StatusConflict, "subscription.Create", "id %q is taken", "sub-1").
-		WithType("https://infrapi.example.com/errors/duplicate", "Duplicate subscription").
+		WithType("https://example.com/errors/duplicate", "Duplicate subscription").
 		WithSolution("pick another id")
 	err.Instance = "/subscriptions/sub-1"
 
 	assert.Equal(t,
 		"infrapi-error: status=409 | title=Duplicate subscription"+
-			" | type=https://infrapi.example.com/errors/duplicate"+
+			" | type=https://example.com/errors/duplicate"+
 			" | origin=subscription.Create | detail=id \"sub-1\" is taken"+
 			" | instance=/subscriptions/sub-1 | solution=pick another id",
 		err.Error())
@@ -62,7 +62,7 @@ func TestError_unwrap(t *testing.T) {
 
 func TestError_payload(t *testing.T) {
 	err := New(http.StatusConflict, "subscription.Create", "id %q is taken", "sub-1").
-		WithType("https://infrapi.example.com/errors/duplicate", "Duplicate subscription").
+		WithType("https://example.com/errors/duplicate", "Duplicate subscription").
 		WithSolution("pick another id")
 	err.Instance = "/subscriptions/sub-1"
 
@@ -70,7 +70,7 @@ func TestError_payload(t *testing.T) {
 	require.NoError(t, jsonErr)
 
 	assert.JSONEq(t, `{
-		"type": "https://infrapi.example.com/errors/duplicate",
+		"type": "https://example.com/errors/duplicate",
 		"status": 409,
 		"title": "Duplicate subscription",
 		"detail": "id \"sub-1\" is taken",

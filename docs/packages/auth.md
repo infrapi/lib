@@ -27,18 +27,37 @@ client, err := infraauth.NewClient(infraauth.ClientOptions{
 call; `HTTPClient` overrides it entirely, for TLS, proxy or transport settings `Timeout`
 alone cannot express.
 
-`APIDomain` is the service's own API domain, Kayra's `app.api_domain`: the check
-endpoint [`RequireAccess`](#authorizing-apiresourceverb-access) asks lives on it, at
-`/apis/authorization.<APIDomain>/v1/check` (`infraauth.AuthorizePathFor`). It defaults
-to `infraauth.DefaultAPIDomain`, `infrapi.io`, whose path is `infraauth.AuthorizePath`;
-a value that is not a DNS name is an error from `NewClient`.
+## Discovering Kayra
 
-```go
-client, err := infraauth.NewClient(infraauth.ClientOptions{
-	BaseURL:   "https://kayra.example.com",
-	APIDomain: "example.com", // Kayra's app.api_domain: /apis/authorization.example.com/v1/check
-})
+`BaseURL` is all a service configures. The rest — Kayra's API domain, the path of the
+check endpoint [`RequireAccess`](#authorizing-apiresourceverb-access) asks — comes from
+Kayra's discovery document, `/.well-known/kayra.json` (`infraauth.DiscoveryPath`):
+
+```json
+{
+  "domain": "infrapi.io",
+  "apis": {
+    "system": "/apis/system.infrapi.io/v1",
+    "catalog": "/apis/catalog.infrapi.io/v1",
+    "authorization": "/apis/authorization.infrapi.io/v1"
+  },
+  "endpoints": {
+    "userinfo": "/oauth2/userinfo",
+    "check": "/apis/authorization.infrapi.io/v1/check",
+    "jwks": "/oauth2/discovery/keys",
+    "apis": "/apis"
+  }
+}
 ```
+
+`Client.Discover` reads it on first use and keeps it for the client's lifetime: one call
+per process, not per request. A failed read is not kept, so a service started before
+Kayra answers works once Kayra does; meanwhile, the requests it gates get a retryable
+`503` naming the document's URL. `Discover` is exported too, for a service that wants to
+check Kayra at start.
+
+Kayra's domain names its own groups only. A service's API is its own full group name,
+`compute.infrapi.io` — see [`api`](api.md).
 
 ## Verifying a token directly
 
@@ -132,23 +151,23 @@ contract validation - are not gated.
 
 A service mounting its routes with [`server.APIGroup`](server.md#api-routes), under
 [`api`](api.md)'s layout
-`/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}` -
+`/apis/{group}/{version}/namespaces/{namespace}/{resource}` -
 [Kayra](https://github.com/infrapi/kayra)'s convention for RBAC-protected APIs - gates
 them on `Client.RequireAccess()` instead of hand-rolling its own RBAC storage and
 matching:
 
 ```go
-vms, err := server.APIGroup(engine, api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"})
+vms, err := server.APIGroup(engine, api.Group{Name: "compute.infrapi.io", Version: "v1"})
 vms.Use(client.RequireAccess())
 vms.GET("/vm/:id", getVM)
 vms.POST("/vm/:id/reboot", rebootVM)
 ```
 
-`RequireAccess` takes the request path apart with `api.Parse` - the API URN
+`RequireAccess` takes the request path apart with `api.Parse` - the API group
 (`compute.infrapi.io`) and the namespace come from it, `Resource`/`Verb` from the rest
 of the path and the HTTP method (see below) - and calls the authentication/authorization
-service's check endpoint (`POST /apis/authorization.<APIDomain>/v1/check`, see
-[Creating a client](#creating-a-client)) with the
+service's check endpoint (`POST`, the path its discovery document names, see
+[Discovering Kayra](#discovering-kayra)) with the
 caller's own bearer token to get an allow/deny decision; the actual RBAC rules never leave
 that service, this package only shapes the request. It reads the request path rather than
 route parameters, so any route pattern works, a `*resource` wildcard as well as named
@@ -157,7 +176,8 @@ route parameters, so any route pattern works, a `*resource` wildcard as well as 
 When the service refuses the check itself with a `4xx` — Kayra's unknown namespace or
 API registration, a resource missing from the API's spec (`404`), a verb the resource
 lacks (`405`), a namespace not subscribed to the API (`403`) — the caller gets that
-problem as is: its status, `detail` and `solution`. Only a `5xx`, or no answer at all, is
+problem as is: its status, `detail` and `solution`. Only a `5xx`, no answer at all, or no
+discovery document, is
 the service failing: `502` (retryable) or `503`.
 
 A denial answers `403` with the service's own reason in `detail`; it does not depend on

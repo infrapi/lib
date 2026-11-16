@@ -15,7 +15,7 @@ import (
 )
 
 // compute is the API every example below builds, parses or serves.
-var compute = api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"}
+var compute = api.Group{Name: "compute.infrapi.io", Version: "v1"}
 
 func main() {
 	fmt.Println("=== InfraPI api Package Examples ===")
@@ -34,11 +34,11 @@ func main() {
 	example4()
 }
 
-// Example 1: the URN, the root and the full paths of a group.
+// Example 1: the name, the root and the full paths of a group.
 func example1() {
 	fmt.Println("--- Example 1: Building Paths ---")
 
-	fmt.Printf("URN            : %s\n", compute.URN())
+	fmt.Printf("Name           : %s\n", compute.Name)
 	fmt.Printf("Root           : %s\n", compute.Root())
 	fmt.Printf("Route pattern  : %s\n", compute.NamespacePath(":namespace"))
 
@@ -57,9 +57,9 @@ func example2() {
 	fmt.Println("--- Example 2: Refused Groups and Paths ---")
 
 	for _, g := range []api.Group{
-		{Name: "Compute", Domain: "infrapi.io", Version: "v1"}, // upper case
-		{Name: "compute", Domain: "infrapi.io", Version: "1"},  // no v
-		{Name: "compute", Version: "v1"},                       // no domain
+		{Name: "Compute.infrapi.io", Version: "v1"}, // upper case
+		{Name: "compute.infrapi.io", Version: "1"},  // no v
+		{Name: "compute", Version: "v1"},            // not a full name
 	} {
 		fmt.Printf("%-47s → %v\n", fmt.Sprintf("%+v", g), g.Validate())
 	}

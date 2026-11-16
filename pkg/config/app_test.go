@@ -230,7 +230,7 @@ func TestGetAppLocation_error(t *testing.T) {
 func TestGetAppFqdn_assign(t *testing.T) {
 	c := &Variables{
 		Values: map[string]string{
-			"INFRAPI_APP_FQDN": "example.com",
+			"INFRAPI_APP_FQDN": "infrapi.io",
 		},
 		Path:          ".env",
 		DefaultConfig: NewDefaultConfig(),
@@ -238,7 +238,7 @@ func TestGetAppFqdn_assign(t *testing.T) {
 
 	v, err := c.GetAppFqdn()
 	require.NoError(t, err)
-	assert.Equal(t, "example.com", v)
+	assert.Equal(t, "infrapi.io", v)
 }
 
 func TestGetAppFqdn_error(t *testing.T) {

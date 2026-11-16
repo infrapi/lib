@@ -16,7 +16,7 @@
 // rather than the occurrence:
 //
 //	return errors.New(http.StatusConflict, "subscription.Create", "id %q is taken", id).
-//		WithType("https://infrapi.example.com/errors/duplicate-subscription", "Duplicate subscription")
+//		WithType("https://example.com/errors/duplicate-subscription", "Duplicate subscription")
 //
 // Codes are the net/http constants; this package does not redefine them.
 //

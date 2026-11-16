@@ -18,10 +18,10 @@ TLS 1.2 floor, retry on transient failures and optional hedging - that builds th
 ## Creating a client
 
 ```go
-compute := api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"}
+compute := api.Group{Name: "compute.infrapi.io", Version: "v1"}
 
 client, err := infraclient.NewClient(&infraclient.ClientOptions{
-	Server:    "compute.example.com",
+	Server:    "compute.infrapi.io",
 	API:       compute,
 	Namespace: "core",
 	Token:     token,
@@ -36,7 +36,7 @@ else has a default:
 | `Protocol` | `string` | `https` |
 | `Port` | `int` | `443` |
 | `Namespace` | `string` | none: each request must then name one |
-| `UserAgent` | `string` | `infrapi-lib-client-{name}.{domain}` |
+| `UserAgent` | `string` | `infrapi-lib-client-{group}` |
 | `Headers` | `map[string]string` | `Content-Type` and `Accept` set to `application/json` |
 | `GlobalTimeout` | `int` (seconds) | `60` |
 | `RetryCount` | `int` | `3` |
@@ -53,7 +53,7 @@ what `NewClient` calls internally.
 Requests name a resource, and the client builds:
 
 ```text
-{Protocol}://{Server}:{Port}/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}
+{Protocol}://{Server}:{Port}/apis/{group}/{version}/namespaces/{namespace}/{resource}
 ```
 
 So on the client above, `client.Get("vm/123", nil)` requests
@@ -68,7 +68,7 @@ a namespace, fails before anything is sent.
 resp, err := client.Post("vm", &infraclient.RequestOptions{
 	Data:      body,                                  // raw request body
 	Headers:   map[string]string{"X-Request-Id": id}, // merged into the request
-	Server:    "compute-eu.example.com",              // per-request host override
+	Server:    "compute-eu.infrapi.io",              // per-request host override
 	Namespace: "edge",                                // per-request namespace override
 })
 ```
@@ -108,7 +108,7 @@ any `5xx`, with exponential backoff between `RetryWaitTime` and `RetryMaxWaitTim
 
 ```go
 client, err := infraclient.NewClient(&infraclient.ClientOptions{
-	Server:           "compute.example.com",
+	Server:           "compute.infrapi.io",
 	API:              compute,
 	RetryCount:       5,
 	RetryWaitTime:    200 * time.Millisecond,
@@ -123,7 +123,7 @@ load for a shorter tail latency.
 
 ```go
 client, err := infraclient.NewClient(&infraclient.ClientOptions{
-	Server: "compute.example.com",
+	Server: "compute.infrapi.io",
 	API:    compute,
 	Hedging: &infraclient.HedgingOptions{
 		Enabled:      true,
@@ -153,7 +153,7 @@ as filesystem paths; when both are given, the in-memory content wins.
 
 ```go
 client, err := infraclient.NewClient(&infraclient.ClientOptions{
-	Server: "compute.example.com",
+	Server: "compute.infrapi.io",
 	API:    compute,
 
 	CACertPath: "/etc/ssl/certs/internal-ca.pem",

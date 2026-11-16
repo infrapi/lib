@@ -12,15 +12,34 @@ import (
 	infraerrors "github.com/infrapi/lib/pkg/errors"
 )
 
+// testCheckPath is the check endpoint withDiscovery's document names: not
+// Kayra's usual path, so a test passes only when the client read it from
+// the document.
+const testCheckPath = "/apis/authorization.infrapi.io/v1beta1/check"
+
+// withDiscovery serves Kayra's discovery document at DiscoveryPath, naming
+// testCheckPath, and hands every other request to next.
+func withDiscovery(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != DiscoveryPath {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"domain":"infrapi.io","apis":{"authorization":"/apis/authorization.infrapi.io/v1beta1"},` +
+			`"endpoints":{"userinfo":"/oauth2/userinfo","check":"` + testCheckPath + `","jwks":"/oauth2/discovery/keys","apis":"/apis"}}`))
+	})
+}
+
 // authorizeStub serves a minimal stand-in for the authorization
-// service's POST AuthorizePath: it checks the bearer token against want
-// and, on match, answers with body (an {"allowed":...,"reason":...}
-// object, as the real service does).
+// service: its discovery document, and its check endpoint, which checks
+// the bearer token against want and, on match, answers with body (an
+// {"allowed":...,"reason":...} object, as the real service does).
 func authorizeStub(t *testing.T, want, body string) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(withDiscovery(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, AuthorizePath, r.URL.Path)
+		assert.Equal(t, testCheckPath, r.URL.Path)
 
 		if r.Header.Get("Authorization") != "Bearer "+want {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -28,7 +47,7 @@ func authorizeStub(t *testing.T, want, body string) *httptest.Server {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(body))
-	}))
+	})))
 }
 
 func TestAuthorize_allowed(t *testing.T) {
@@ -83,9 +102,9 @@ func TestAuthorize_rejectsEmptyToken(t *testing.T) {
 }
 
 func TestAuthorize_upstreamError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(withDiscovery(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-	}))
+	})))
 	defer srv.Close()
 
 	client, err := NewClient(ClientOptions{BaseURL: srv.URL})
@@ -105,48 +124,6 @@ func TestAuthorize_unreachable(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, infraerrors.ErrorCode(err))
 }
 
-func TestAuthorizePathFor(t *testing.T) {
-	assert.Equal(t, AuthorizePath, AuthorizePathFor(""))
-	assert.Equal(t, AuthorizePath, AuthorizePathFor(DefaultAPIDomain))
-	assert.Equal(t, "/apis/authorization.example.com/v1/check", AuthorizePathFor("example.com"))
-}
-
-// A client for another API domain asks that domain's check endpoint, from
-// Authorize and from RequireAccess alike.
-func TestAuthorize_apiDomain(t *testing.T) {
-	var paths []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"allowed":true}`))
-	}))
-	defer srv.Close()
-
-	client, err := NewClient(ClientOptions{BaseURL: srv.URL, APIDomain: "example.com"})
-	require.NoError(t, err)
-
-	allowed, _, err := client.Authorize(context.Background(), "good-token", AuthorizeRequest{
-		Namespace: "core", Api: "compute.example.com", Resource: "vm", Verb: "list",
-	})
-	require.NoError(t, err)
-	assert.True(t, allowed)
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/apis/compute.example.com/v1/namespaces/core/vm", nil)
-	req.Header.Set("Authorization", "Bearer good-token")
-	testAccessEngine(t, client).ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	assert.Equal(t, []string{"/apis/authorization.example.com/v1/check", "/apis/authorization.example.com/v1/check"}, paths)
-}
-
-func TestNewClient_rejectsInvalidAPIDomain(t *testing.T) {
-	for _, domain := range []string{"not a domain", "Example.COM", "-bad.io"} {
-		_, err := NewClient(ClientOptions{BaseURL: "http://unused.invalid", APIDomain: domain})
-		assert.Error(t, err, domain)
-	}
-}
-
 // A 4xx from the check is about the request: Kayra's problem is passed on,
 // status, detail and solution, rather than hidden behind a 502.
 func TestAuthorize_passesOnRequestProblems(t *testing.T) {
@@ -163,11 +140,11 @@ func TestAuthorize_passesOnRequestProblems(t *testing.T) {
 		{"no body", ``, "authorization service answered Method Not Allowed", "", http.StatusMethodNotAllowed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewServer(withDiscovery(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/problem+json")
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))
-			}))
+			})))
 			defer srv.Close()
 
 			client, err := NewClient(ClientOptions{BaseURL: srv.URL})
@@ -186,10 +163,10 @@ func TestAuthorize_passesOnRequestProblems(t *testing.T) {
 
 // RequireAccess answers the caller with the check's own problem.
 func TestRequireAccess_passesOnRequestProblems(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(withDiscovery(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"status":404,"title":"Not Found","detail":"namespace \"core\" not found"}`))
-	}))
+	})))
 	defer srv.Close()
 
 	client, err := NewClient(ClientOptions{BaseURL: srv.URL})
@@ -205,10 +182,10 @@ func TestRequireAccess_passesOnRequestProblems(t *testing.T) {
 
 // A 5xx is the service failing: a retryable 502, with its detail.
 func TestAuthorize_serviceFailureDetail(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(withDiscovery(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"status":503,"detail":"no openapi spec stored for api \"compute.infrapi.io\""}`))
-	}))
+	})))
 	defer srv.Close()
 
 	client, err := NewClient(ClientOptions{BaseURL: srv.URL})

@@ -8,7 +8,7 @@ Working notes for coding agents on this repository. Read before touching code.
 InfraPI services import:
 
 ```text
-pkg/api       URL layout: /apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}
+pkg/api       URL layout: /apis/{group}/{version}/namespaces/{namespace}/{resource}
 pkg/client    resty v3 client of pkg/server APIs (TLS/mTLS, retry, hedging)
 pkg/config    dotenv loading, go-playground validation, typed AppConfig
 pkg/errors    application error: RFC 9457 payload, cause, remediation
@@ -51,7 +51,7 @@ a broken link or anchor fails its build.
   to `main`, so `feat:` and `fix:` prefixes decide the next tag.
 - `site/`, `cover*.out` and `coverage.html` are build output and gitignored.
 - Resources are served under `pkg/api`'s layout,
-  `/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}`, with
+  `/apis/{group}/{version}/namespaces/{namespace}/{resource}`, with
   name/id segments alternating after the namespace. `server.APIGroup` mounts
   it, `client` builds it, `auth.RequireAccess` parses it: change the layout
   in `pkg/api` only. `pkg/api` imports nothing, so `pkg/client` stays free of
@@ -98,5 +98,5 @@ Styling lives in the portal, not here.
   A plugin framework resource that keeps its prior `id` while requiring
   replacement (`random_string`) is missed. See that method's godoc before
   changing it.
-- never use other domain than infrapi.io in examples.
+- API group names in examples use infrapi.io (compute.infrapi.io); hosts, URLs of a deployment and e-mails use example.com (IANA-reserved).
 

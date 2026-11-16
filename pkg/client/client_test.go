@@ -20,7 +20,7 @@ import (
 )
 
 // puppet is the API the test server exposes.
-var puppet = api.Group{Name: "puppet", Domain: "infrapi.test", Version: "v1"}
+var puppet = api.Group{Name: "puppet.infrapi.test", Version: "v1"}
 
 // generateTestCert creates a self-signed CA certificate and returns PEM-encoded cert and key.
 func generateTestCert(t *testing.T) (certPEM, keyPEM []byte) {

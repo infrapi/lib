@@ -87,7 +87,7 @@ func example2() {
 		log.Fatalf("NewServerGin: %v", err)
 	}
 
-	widgets, err := infraserver.APIGroup(engine, api.Group{Name: "widgets", Domain: "example.com", Version: "v1"})
+	widgets, err := infraserver.APIGroup(engine, api.Group{Name: "widgets.infrapi.io", Version: "v1"})
 	if err != nil {
 		log.Fatalf("APIGroup: %v", err)
 	}
@@ -100,7 +100,7 @@ func example2() {
 
 	fmt.Printf("Serving on %s\n", ln.Addr())
 
-	for _, path := range []string{"/-/metadata", "/apis/widgets.example.com/v1/namespaces/demo/widget"} {
+	for _, path := range []string{"/-/metadata", "/apis/widgets.infrapi.io/v1/namespaces/demo/widget"} {
 		resp, err := http.Get(fmt.Sprintf("http://%s%s", ln.Addr(), path))
 		if err != nil {
 			log.Fatalf("GET %s: %v", path, err)

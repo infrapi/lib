@@ -38,7 +38,7 @@ func example1() {
 	fmt.Printf("%v\n", err)
 
 	// a recurring problem deserves a type URI and a title describing the type
-	err = err.WithType("https://infrapi.example.com/errors/unsupported-state", "Unsupported subscription state")
+	err = err.WithType("https://example.com/errors/unsupported-state", "Unsupported subscription state")
 	fmt.Printf("%v\n\n", err)
 }
 
@@ -81,7 +81,7 @@ func example4() {
 	fmt.Printf("Content-Type: %s\n", infraerrors.MediaType)
 
 	identified := infraerrors.New(http.StatusNotFound, "user.Get", "no user with id %d", 42).
-		WithType("https://infrapi.example.com/errors/unknown-user", "Unknown user").
+		WithType("https://example.com/errors/unknown-user", "Unknown user").
 		WithSolution("list the users first")
 	identified.Instance = "/users/42"
 

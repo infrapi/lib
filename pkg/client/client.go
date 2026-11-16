@@ -2,7 +2,7 @@
 // resty client with TLS, retry and hedging defaults, building the paths of
 // pkg/api,
 //
-//	/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}
+//	/apis/{group}/{version}/namespaces/{namespace}/{resource}
 //
 // from a namespace and a resource. A route of such a service outside that
 // layout - a cluster-wide endpoint, one under /-/ - goes through
@@ -56,7 +56,7 @@ type ClientOptions struct {
 	// Default headers to set, if empty will add application/json as content type and accept
 	Headers map[string]string
 
-	// Custom user agent (default: infrapi-lib-client-{name}.{domain})
+	// Custom user agent (default: infrapi-lib-client-{group})
 	UserAgent string
 
 	// Server CA to trust, could be byte or filesystem path, CACertContent win over CACertPath
@@ -206,7 +206,7 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 	}
 
 	// Set user agent
-	userAgent := "infrapi-lib-client-" + opts.API.URN()
+	userAgent := "infrapi-lib-client-" + opts.API.Name
 	if opts.UserAgent != "" {
 		userAgent = opts.UserAgent
 	}
@@ -315,7 +315,7 @@ func (c *Client) Head(resource string, opts *RequestOptions) (*Response, error) 
 
 // Do sends method to resource - vm, vm/123, vm/123/reboot - in the
 // request's namespace, at
-// {Protocol}://{Server}:{Port}/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource},
+// {Protocol}://{Server}:{Port}/apis/{group}/{version}/namespaces/{namespace}/{resource},
 // and returns the response. Each segment of resource is escaped. A status
 // code outside the accepted range is returned as an error carrying the HTTP
 // status text, with the response filled in. opts may be nil.

@@ -15,8 +15,13 @@ mounts it, [`client`](client.md) calls it and [`auth`](auth.md) authorizes it, a
 this package, so the three never disagree on a path:
 
 ```text
-/apis/{name}.{domain}/{version}/namespaces/{namespace}/{resource}[/{id}[/{action}[/{id}...]]]
+/apis/{group}/{version}/namespaces/{namespace}/{resource}[/{id}[/{action}[/{id}...]]]
 ```
+
+A group is named in full, like a Kubernetes API group — `compute.infrapi.io` — and
+that name is the one it is registered under in Kayra. Only
+Kayra has a domain of its own, `app.api_domain`, for its built-in groups (`system`,
+`catalog`, `authorization`), which [`auth`](auth.md) discovers.
 
 ```text
 /apis/compute.infrapi.io/v1/namespaces/core/vm
@@ -33,18 +38,16 @@ The package has no dependency, so a client importing it does not pull in gin.
 ## Group
 
 ```go
-compute := api.Group{Name: "compute", Domain: "infrapi.io", Version: "v1"}
+compute := api.Group{Name: "compute.infrapi.io", Version: "v1"}
 ```
 
 | Field | Form | Example |
 |-------|------|---------|
-| `Name` | lower case DNS label | `compute` |
-| `Domain` | lower case DNS name | `infrapi.io` |
+| `Name` | lower case DNS name, two labels or more | `compute.infrapi.io`, `vault.infrapi.io` |
 | `Version` | `v{n}`, optionally `alpha{n}` or `beta{n}` | `v1`, `v2beta1` |
 
 | Method | Returns |
 |--------|---------|
-| `URN()` | `compute.infrapi.io`, the API name `auth` authorizes against |
 | `Validate()` | the first field out of form |
 | `Root()` | `/apis/compute.infrapi.io/v1` |
 | `NamespacePath(ns)` | `/apis/compute.infrapi.io/v1/namespaces/{ns}`, `ns` as given, so `":namespace"` makes a route pattern |
@@ -61,7 +64,7 @@ p, err := api.Parse(r.URL.Path)
 ```
 
 `Parse` takes an unescaped path, `net/http`'s `URL.Path`, and refuses anything outside the
-layout: another prefix, a missing `namespaces` segment, an API without a domain, an
+layout: another prefix, a missing `namespaces` segment, a group that is not a full name, an
 invalid version or namespace, an empty resource, or a `.` or `..` segment.
 
 A namespace is a lower case DNS label; `ValidateNamespace` checks one on its own.

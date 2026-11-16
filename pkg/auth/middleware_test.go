@@ -146,17 +146,17 @@ func TestRequireAccess_missingHeader(t *testing.T) {
 // asks the authorization service.
 func TestRequireAccess_apiGroup(t *testing.T) {
 	var got AuthorizeRequest
-	authSvc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	authSvc := httptest.NewServer(withDiscovery(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
 		_, _ = w.Write([]byte(`{"allowed":true}`))
-	}))
+	})))
 	defer authSvc.Close()
 
 	client, err := NewClient(ClientOptions{BaseURL: authSvc.URL})
 	require.NoError(t, err)
 
 	app := gin.New()
-	vms, err := server.APIGroup(app, api.Group{Name: "compute", Domain: "infrapi.io", Version: "v2beta1"})
+	vms, err := server.APIGroup(app, api.Group{Name: "compute.infrapi.io", Version: "v2beta1"})
 	require.NoError(t, err)
 	vms.Use(client.RequireAccess())
 	vms.POST("/vm/:id/reboot", func(c *gin.Context) { c.Status(http.StatusAccepted) })
