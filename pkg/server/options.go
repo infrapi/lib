@@ -58,8 +58,8 @@ func WithOpenAPI(specs ...OpenAPISpec) Option {
 			if len(s.Content) == 0 {
 				return fmt.Errorf("server: OpenAPI document %q is empty", s.Name)
 			}
-			if s.Name == OperationsName {
-				return fmt.Errorf("server: OpenAPI document name %q is the operational endpoints'", s.Name)
+			if s.Name == OperationsName || OpenAPIPrefix+s.Path == OperationsPath {
+				return fmt.Errorf("server: OpenAPI document %q at %q: the operational endpoints' name or path", s.Name, s.Path)
 			}
 			if names[s.Name] || paths[s.Path] {
 				return fmt.Errorf("server: two OpenAPI documents share the name %q or the path %q", s.Name, s.Path)

@@ -44,7 +44,7 @@ func TestWithOpenAPI_servesTheServicesDocuments(t *testing.T) {
 	body := string(page)
 	assert.Contains(t, body, `urls: [{"name":"orders v1","url":"/apis/test.infrapi.io/v1/-/openapi/orders/v1.yaml"},`+
 		`{"name":"orders v2","url":"/apis/test.infrapi.io/v1/-/openapi/orders/v2.json"},`+
-		`{"name":"operations","url":"/apis/test.infrapi.io/v1/-/openapi.json"}]`)
+		`{"name":"operations","url":"/apis/test.infrapi.io/v1/-/openapi/operations.json"}]`)
 	assert.Contains(t, body, "swagger-ui-standalone-preset.js")
 	assert.Contains(t, body, `layout: "StandaloneLayout"`)
 	assert.Contains(t, body, "validatorUrl: null")
@@ -55,6 +55,30 @@ func TestWithOpenAPI_servesTheServicesDocuments(t *testing.T) {
 // the operational endpoints only, those the service adds under /-/ too: the
 // service's documents are the only description of its API.
 func TestWithOpenAPI_operations(t *testing.T) {
+	testOperations(t, OperationsPath)
+}
+
+// openapi.json is the whole API: the service's documents, and the
+// operational endpoints.
+func TestWithOpenAPI_wholeAPI(t *testing.T) {
+	orders := OpenAPISpec{Name: "orders v1", Path: "orders/v1.yaml", Content: []byte("openapi: 3.0.3\n" +
+		"info: {title: Orders, version: \"1\"}\n" +
+		"paths:\n  " + testRoot + "/orders:\n    get:\n      responses: {'200': {description: The orders}}\n")}
+	app, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI(orders))
+	require.NoError(t, err)
+	w := get(t, app, testRoot+OpenAPIPath)
+	require.Equal(t, http.StatusOK, w.Code)
+	var spec struct {
+		Info  map[string]any            `json:"info"`
+		Paths map[string]map[string]any `json:"paths"`
+	}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&spec))
+	assert.Equal(t, "Orders", spec.Info["title"])
+	assert.Contains(t, spec.Paths, testRoot+HealthzPath)
+	assert.Contains(t, spec.Paths, testRoot+"/orders")
+}
+
+func testOperations(t *testing.T, path string) {
 	app, err := NewServerGin(testAppConfig(t), []string{testRoot}, WithOpenAPI(ordersV1), WithOperations(Operation{
 		Method: http.MethodGet, Path: "/-/workers/:id", Summary: "A worker",
 		Responses: map[string]Response{"200": {Description: "The worker", ContentType: "application/json",
@@ -65,7 +89,7 @@ func TestWithOpenAPI_operations(t *testing.T) {
 	app.GET(testRoot+"/-/workers", func(c *gin.Context) {})
 	app.GET(testRoot+"/-/workers/:id", func(c *gin.Context) {})
 
-	w := get(t, app, testRoot+OpenAPIPath)
+	w := get(t, app, testRoot+path)
 	require.Equal(t, http.StatusOK, w.Code)
 	var spec openAPI
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&spec))

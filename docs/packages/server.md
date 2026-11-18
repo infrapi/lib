@@ -176,10 +176,14 @@ engine, err := server.NewServerGin(cfg, []string{group.Root()}, server.WithOpenA
 - A document is its `Root`'s, served and offered under that root only; without one, the
   primary root's. A `Root` that is none of the engine's is refused.
 - Swagger UI offers them in a selector — one file per major version, say — followed by
-  `operations`: `<root>/-/openapi.json`, which then describes only the endpoints under `<root>/-/`,
-  the engine's own and those the service adds there. The API has one description, not
-  two.
-- `NewServerGin` refuses a document without a name or content, or named `operations`, a
+  `operations`: `<root>/-/openapi/operations.json` (`server.OperationsPath`), which
+  describes only the endpoints under `<root>/-/`, the engine's own and those the service
+  adds there. The API has one description, not two.
+- `<root>/-/openapi.json` is the whole API: the root's documents merged into one (the
+  first one's `info`, every one's `paths` and `components`), with the operational
+  endpoints' paths. It is what Kayra's reconciler reads to learn the API's resources.
+- `NewServerGin` refuses a document without a name or content, named `operations` or at
+  `operations.json`, a
   path that is absolute, not clean or not `.json`/`.yaml`/`.yml`, two documents sharing a
   name or a path, and a document that is not valid OpenAPI 3.0.
 

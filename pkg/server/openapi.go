@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/gin-gonic/gin"
 
 	"github.com/infrapi/lib/pkg/config"
@@ -17,13 +19,19 @@ import (
 // Like the engine's other endpoints, these paths are relative to its root.
 const (
 	// OpenAPIPath is where the engine serves the specification it generates
-	// from its route table: of every route, or, beside the documents supplied
-	// with WithOpenAPI, of its operational endpoints only.
+	// from its route table, of every route; or, with documents supplied with
+	// WithOpenAPI, those documents merged into one with its operational
+	// endpoints: the whole API, as Kayra's reconciler reads it.
 	OpenAPIPath = "/-/openapi.json"
 
 	// OperationsName labels the operational endpoints' specification in the
 	// docs page's selector, beside the documents supplied with WithOpenAPI.
 	OperationsName = "operations"
+
+	// OperationsPath is where the engine serves the specification of its
+	// operational endpoints only, beside the documents supplied with
+	// WithOpenAPI: the docs page's OperationsName.
+	OperationsPath = OpenAPIPrefix + OperationsName + ".json"
 
 	// DocsPath is where the engine serves the Swagger UI reading that
 	// specification, or the ones supplied with WithOpenAPI.
@@ -234,7 +242,7 @@ func newDocsPage(root string, cfg *config.AppConfig, specs []OpenAPISpec) ([]byt
 		urls = append(urls, docsURL{Name: s.Name, URL: root + OpenAPIPrefix + s.Path})
 	}
 	if len(urls) > 0 {
-		urls = append(urls, docsURL{Name: OperationsName, URL: root + OpenAPIPath})
+		urls = append(urls, docsURL{Name: OperationsName, URL: root + OperationsPath})
 	}
 
 	var page bytes.Buffer
@@ -259,16 +267,31 @@ func openAPIHandlers(app *gin.Engine, ops gin.IRouter, rs roots, root string, cf
 	}
 
 	// Beside the service's documents, the generated specification keeps to
-	// the operational endpoints: describing the API too, it would be a
-	// second, poorer description of it.
+	// the operational endpoints, at OperationsPath: describing the API too,
+	// it would be a second, poorer description of it. OpenAPIPath serves the
+	// documents and it merged, one specification of the whole API.
 	operations := len(specs) > 0
 	documented := map[string]Operation{}
 	for _, op := range append(slices.Clone(engineOperations), documentedOps...) {
 		documented[op.Method+" "+root+op.Path] = op
 	}
+	contracts, err := mergeDocuments(specs)
+	if err != nil {
+		return err
+	}
 	ops.GET(OpenAPIPath, func(c *gin.Context) {
-		c.JSON(http.StatusOK, openAPISpec(app, rs, root, cfg, operations, documented))
+		spec := openAPISpec(app, rs, root, cfg, operations, documented)
+		if contracts == nil {
+			c.JSON(http.StatusOK, spec)
+			return
+		}
+		c.JSON(http.StatusOK, withOperations(contracts, spec))
 	})
+	if operations {
+		ops.GET(OperationsPath, func(c *gin.Context) {
+			c.JSON(http.StatusOK, openAPISpec(app, rs, root, cfg, true, documented))
+		})
+	}
 
 	for _, s := range specs {
 		content, contentType := s.Content, specContentType(s.Path)
@@ -281,4 +304,75 @@ func openAPIHandlers(app *gin.Engine, ops gin.IRouter, rs roots, root string, cf
 		c.Data(http.StatusOK, "text/html; charset=utf-8", page)
 	})
 	return nil
+}
+
+// mergeDocuments is the documents supplied for a root as one, JSON-shaped:
+// the first one's info, every one's paths and components, the first
+// document having a path or a component keeping it. Nil without any.
+func mergeDocuments(specs []OpenAPISpec) (map[string]any, error) {
+	var out map[string]any
+	for _, s := range specs {
+		doc, err := openapi3.NewLoader().LoadFromData(s.Content)
+		if err != nil {
+			return nil, fmt.Errorf("server: OpenAPI document %q: %w", s.Name, err)
+		}
+		data, err := doc.MarshalJSON()
+		if err != nil {
+			return nil, fmt.Errorf("server: OpenAPI document %q: %w", s.Name, err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(data, &m); err != nil {
+			return nil, fmt.Errorf("server: OpenAPI document %q: %w", s.Name, err)
+		}
+		if out == nil {
+			out = m
+			continue
+		}
+		mergeMissing(out, m, "paths")
+		comps, _ := m["components"].(map[string]any)
+		for kind := range comps {
+			if out["components"] == nil {
+				out["components"] = map[string]any{}
+			}
+			mergeMissing(out["components"].(map[string]any), comps, kind)
+		}
+	}
+	return out, nil
+}
+
+// mergeMissing adds to dst[key] the entries of src[key] it does not have.
+func mergeMissing(dst, src map[string]any, key string) {
+	from, _ := src[key].(map[string]any)
+	to, _ := dst[key].(map[string]any)
+	if to == nil {
+		to = map[string]any{}
+		dst[key] = to
+	}
+	for k, v := range from {
+		if _, ok := to[k]; !ok {
+			to[k] = v
+		}
+	}
+}
+
+// withOperations is contracts, with the operational endpoints' paths of
+// spec added: a copy, contracts left as they are.
+func withOperations(contracts map[string]any, spec *openAPI) map[string]any {
+	out := make(map[string]any, len(contracts))
+	for k, v := range contracts {
+		out[k] = v
+	}
+	paths := map[string]any{}
+	if p, ok := contracts["paths"].(map[string]any); ok {
+		for k, v := range p {
+			paths[k] = v
+		}
+	}
+	for k, v := range spec.Paths {
+		if _, ok := paths[k]; !ok {
+			paths[k] = v
+		}
+	}
+	out["paths"] = paths
+	return out
 }

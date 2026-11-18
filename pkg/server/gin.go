@@ -129,6 +129,9 @@ func NewServerGin(cfg *config.AppConfig, roots []string, opts ...Option) (*gin.E
 		for _, s := range specs[root] {
 			open[root+OpenAPIPrefix+s.Path] = true
 		}
+		if len(specs[root]) > 0 {
+			open[root+OperationsPath] = true
+		}
 	}
 
 	// The index of the roots, at the engine's own root.
