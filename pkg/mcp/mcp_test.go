@@ -148,12 +148,26 @@ func TestReadOnlyByDefault(t *testing.T) {
 	assert.Contains(t, tools["plan_create_thing"].Description, "Dry run only")
 }
 
-// With Writes, every operation is a tool, a DELETE a destructive one.
+// With Writes, every operation is a tool, a DELETE a destructive one; a
+// write with a dry run keeps its plan_ tool.
 func TestWrites(t *testing.T) {
 	tools := toolNames(t, connect(t, &service{}, mcp.Options{Name: "things", Writes: true}, "good"))
-	assert.Equal(t, []string{"create_thing", "delete_thing", "get_thing"}, keys(tools))
+	assert.Equal(t, []string{"create_thing", "delete_thing", "get_thing", "plan_create_thing"}, keys(tools))
 	assert.True(t, *tools["delete_thing"].Annotations.DestructiveHint)
 	assert.False(t, tools["create_thing"].Annotations.ReadOnlyHint)
+}
+
+// NoPlans: no plan_ tool; with Writes, the dry run is a parameter of the
+// write's tool.
+func TestNoPlans(t *testing.T) {
+	tools := toolNames(t, connect(t, &service{}, mcp.Options{Name: "things", NoPlans: true}, "good"))
+	assert.Equal(t, []string{"get_thing"}, keys(tools))
+
+	tools = toolNames(t, connect(t, &service{}, mcp.Options{Name: "things", Writes: true, NoPlans: true}, "good"))
+	assert.Equal(t, []string{"create_thing", "delete_thing", "get_thing"}, keys(tools))
+	raw, err := json.Marshal(tools["create_thing"].InputSchema)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"dryRun"`)
 }
 
 // The input schema has the parameters and the body, the contract's
@@ -166,7 +180,7 @@ func TestInputSchema(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &s))
 	props := s["properties"].(map[string]any)
 	assert.Contains(t, props, "namespace")
-	assert.Contains(t, props, "dryRun")
+	assert.NotContains(t, props, "dryRun", "the plan_ tool is the dry run")
 	assert.Equal(t, map[string]any{"$ref": "#/$defs/ThingSpec"}, props["body"])
 	assert.ElementsMatch(t, []any{"body", "namespace"}, s["required"])
 	assert.Contains(t, s["$defs"], "ThingSpec")

@@ -34,8 +34,11 @@ its user's bearer token.
 | Operation | Tool |
 |-----------|------|
 | `GET` | always; read only |
-| a write (`POST`, `PUT`, `PATCH`, `DELETE`) with a `dryRun` query parameter | `plan_<name>`, `dryRun` fixed to `true`: says what the change would do, applies nothing |
+| a write (`POST`, `PUT`, `PATCH`, `DELETE`) with a `dryRun` query parameter | `plan_<name>`, `dryRun` fixed to `true`: says what the change would do, applies nothing; and, with `Options.Writes`, the write itself |
 | any other write | only with `Options.Writes`; a `DELETE` is marked destructive |
+
+`Options.NoPlans` leaves out the `plan_` tools; with `Writes`, `dryRun` is
+then a parameter of the write's tool.
 
 - The name is the `operationId` in snake case (`createOrder` is
   `create_order`), or the method and path without one.

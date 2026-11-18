@@ -53,9 +53,12 @@ type Options struct {
 	// can pick.
 	Prompts []Prompt
 	// Writes exposes the operations that change something (POST, PUT,
-	// PATCH, DELETE). Without it, only those taking a dryRun query
-	// parameter are, with dryRun fixed to true.
+	// PATCH, DELETE). A write taking a dryRun query parameter is also a
+	// plan_ tool, dryRun fixed to true, with or without Writes.
 	Writes bool
+	// NoPlans leaves out the plan_ tools: with Writes, a write's dryRun is
+	// then a parameter of its tool.
+	NoPlans bool
 	// Include, when set, selects the operations to expose, after Writes.
 	Include func(Operation) bool
 	// Forward lists the request headers passed on to the service's handler
@@ -142,18 +145,20 @@ func New(contract []byte, handler http.Handler, opts Options) (http.Handler, err
 	for _, path := range doc.Paths.InMatchingOrder() {
 		item := doc.Paths.Value(path)
 		for method, op := range item.Operations() {
-			t, def, ok, err := build(method, path, item, op, defs, opts)
-			if err != nil {
-				return nil, fmt.Errorf("mcp: %s %s: %w", method, path, err)
-			}
-			if !ok {
+			if opts.Include != nil && !opts.Include(Operation{Method: method, Path: path, OperationID: op.OperationID, Tags: op.Tags}) {
 				continue
 			}
-			if other, taken := names[def.Name]; taken {
-				return nil, fmt.Errorf("mcp: %s %s and %s are both the tool %q: give them distinct operationIds", method, path, other, def.Name)
+			for _, v := range variants(method, item, op, opts) {
+				t, def, err := build(method, path, item, op, defs, v)
+				if err != nil {
+					return nil, fmt.Errorf("mcp: %s %s: %w", method, path, err)
+				}
+				if other, taken := names[def.Name]; taken {
+					return nil, fmt.Errorf("mcp: %s %s and %s are both the tool %q: give them distinct operationIds", method, path, other, def.Name)
+				}
+				names[def.Name] = method + " " + path
+				server.AddTool(def, call(t, handler, opts.Forward))
 			}
-			names[def.Name] = method + " " + path
-			server.AddTool(def, call(t, handler, opts.Forward))
 		}
 	}
 
@@ -183,29 +188,46 @@ func New(contract []byte, handler http.Handler, opts Options) (http.Handler, err
 		&sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true}), nil
 }
 
-// build turns an operation into a tool, or skips it (ok false).
-func build(method, path string, item *openapi3.PathItem, op *openapi3.Operation, defs map[string]any, opts Options) (tool, *sdk.Tool, bool, error) {
-	t := tool{method: method, path: path}
+// variant is one tool an operation makes: the operation itself, or its dry
+// run.
+type variant struct {
+	// plan: the dry run, dryRun fixed to true.
+	plan bool
+	// hideDryRun: the operation itself, its dry run being a plan_ tool.
+	hideDryRun bool
+}
+
+// variants are the tools an operation makes, per Options: a read one tool;
+// a write with a dryRun parameter its plan_ tool, and itself with Writes;
+// another write itself with Writes only.
+func variants(method string, item *openapi3.PathItem, op *openapi3.Operation, opts Options) []variant {
+	if method == http.MethodGet || method == http.MethodHead {
+		return []variant{{}}
+	}
+	dry := false
+	for _, p := range append(append(openapi3.Parameters{}, item.Parameters...), op.Parameters...) {
+		if p.Value != nil && p.Value.In == openapi3.ParameterInQuery && p.Value.Name == "dryRun" {
+			dry = true
+		}
+	}
+	var out []variant
+	plans := dry && !opts.NoPlans
+	if opts.Writes {
+		out = append(out, variant{hideDryRun: plans})
+	}
+	if plans {
+		out = append(out, variant{plan: true})
+	}
+	return out
+}
+
+// build turns an operation into the tool of variant v.
+func build(method, path string, item *openapi3.PathItem, op *openapi3.Operation, defs map[string]any, vr variant) (tool, *sdk.Tool, error) {
+	t := tool{method: method, path: path, dryRun: vr.plan}
+	hide := vr.hideDryRun
 	write := method != http.MethodGet && method != http.MethodHead
 	params := append(openapi3.Parameters{}, item.Parameters...)
 	params = append(params, op.Parameters...)
-
-	hasDryRun := false
-	for _, p := range params {
-		if p.Value != nil && p.Value.In == openapi3.ParameterInQuery && p.Value.Name == "dryRun" {
-			hasDryRun = true
-		}
-	}
-	switch {
-	case !write, opts.Writes:
-	case hasDryRun:
-		t.dryRun = true
-	default:
-		return tool{}, nil, false, nil
-	}
-	if opts.Include != nil && !opts.Include(Operation{Method: method, Path: path, OperationID: op.OperationID, Tags: op.Tags}) {
-		return tool{}, nil, false, nil
-	}
 
 	props := map[string]any{}
 	var required []string
@@ -214,12 +236,12 @@ func build(method, path string, item *openapi3.PathItem, op *openapi3.Operation,
 		if v == nil || (v.In != openapi3.ParameterInPath && v.In != openapi3.ParameterInQuery) {
 			continue
 		}
-		if t.dryRun && v.Name == "dryRun" {
+		if (t.dryRun || hide) && v.Name == "dryRun" {
 			continue
 		}
 		s, err := schemaOf(v.Schema, defs)
 		if err != nil {
-			return tool{}, nil, false, fmt.Errorf("parameter %s: %w", v.Name, err)
+			return tool{}, nil, fmt.Errorf("parameter %s: %w", v.Name, err)
 		}
 		if v.Description != "" {
 			s["description"] = v.Description
@@ -234,7 +256,7 @@ func build(method, path string, item *openapi3.PathItem, op *openapi3.Operation,
 		if mt := rb.Value.Content.Get("application/json"); mt != nil {
 			s, err := schemaOf(mt.Schema, defs)
 			if err != nil {
-				return tool{}, nil, false, fmt.Errorf("request body: %w", err)
+				return tool{}, nil, fmt.Errorf("request body: %w", err)
 			}
 			if rb.Value.Description != "" {
 				s["description"] = rb.Value.Description
@@ -277,7 +299,7 @@ func build(method, path string, item *openapi3.PathItem, op *openapi3.Operation,
 			IdempotentHint:  !write || t.dryRun || method == http.MethodPut || method == http.MethodDelete,
 		},
 	}
-	return t, def, true, nil
+	return t, def, nil
 }
 
 // call is a tool's handler: the agent's arguments as an HTTP request to the
