@@ -24,6 +24,9 @@ h, err := mcp.New(spec.Content, engine, mcp.Options{
 	Prompts:      []mcp.Prompt{{Name: "audit", Description: "Check an order", Text: "Read the order and plan it with its spec."}},
 })
 engine.Any("/-/mcp", gin.WrapH(h))
+
+srv := &http.Server{Handler: engine}
+srv.RegisterOnShutdown(h.Close) // see Shutdown below
 ```
 
 An agent then connects to `https://<service>/-/mcp` over Streamable HTTP with
@@ -71,3 +74,10 @@ tool error with the service's 401 or 403. Mounted after `server.WithAuth`,
 the endpoint also requires a valid token to be reached at all.
 
 The handler is stateless: any instance of the service answers any request.
+
+## Shutdown
+
+A client may hold a request open to be notified (`subscriptions/listen`),
+until it leaves: a graceful `http.Server.Shutdown` would wait for it until
+its deadline. `Handler.Close` ends these requests, and the others in
+progress; register it with `srv.RegisterOnShutdown(h.Close)`.

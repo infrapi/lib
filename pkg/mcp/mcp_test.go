@@ -3,10 +3,14 @@ package mcp_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -266,4 +270,44 @@ func TestNewRefuses(t *testing.T) {
 	assert.Error(t, err)
 	_, err = mcp.New([]byte(contract), nil, mcp.Options{Name: "x"})
 	assert.Error(t, err)
+}
+
+// A request held open to be notified lasts until Close.
+func TestCloseEndsListen(t *testing.T) {
+	h, err := mcp.New([]byte(contract), (&service{}).engine(), mcp.Options{Name: "things"})
+	require.NoError(t, err)
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	done := make(chan error, 1)
+	go func() {
+		req, err := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(
+			`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{"notifications":{"toolsListChanged":true}}}`))
+		if err != nil {
+			done <- err
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("MCP-Protocol-Version", "2025-06-18")
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			_, err = io.Copy(io.Discard, resp.Body)
+			err = errors.Join(err, resp.Body.Close())
+		}
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("listen ended before Close: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	h.Close()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("listen still open after Close")
+	}
 }

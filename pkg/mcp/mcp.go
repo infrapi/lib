@@ -114,7 +114,7 @@ type param struct {
 // or YAML, and returns its Streamable HTTP handler, stateless so that any
 // instance of the service answers any request. Every tool calls handler, the
 // service's own, in process.
-func New(contract []byte, handler http.Handler, opts Options) (http.Handler, error) {
+func New(contract []byte, handler http.Handler, opts Options) (*Handler, error) {
 	if opts.Name == "" {
 		return nil, errors.New("mcp: Options.Name is required")
 	}
@@ -184,8 +184,41 @@ func New(contract []byte, handler http.Handler, opts Options) (http.Handler, err
 		server.AddPrompt(&sdk.Prompt{Name: p.Name, Title: p.Title, Description: p.Description}, prompt(p))
 	}
 
-	return sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return server },
-		&sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true}), nil
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Handler{
+		next: sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return server },
+			&sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true}),
+		closed: ctx, close: cancel,
+	}, nil
+}
+
+// Handler is the MCP endpoint, an [http.Handler].
+//
+// A client may hold a request open to be notified (subscriptions/listen):
+// it lasts until the client leaves, or until [Handler.Close]. A server
+// stopping calls Close first, or its graceful shutdown waits for these
+// requests until its deadline:
+//
+//	srv.RegisterOnShutdown(h.Close)
+type Handler struct {
+	next   http.Handler
+	closed context.Context
+	close  context.CancelFunc
+}
+
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	stop := context.AfterFunc(h.closed, cancel)
+	defer stop()
+	h.next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// Close ends the requests in progress, those held open to be notified
+// among them, and those coming after: a tool call's request to the
+// service is cancelled with them. Close may be called more than once.
+func (h *Handler) Close() {
+	h.close()
 }
 
 // variant is one tool an operation makes: the operation itself, or its dry
