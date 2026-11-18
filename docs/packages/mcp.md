@@ -1,3 +1,9 @@
+---
+title: mcp
+description: Serves a service's API to AI agents over the Model Context Protocol, generated from its OpenAPI document, with its documents and prompts as context.
+weight: 75
+---
+
 # mcp
 
 ```go
