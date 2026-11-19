@@ -36,13 +36,20 @@ func (a *Client) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, err := extractBearer(c.GetHeader("Authorization"))
 		if err != nil {
-			server.AbortError(c, infraerrors.New(http.StatusUnauthorized, "auth.Middleware", "%s", err))
+			a.unauthorized(c, false, infraerrors.New(http.StatusUnauthorized, "auth.Middleware", "%s", err))
 			return
 		}
 
 		user, err := a.Verify(c.Request.Context(), token)
 		if err != nil {
-			server.AbortError(c, err)
+			if infraerrors.ErrorCode(err) == http.StatusUnauthorized {
+				a.unauthorized(c, true, err)
+			} else {
+				server.AbortError(c, err)
+			}
+			return
+		}
+		if !a.checkAudience(c, user, "auth.Middleware") {
 			return
 		}
 
@@ -72,8 +79,24 @@ func (a *Client) RequireAccess() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, err := extractBearer(c.GetHeader("Authorization"))
 		if err != nil {
-			server.AbortError(c, infraerrors.New(http.StatusUnauthorized, "auth.RequireAccess", "%s", err))
+			a.unauthorized(c, false, infraerrors.New(http.StatusUnauthorized, "auth.RequireAccess", "%s", err))
 			return
+		}
+		// the token's audience, when the service names its resource:
+		// Verify's result is cached, Middleware's included
+		if a.publicURL != "" {
+			user, err := a.Verify(c.Request.Context(), token)
+			if err != nil {
+				if infraerrors.ErrorCode(err) == http.StatusUnauthorized {
+					a.unauthorized(c, true, err)
+				} else {
+					server.AbortError(c, err)
+				}
+				return
+			}
+			if !a.checkAudience(c, user, "auth.RequireAccess") {
+				return
+			}
 		}
 
 		p, err := api.Parse(c.Request.URL.Path)

@@ -333,6 +333,30 @@ ops.GET("/-/workers", listWorkers)                      // open
 ops.GET("/-/secrets", client.Middleware(), listSecrets) // a token
 ```
 
+## OAuth clients
+
+`WithProtectedResource` serves each root's protected resource metadata
+(RFC 9728), for an OAuth client, an MCP client say, to find the
+authorization server that issues its tokens, Kayra's. Without a token, at
+`<root>/-/oauth-protected-resource`, which a 401's `WWW-Authenticate`
+header names ([`auth.ClientOptions.PublicURL`](auth.md#a-resource-for-oauth-clients)),
+and at `/.well-known/oauth-protected-resource<root>`:
+
+```go
+client, err := auth.NewClient(auth.ClientOptions{BaseURL: kayraURL, PublicURL: cfg.AppUrl})
+engine, err := server.NewServerGin(cfg, roots,
+	server.WithAuth(client.Middleware()), server.WithProtectedResource(client.AuthorizationServer))
+```
+
+```json
+{"resource": "https://gateway.example.com/apis/compute.infrapi.io/v1",
+ "authorization_servers": ["https://kayra.example.com"],
+ "bearer_methods_supported": ["header"]}
+```
+
+The resource is `AppUrl` and the root. The authorization server is read at
+each request: a 503 while Kayra cannot be reached.
+
 ## Health
 
 A gateway or a load balancer checks `<root>/-/readyz` to know whether to send a replica

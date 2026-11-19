@@ -27,6 +27,36 @@ client, err := infraauth.NewClient(infraauth.ClientOptions{
 call; `HTTPClient` overrides it entirely, for TLS, proxy or transport settings `Timeout`
 alone cannot express.
 
+## A resource for OAuth clients
+
+`PublicURL` is the service's URL as its clients reach it, its `AppUrl`: a
+request's resource (RFC 8707) is `PublicURL` and the request's root,
+`https://gateway.example.com/apis/compute.infrapi.io/v1`. With it:
+
+- **a 401** from `Middleware` or `RequireAccess` carries
+  `WWW-Authenticate: Bearer resource_metadata="<resource>/-/oauth-protected-resource"`,
+  and `error="invalid_token"` when a token was sent but refused. An OAuth
+  client, an MCP client such as Claude, follows it to the resource's
+  metadata ([`server.WithProtectedResource`](server.md#oauth-clients)),
+  then to Kayra's
+  [authorization server](https://infrapi.github.io/kayra/architecture/oauth2-server/),
+  and logs its user in there;
+- **a token of Kayra's authorization server** must have been issued for
+  the resource: its `aud` (`UserInfo.Audience`) is the resource, or a URL
+  the resource is under, a gateway's say, every app behind it. A token
+  issued for another app is refused, 401. A token of another provider has
+  no `aud` here: Kayra checked its provider's claims already.
+
+```go
+client, err := infraauth.NewClient(infraauth.ClientOptions{
+	BaseURL:   "https://kayra.example.com",
+	PublicURL: cfg.AppUrl,
+})
+```
+
+`AuthorizationServer` is Kayra's issuer, from its discovery document: what
+the metadata names.
+
 ## Discovering Kayra
 
 `BaseURL` is all a service configures. The rest — Kayra's API domain, the path of the

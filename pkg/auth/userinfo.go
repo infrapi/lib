@@ -22,6 +22,12 @@ type UserInfo struct {
 	// Attributes are the directory fields the backend's user_attributes
 	// mapping exports (email, name, employee_id, ...).
 	Attributes map[string]string
+	// Audience is a token of Kayra's authorization server's aud: the
+	// resources it was issued for ("aud"). Empty for any other token.
+	Audience []string
+	// ClientID is the client a token of Kayra's authorization server was
+	// issued to ("client_id"): infrapi-cli, an MCP client...
+	ClientID string
 }
 
 // UnmarshalJSON splits the fixed members of the service's response from
@@ -50,10 +56,23 @@ func (u *UserInfo) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
+	switch v := raw["aud"].(type) {
+	case string:
+		u.Audience = []string{v}
+	case []any:
+		for _, a := range v {
+			if s, ok := a.(string); ok {
+				u.Audience = append(u.Audience, s)
+			}
+		}
+	}
+	if v, ok := raw["client_id"].(string); ok {
+		u.ClientID = v
+	}
 
 	for k, v := range raw {
 		switch k {
-		case "sub", "provider", "authorization", "groups":
+		case "sub", "provider", "authorization", "groups", "aud", "client_id":
 			continue
 		}
 		if s, ok := v.(string); ok {

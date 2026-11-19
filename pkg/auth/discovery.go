@@ -18,6 +18,9 @@ const DiscoveryPath = "/.well-known/kayra.json"
 // its built-in groups and of the endpoints its clients call. Paths are
 // relative to the service's URL.
 type Discovery struct {
+	// Issuer is Kayra's authorization server's issuer: its public URL,
+	// what an OAuth client fetches its metadata from.
+	Issuer string `json:"issuer"`
 	// Domain is Kayra's app.api_domain: its built-in groups are
 	// <name>.<Domain>. Other APIs' groups are their own full names.
 	Domain string `json:"domain"`

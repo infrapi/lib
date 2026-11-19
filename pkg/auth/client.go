@@ -49,14 +49,24 @@ type ClientOptions struct {
 	// reaches the authentication service and a revoked token or a
 	// changed group membership is reflected immediately.
 	CacheTTL time.Duration
+
+	// PublicURL is the service's own URL, as its clients reach it (its
+	// AppUrl): a request's resource is PublicURL and the request's root,
+	// https://gateway.example.com/apis/compute.infrapi.io/v1. Set, a token
+	// of Kayra's authorization server must have been issued for it (its
+	// aud the resource, or a URL the resource is under), and a 401 names
+	// the resource's metadata (RFC 9728) in its WWW-Authenticate header,
+	// for an OAuth client such as an MCP client to find Kayra.
+	PublicURL string
 }
 
 // Client calls an authentication service's POST /oauth2/userinfo endpoint
 // to resolve a bearer token to the identity it names.
 type Client struct {
-	baseURL string
-	http    *http.Client
-	cache   *cache // nil when ClientOptions.CacheTTL is negative
+	baseURL   string
+	publicURL string
+	http      *http.Client
+	cache     *cache // nil when ClientOptions.CacheTTL is negative
 
 	// discovered is the service's discovery document, once Discover read
 	// it; discoverMu serializes the reads until then.
@@ -79,7 +89,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		httpClient = &http.Client{Timeout: timeout}
 	}
 
-	c := &Client{baseURL: strings.TrimRight(opts.BaseURL, "/"), http: httpClient}
+	c := &Client{baseURL: strings.TrimRight(opts.BaseURL, "/"), publicURL: strings.TrimRight(opts.PublicURL, "/"), http: httpClient}
 	switch {
 	case opts.CacheTTL == 0:
 		c.cache = newCache(DefaultCacheTTL)

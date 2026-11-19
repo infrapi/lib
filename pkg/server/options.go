@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"strings"
@@ -16,6 +17,8 @@ type options struct {
 	operations []Operation
 	readiness  []ReadinessCheck
 	auth       gin.HandlerFunc
+	// authorizationServer is WithProtectedResource's
+	authorizationServer func(ctx context.Context) (string, error)
 }
 
 // OpenAPISpec is an OpenAPI document a service maintains itself — a contract
@@ -97,4 +100,22 @@ func specContentType(p string) string {
 		return "application/yaml"
 	}
 	return ""
+}
+
+// WithProtectedResource serves each root's protected resource metadata (RFC
+// 9728), for an OAuth client, an MCP client say, to find the authorization
+// server that issues its tokens: at <root>/-/oauth-protected-resource, which
+// a 401's WWW-Authenticate header names (auth.ClientOptions.PublicURL), and
+// at /.well-known/oauth-protected-resource<root>. Its resource is AppUrl and
+// the root; authorizationServer names the issuer, Kayra's
+// (auth.Client.AuthorizationServer), read at each request. Without
+// authentication, like every operational endpoint.
+func WithProtectedResource(authorizationServer func(ctx context.Context) (string, error)) Option {
+	return func(o *options) error {
+		if authorizationServer == nil {
+			return fmt.Errorf("server: WithProtectedResource needs an authorization server")
+		}
+		o.authorizationServer = authorizationServer
+		return nil
+	}
 }

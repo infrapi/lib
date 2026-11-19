@@ -126,6 +126,13 @@ func NewServerGin(cfg *config.AppConfig, roots []string, opts ...Option) (*gin.E
 		for _, p := range []string{MetadataPath, MetricsPath, HealthzPath, ReadyzPath, OpenAPIPath, DocsPath} {
 			open[root+p] = true
 		}
+		if o.authorizationServer != nil {
+			h := protectedResourceHandler(strings.TrimRight(cfg.AppUrl, "/")+root, o.authorizationServer)
+			ops.GET(ProtectedResourcePath, h)
+			app.GET(WellKnownProtectedResource+root, h)
+			open[root+ProtectedResourcePath] = true
+			open[WellKnownProtectedResource+root] = true
+		}
 		for _, s := range specs[root] {
 			open[root+OpenAPIPrefix+s.Path] = true
 		}
