@@ -1,16 +1,19 @@
 // Package api is the URL layout every InfraPI service exposes its resources
 // under, shared by pkg/server, which mounts it, pkg/client, which calls it,
-// and pkg/auth, which authorizes it:
+// and pkg/auth, which authorizes it. A resource lives in a namespace, or in
+// none, cluster-scoped:
 //
 //	/apis/{group}/{version}/namespaces/{namespace}/{resource}[/{id}[/{action}[/{id}...]]]
+//	/apis/{group}/{version}/{resource}[/{id}[/{action}[/{id}...]]]
 //
-// for instance /apis/compute.infrapi.io/v1/namespaces/core/vm/123/reboot. A
-// group is named in full, like a Kubernetes API group: compute.infrapi.io.
-// Only Kayra has a domain of its own, for its built-in
-// groups (system, catalog, authorization), which clients discover.
-// After the namespace, segments alternate a resource or action name and an
-// instance id. The package has no dependency, so a client does not pull in
-// the server's.
+// for instance /apis/compute.infrapi.io/v1/namespaces/core/vm/123/reboot, or
+// /apis/compute.infrapi.io/v1/flavors/large. A group is named in full, like
+// a Kubernetes API group: compute.infrapi.io. Only Kayra has a domain of
+// its own, for its built-in groups (system, catalog, authorization), which
+// clients discover. After the namespace, or the version for a
+// cluster-scoped resource, segments alternate a resource or action name and
+// an instance id. The package has no dependency, so a client does not pull
+// in the server's.
 package api
 
 import (
@@ -66,13 +69,17 @@ func (g Group) NamespacePath(namespace string) string {
 
 // Path is the path of resource in namespace, each segment of resource
 // escaped: Path("core", "vm/123") is
-// /apis/compute.infrapi.io/v1/namespaces/core/vm/123.
+// /apis/compute.infrapi.io/v1/namespaces/core/vm/123. A cluster-scoped
+// resource is in no namespace: Path("", "flavors/large") is
+// /apis/compute.infrapi.io/v1/flavors/large.
 func (g Group) Path(namespace, resource string) (string, error) {
 	if err := g.Validate(); err != nil {
 		return "", err
 	}
-	if err := ValidateNamespace(namespace); err != nil {
-		return "", err
+	if namespace != "" {
+		if err := ValidateNamespace(namespace); err != nil {
+			return "", err
+		}
 	}
 	segments, err := splitResource(resource)
 	if err != nil {
@@ -80,6 +87,9 @@ func (g Group) Path(namespace, resource string) (string, error) {
 	}
 	for i, s := range segments {
 		segments[i] = url.PathEscape(s)
+	}
+	if namespace == "" {
+		return g.Root() + "/" + strings.Join(segments, "/"), nil
 	}
 	return g.NamespacePath(namespace) + "/" + strings.Join(segments, "/"), nil
 }
@@ -90,33 +100,41 @@ type Path struct {
 	API string
 	// Version of the group: v1.
 	Version string
-	// Namespace the resource lives in.
+	// Namespace the resource lives in: "" for a cluster-scoped one.
 	Namespace string
-	// Resource is everything after the namespace, without leading or
-	// trailing slash: vm, vm/123, vm/123/reboot.
+	// Resource is everything after the namespace, or the version for a
+	// cluster-scoped resource, without leading or trailing slash: vm,
+	// vm/123, vm/123/reboot.
 	Resource string
 }
 
 // Parse takes apart an unescaped request path, such as net/http's
-// URL.Path, laid out as the package describes.
+// URL.Path, laid out as the package describes. A path is namespaced when
+// "namespaces" follows the version, then a namespace and a resource;
+// otherwise it is cluster-scoped, its resource everything after the
+// version: /apis/system.infrapi.io/v1/namespaces/core is the cluster-scoped
+// namespaces/core.
 func Parse(p string) (Path, error) {
 	rest, ok := strings.CutPrefix(p, Prefix+"/")
 	if !ok {
 		return Path{}, fmt.Errorf("api: path %q does not start with %s/", p, Prefix)
 	}
-	parts := strings.SplitN(rest, "/", 5)
-	if len(parts) < 5 || parts[2] != namespacesSegment {
-		return Path{}, fmt.Errorf("api: path %q is not %s/{api}/{version}/namespaces/{namespace}/{resource}", p, Prefix)
+	parts := strings.SplitN(rest, "/", 3)
+	if len(parts) < 3 {
+		return Path{}, fmt.Errorf("api: path %q is not %s/{api}/{version}/[namespaces/{namespace}/]{resource}", p, Prefix)
 	}
-	group, ver, ns := parts[0], parts[1], parts[3]
-
+	group, ver := parts[0], parts[1]
 	if err := (Group{Name: group, Version: ver}).Validate(); err != nil {
 		return Path{}, err
 	}
-	if err := ValidateNamespace(ns); err != nil {
-		return Path{}, err
+	ns, resource := "", parts[2]
+	if inNs := strings.SplitN(strings.Trim(parts[2], "/"), "/", 3); len(inNs) == 3 && inNs[0] == namespacesSegment {
+		ns, resource = inNs[1], inNs[2]
+		if err := ValidateNamespace(ns); err != nil {
+			return Path{}, err
+		}
 	}
-	segments, err := splitResource(parts[4])
+	segments, err := splitResource(resource)
 	if err != nil {
 		return Path{}, err
 	}

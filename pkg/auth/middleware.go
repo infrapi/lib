@@ -56,7 +56,9 @@ func (a *Client) Middleware() gin.HandlerFunc {
 // document names, see Client.Discover). The request path must follow
 // pkg/api's layout,
 // /apis/{group}/{version}/namespaces/{namespace}/{resource}, which
-// is what server.APIGroup mounts: the namespace and the API come from it,
+// is what server.APIGroup mounts, or /apis/{group}/{version}/{resource}
+// for a cluster-scoped resource, its namespace "": Kayra decides it on
+// its cluster RBAC. The namespace and the API come from it,
 // Resource and Verb from the rest of the path and the HTTP method (see
 // ParseResource and VerbFor). Anything else is answered 404. The path is
 // read from the request rather than from route parameters, so it works on

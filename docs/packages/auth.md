@@ -153,7 +153,8 @@ validation. An operational route of the service's that needs a token puts
 
 A service mounting its routes with [`server.APIGroup`](server.md#api-routes), under
 [`api`](api.md)'s layout
-`/apis/{group}/{version}/namespaces/{namespace}/{resource}` -
+`/apis/{group}/{version}/namespaces/{namespace}/{resource}`, or
+`/apis/{group}/{version}/{resource}` for a cluster-scoped resource -
 [Kayra](https://github.com/infrapi/kayra)'s convention for RBAC-protected APIs - gates
 them on `Client.RequireAccess()` instead of hand-rolling its own RBAC storage and
 matching:
@@ -166,7 +167,8 @@ vms.POST("/vm/:id/reboot", rebootVM)
 ```
 
 `RequireAccess` takes the request path apart with `api.Parse` - the API group
-(`compute.infrapi.io`) and the namespace come from it, `Resource`/`Verb` from the rest
+(`compute.infrapi.io`) and the namespace come from it (none for a cluster-scoped
+resource, which Kayra decides on its cluster RBAC), `Resource`/`Verb` from the rest
 of the path and the HTTP method (see below) - and calls the authentication/authorization
 service's check endpoint (`POST`, the path its discovery document names, see
 [Discovering Kayra](#discovering-kayra)) with the

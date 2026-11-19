@@ -16,7 +16,13 @@ this package, so the three never disagree on a path:
 
 ```text
 /apis/{group}/{version}/namespaces/{namespace}/{resource}[/{id}[/{action}[/{id}...]]]
+/apis/{group}/{version}/{resource}[/{id}[/{action}[/{id}...]]]
 ```
+
+A resource lives in a namespace, or in none: cluster-scoped, the platform's rather than
+a tenant's (`/apis/compute.infrapi.io/v1/flavors/large`). A path is namespaced when
+`namespaces` follows the version, then a namespace and a resource; any other is
+cluster-scoped, its resource everything after the version.
 
 A group is named in full, like a Kubernetes API group — `compute.infrapi.io` — and
 that name is the one it is registered under in Kayra. Only
@@ -29,7 +35,8 @@ Kayra has a domain of its own, `app.api_domain`, for its built-in groups (`syste
 /apis/compute.infrapi.io/v1/namespaces/core/vm/123/reboot
 ```
 
-After the namespace, segments alternate a resource or action name and an instance id.
+After the namespace, or the version for a cluster-scoped resource, segments alternate a
+resource or action name and an instance id.
 `auth` relies on that to tell `vm` (list) from `vm/123` (get), and to grant
 `vm/123/reboot` as resource `vm/reboot`.
 

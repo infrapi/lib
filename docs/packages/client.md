@@ -54,13 +54,14 @@ Requests name a resource, and the client builds:
 
 ```text
 {Protocol}://{Server}:{Port}/apis/{group}/{version}/namespaces/{namespace}/{resource}
+{Protocol}://{Server}:{Port}/apis/{group}/{version}/{resource}     # no namespace: cluster-scoped
 ```
 
 So on the client above, `client.Get("vm/123", nil)` requests
 `https://compute.example.com:443/apis/compute.infrapi.io/v1/namespaces/core/vm/123`,
 and `client.Post("vm/123/reboot", nil)` its `reboot` action. Each segment of the
-resource is escaped. A resource with an empty, `.` or `..` segment, or a request without
-a namespace, fails before anything is sent.
+resource is escaped. A client, or a request, with no namespace calls a cluster-scoped
+resource. A resource with an empty, `.` or `..` segment fails before anything is sent.
 
 ## Sending requests
 

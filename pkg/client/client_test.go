@@ -10,7 +10,10 @@ import (
 	"fmt"
 	"math/big"
 	nhttp "net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -299,13 +302,26 @@ func TestAPIClient_methods(t *testing.T) {
 	}
 }
 
-func TestAPIClient_NoNamespace(t *testing.T) {
-	client, err := NewClient(&ClientOptions{Server: "127.0.0.1", API: puppet, Protocol: "http", Port: 8080})
+// A client with no namespace calls a cluster-scoped resource,
+// /apis/<group>/<version>/<resource>.
+func TestAPIClient_ClusterScoped(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(nhttp.HandlerFunc(func(w nhttp.ResponseWriter, r *nhttp.Request) {
+		path = r.URL.Path
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	port, _ := strconv.Atoi(u.Port())
+	client, err := NewClient(&ClientOptions{Server: u.Hostname(), API: puppet, Protocol: "http", Port: port})
 	if err != nil {
 		t.Fatalf("client_test.go(NewClient): %s", err)
 	}
-	if _, err = client.Get("ok", nil); err == nil || !strings.Contains(err.Error(), "namespace") {
-		t.Fatalf("client_test.go(NoNamespace): want a namespace error, got %v", err)
+	if _, err = client.Get("nodes/puppet01", nil); err != nil {
+		t.Fatalf("client_test.go(ClusterScoped): %v", err)
+	}
+	if path != "/apis/puppet.infrapi.test/v1/nodes/puppet01" {
+		t.Fatalf("client_test.go(ClusterScoped): path %s", path)
 	}
 }
 

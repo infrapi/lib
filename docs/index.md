@@ -23,7 +23,7 @@ Install with `go get github.com/infrapi/lib` (Go 1.27.3 or later).
 
 | Package | Import path | What it does |
 |---------|-------------|--------------|
-| [`api`](packages/api.md) | `github.com/infrapi/lib/pkg/api` | The URL layout every service exposes, `/apis/{group}/{version}/namespaces/{namespace}/{resource}`, shared by `server`, `client` and `auth`. |
+| [`api`](packages/api.md) | `github.com/infrapi/lib/pkg/api` | The URL layout every service exposes, `/apis/{group}/{version}/[namespaces/{namespace}/]{resource}`, shared by `server`, `client` and `auth`. |
 | [`auth`](packages/auth.md) | `github.com/infrapi/lib/pkg/auth` | Authenticates requests against an upstream authentication service's `/oauth2/userinfo` endpoint, with an in-memory cache, as a gin middleware. |
 | [`client`](packages/client.md) | `github.com/infrapi/lib/pkg/client` | Resty-based client of the APIs `server` exposes, with TLS/mTLS, retry and hedging. |
 | [`config`](packages/config.md) | `github.com/infrapi/lib/pkg/config` | Reads a dotenv file, validates values, exposes a typed `AppConfig`. |

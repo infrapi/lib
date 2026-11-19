@@ -172,6 +172,28 @@ func TestRequireAccess_apiGroup(t *testing.T) {
 	}, got)
 }
 
+// A cluster-scoped path asks for no namespace.
+func TestRequireAccess_cluster(t *testing.T) {
+	var got AuthorizeRequest
+	authSvc := httptest.NewServer(withDiscovery(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+		_, _ = w.Write([]byte(`{"allowed":true}`))
+	})))
+	defer authSvc.Close()
+	client, err := NewClient(ClientOptions{BaseURL: authSvc.URL})
+	require.NoError(t, err)
+
+	app := gin.New()
+	app.PUT("/apis/puppet.infrapi.io/v1/nodes/:node/status", client.RequireAccess(), func(c *gin.Context) { c.Status(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodPut, "/apis/puppet.infrapi.io/v1/nodes/puppet01/status", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	w := httptest.NewRecorder()
+	app.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, AuthorizeRequest{Api: "puppet.infrapi.io", Resource: "nodes/status", Verb: "update"}, got)
+}
+
 func TestRequireAccess_outsideLayout(t *testing.T) {
 	authSvc := authorizeStub(t, "good-token", `{"allowed":true}`)
 	defer authSvc.Close()

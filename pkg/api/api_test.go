@@ -52,7 +52,6 @@ func TestGroup_Path(t *testing.T) {
 	for name, call := range map[string]func() (string, error){
 		"invalid group":     func() (string, error) { return Group{}.Path("core", "vm") },
 		"invalid namespace": func() (string, error) { return compute.Path("Core", "vm") },
-		"empty namespace":   func() (string, error) { return compute.Path("", "vm") },
 		"empty resource":    func() (string, error) { return compute.Path("core", "/") },
 		"empty segment":     func() (string, error) { return compute.Path("core", "vm//reboot") },
 		"dot dot":           func() (string, error) { return compute.Path("core", "vm/../secret") },
@@ -76,16 +75,33 @@ func TestParse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, Path{API: compute.Name, Version: "v1", Namespace: "core", Resource: "vm"}, p)
 
+	// cluster-scoped: no namespaces after the version, or no resource after
+	// the namespace
+	for path, want := range map[string]Path{
+		"/apis/compute.infrapi.io/v1/flavors/large":         {API: "compute.infrapi.io", Version: "v1", Resource: "flavors/large"},
+		"/apis/authorization.infrapi.io/v1/check":           {API: "authorization.infrapi.io", Version: "v1", Resource: "check"},
+		"/apis/system.infrapi.io/v1/namespaces":             {API: "system.infrapi.io", Version: "v1", Resource: "namespaces"},
+		"/apis/system.infrapi.io/v1/namespaces/core":        {API: "system.infrapi.io", Version: "v1", Resource: "namespaces/core"},
+		"/apis/compute.infrapi.io/v1/projects/core/vm":      {API: "compute.infrapi.io", Version: "v1", Resource: "projects/core/vm"},
+		"/apis/compute.infrapi.io/v1/namespaces/core/vm/12": {API: "compute.infrapi.io", Version: "v1", Namespace: "core", Resource: "vm/12"},
+	} {
+		got, err := Parse(path)
+		require.NoError(t, err, path)
+		assert.Equal(t, want, got, path)
+	}
+	cluster, err := compute.Path("", "flavors/large")
+	require.NoError(t, err)
+	assert.Equal(t, "/apis/compute.infrapi.io/v1/flavors/large", cluster)
+
 	for name, path := range map[string]string{
-		"no prefix":         "/api/compute.infrapi.io/v1/namespaces/core/vm",
-		"too short":         "/apis/compute.infrapi.io/v1/namespaces/core",
-		"no namespaces":     "/apis/compute.infrapi.io/v1/projects/core/vm",
-		"single label":      "/apis/compute/v1/namespaces/core/vm",
-		"bad version":       "/apis/compute.infrapi.io/1/namespaces/core/vm",
-		"bad namespace":     "/apis/compute.infrapi.io/v1/namespaces/Core/vm",
-		"empty resource":    "/apis/compute.infrapi.io/v1/namespaces/core/",
-		"dot dot":           "/apis/compute.infrapi.io/v1/namespaces/core/vm/..",
-		"cluster-wide path": "/apis/authorization.infrapi.io/v1/check",
+		"no prefix":      "/api/compute.infrapi.io/v1/namespaces/core/vm",
+		"too short":      "/apis/compute.infrapi.io/v1",
+		"single label":   "/apis/compute/v1/namespaces/core/vm",
+		"bad version":    "/apis/compute.infrapi.io/1/namespaces/core/vm",
+		"bad namespace":  "/apis/compute.infrapi.io/v1/namespaces/Core/vm",
+		"empty resource": "/apis/compute.infrapi.io/v1/",
+		"dot dot":        "/apis/compute.infrapi.io/v1/namespaces/core/vm/..",
+		"cluster dot":    "/apis/compute.infrapi.io/v1/flavors/..",
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Parse(path)
