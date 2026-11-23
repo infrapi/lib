@@ -126,6 +126,11 @@ id, err := vars.GetIdentity() // config.Identity{KeyPaths, TokenPath}
 ```
 
 Neither set, the service has no identity. Both set is an error.
+
+`GetEvents()` reads how the service records its [events](events.md):
+`INFRAPI_EVENTS_ENABLED` (false: to the log only), `INFRAPI_EVENTS_QUEUE`
+(1000), `INFRAPI_EVENTS_BATCH` (100), `INFRAPI_EVENTS_SERIES_WINDOW` (10m),
+`INFRAPI_EVENTS_SPAM_BURST` (25) and `INFRAPI_EVENTS_SPAM_REFILL` (5m).
 Individual getters (`GetAppName`, `GetAppLogLevel`, `GetAppCorsMaxAge`, ...) are exported
 too when only one value is needed.
 

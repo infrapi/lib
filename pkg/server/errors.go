@@ -59,6 +59,21 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 // AbortError renders err and stops the gin chain: what a middleware does
 // when it refuses a request.
 func AbortError(c *gin.Context, err error) {
+	c.Set(errorKey, err)
 	WriteError(c.Writer, c.Request, err)
 	c.Abort()
+}
+
+// errorKey keeps the error AbortError answered with.
+const errorKey = "server.error"
+
+// ErrorOf is the error AbortError answered c's request with, if any: the
+// note of its event (WithEvents).
+func ErrorOf(c *gin.Context) error {
+	if v, ok := c.Get(errorKey); ok {
+		if err, ok := v.(error); ok {
+			return err
+		}
+	}
+	return nil
 }

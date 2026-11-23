@@ -374,6 +374,36 @@ engine, err := server.NewServerGin(cfg.App, roots, server.WithIdentity(keys...))
 {"keys": [{"kty": "EC", "crv": "P-256", "x": "…", "y": "…", "kid": "…", "use": "sig", "alg": "ES256"}]}
 ```
 
+## Events
+
+`WithEvents(rec, hooks...)` records an [event](events.md) for every write the
+service serves (create, update, patch, delete, an action), once its handler
+answered:
+
+| Response | Event |
+|---|---|
+| 2xx | `Normal`, the operation's `operationId` in the past: `createVM`, `VMCreated` |
+| 202 | `Normal`, `VMRebootAccepted`: the worker reports how it ended |
+| a 4xx from the handler, a 5xx | `Warning`, `VMCreateFailed`, its note the error's detail |
+
+```go
+engine, err := server.NewServerGin(cfg, roots, server.WithAuth(kayra.Middleware()),
+	server.WithOpenAPI(api.Contracts()...), server.WithEvents(rec))
+```
+
+- **Its object:** the path's (`vms/web-1`), or a create body's `name`.
+- **Its user:** the one Kayra's check answered ([`auth.RequireAccess`](auth.md#authorizing-apiresourceverb-access));
+  its `request_id`, the request's `X-Request-Id`.
+- **No event** for a read, a request the check refused or its contract
+  refused (the [audit](https://infrapi.github.io/kayra/architecture/audit/)
+  has it), or an `-/` route.
+- **In the contract:** `x-infrapi-event: {reason: ReleasePromoted}` names an
+  operation's reason, and `x-infrapi-event: false` records none.
+- **In the handler:** `events.Annotate(c, k, v)`, `events.SetNote(c, ...)`,
+  `events.SetReason(c, ...)`, and `events.Skip(c)` for no event.
+- **`EventHooks`:** `Before(c) bool` records one or not, and `After(c, *events.Event)`
+  changes it before it goes.
+
 ## Health
 
 A gateway or a load balancer checks `<root>/-/readyz` to know whether to send a replica

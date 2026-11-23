@@ -112,16 +112,21 @@ func (a *Client) RequireAccess() gin.HandlerFunc {
 			return
 		}
 
-		allowed, reason, err := a.Authorize(c.Request.Context(), token, AuthorizeRequest{
+		d, err := a.Decide(c.Request.Context(), token, AuthorizeRequest{
 			Namespace: p.Namespace,
 			Api:       p.API,
 			Resource:  resource,
 			Verb:      verb,
+			Name:      ObjectName(p.Resource),
+			RequestID: c.GetHeader(server.RequestIDHeader),
+			SourceIP:  c.ClientIP(),
+			UserAgent: c.Request.UserAgent(),
 		})
 		if err != nil {
 			server.AbortError(c, err)
 			return
 		}
+		allowed, reason := d.Allowed, d.Reason
 		if !allowed {
 			detail := reason
 			if detail == "" {
@@ -131,6 +136,8 @@ func (a *Client) RequireAccess() gin.HandlerFunc {
 			return
 		}
 
+		// the check passed: its user, for the request's event (server.WithEvents)
+		c.Set(server.CheckedUserKey, d.User)
 		c.Next()
 	}
 }
@@ -147,4 +154,24 @@ func extractBearer(header string) (string, error) {
 		return "", fmt.Errorf("empty bearer token")
 	}
 	return token, nil
+}
+
+// CheckedUser is the caller's subject, as Kayra's check answered it in
+// RequireAccess: "" before it, when it refused, or with a Kayra that does
+// not say.
+func CheckedUser(c *gin.Context) string {
+	return c.GetString(server.CheckedUserKey)
+}
+
+// ObjectName is the object a resource path names: web-1 for vms/web-1
+// and vms/web-1/reboot, "" for vms.
+func ObjectName(resource string) string {
+	segs := strings.Split(strings.Trim(resource, "/"), "/")
+	switch {
+	case len(segs) < 2:
+		return ""
+	case len(segs)%2 == 0:
+		return segs[len(segs)-1]
+	}
+	return segs[len(segs)-2]
 }

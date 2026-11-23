@@ -15,6 +15,9 @@ import (
 	infraerrors "github.com/infrapi/lib/pkg/errors"
 )
 
+// operationKey keeps the contract's operation a request matched.
+const operationKey = "server.operation"
+
 // contractRouter finds, for a request, the operation of the contracts it
 // belongs to.
 type contractRouter struct {
@@ -69,6 +72,7 @@ func (cr *contractRouter) validate(c *gin.Context) {
 			AbortError(c, infraerrors.Invalid("%s", reason(err)))
 			return
 		}
+		c.Set(operationKey, route.Operation)
 		break
 	}
 	c.Next()

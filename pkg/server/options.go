@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/infrapi/lib/pkg/events"
 	"github.com/infrapi/lib/pkg/identity"
 )
 
@@ -23,6 +24,9 @@ type options struct {
 	authorizationServer func(ctx context.Context) (string, error)
 	// identity is WithIdentity's keys
 	identity []*identity.Key
+	// events is WithEvents' recorder, and its hooks
+	events     *events.Recorder
+	eventHooks []EventHooks
 }
 
 // OpenAPISpec is an OpenAPI document a service maintains itself — a contract

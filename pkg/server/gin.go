@@ -172,6 +172,11 @@ func NewServerGin(cfg *config.AppConfig, roots []string, opts ...Option) (*gin.E
 		app.Use(unless(open, rs, o.auth))
 	}
 
+	// The events, once a write is served: never an operational route.
+	if o.events != nil {
+		app.Use(unless(open, rs, eventsMiddleware(o.events, o.eventHooks)))
+	}
+
 	return app, nil
 }
 

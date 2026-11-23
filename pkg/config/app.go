@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -274,4 +275,42 @@ func (v *Variables) GetIdentity() (Identity, error) {
 		return Identity{}, fmt.Errorf("INFRAPI_IDENTITY_KEY_PATH and INFRAPI_IDENTITY_TOKEN_PATH are both set: the service proves its identity one way, dotenv located at %s", v.Path)
 	}
 	return id, nil
+}
+
+// Events is how the service records its events (pkg/events),
+// INFRAPI_EVENTS_*: Enabled sends them to Kayra (the log otherwise), the
+// rest tunes the recorder, its defaults when zero.
+type Events struct {
+	Enabled      bool
+	Queue        int
+	Batch        int
+	SeriesWindow time.Duration
+	SpamBurst    int
+	SpamRefill   time.Duration
+}
+
+// GetEvents returns INFRAPI_EVENTS_ENABLED (false), INFRAPI_EVENTS_QUEUE
+// (1000), INFRAPI_EVENTS_BATCH (100), INFRAPI_EVENTS_SERIES_WINDOW (10m),
+// INFRAPI_EVENTS_SPAM_BURST (25) and INFRAPI_EVENTS_SPAM_REFILL (5m).
+func (v *Variables) GetEvents() (Events, error) {
+	var e Events
+	var err error
+	if e.Enabled, err = v.GetBool(&VariableOpts{Key: "INFRAPI_EVENTS_ENABLED", Default: "false"}); err != nil {
+		return e, err
+	}
+	for _, n := range []struct {
+		key, def string
+		into     *int
+	}{{"INFRAPI_EVENTS_QUEUE", "1000", &e.Queue}, {"INFRAPI_EVENTS_BATCH", "100", &e.Batch}, {"INFRAPI_EVENTS_SPAM_BURST", "25", &e.SpamBurst}} {
+		if *n.into, err = v.GetInt(&VariableOpts{Key: n.key, Default: n.def, Validator: "min=1"}); err != nil {
+			return e, err
+		}
+	}
+	if e.SeriesWindow, err = v.GetDuration(&VariableOpts{Key: "INFRAPI_EVENTS_SERIES_WINDOW", Default: "10m"}); err != nil {
+		return e, err
+	}
+	if e.SpamRefill, err = v.GetDuration(&VariableOpts{Key: "INFRAPI_EVENTS_SPAM_REFILL", Default: "5m"}); err != nil {
+		return e, err
+	}
+	return e, nil
 }

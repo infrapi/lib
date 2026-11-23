@@ -148,7 +148,7 @@ func TestRequireAccess_apiGroup(t *testing.T) {
 	var got AuthorizeRequest
 	authSvc := httptest.NewServer(withDiscovery(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
-		_, _ = w.Write([]byte(`{"allowed":true}`))
+		_, _ = w.Write([]byte(`{"allowed":true,"user":"jdoe"}`))
 	})))
 	defer authSvc.Close()
 
@@ -159,17 +159,23 @@ func TestRequireAccess_apiGroup(t *testing.T) {
 	vms, err := server.APIGroup(app, api.Group{Name: "compute.infrapi.io", Version: "v2beta1"})
 	require.NoError(t, err)
 	vms.Use(client.RequireAccess())
-	vms.POST("/vm/:id/reboot", func(c *gin.Context) { c.Status(http.StatusAccepted) })
+	var user string
+	vms.POST("/vm/:id/reboot", func(c *gin.Context) { user = CheckedUser(c); c.Status(http.StatusAccepted) })
 
 	req := httptest.NewRequest(http.MethodPost, "/apis/compute.infrapi.io/v2beta1/namespaces/core/vm/123/reboot", nil)
 	req.Header.Set("Authorization", "Bearer good-token")
+	req.Header.Set("X-Request-Id", "req-1")
+	req.Header.Set("User-Agent", "curl/8")
 	w := httptest.NewRecorder()
 	app.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
+	// the request's context, as the service received it: Kayra's audit's
 	assert.Equal(t, AuthorizeRequest{
 		Namespace: "core", Api: "compute.infrapi.io", Resource: "vm/reboot", Verb: "create",
+		Name: "123", RequestID: "req-1", SourceIP: "192.0.2.1", UserAgent: "curl/8",
 	}, got)
+	assert.Equal(t, "jdoe", user, "the check's user, kept in the context")
 }
 
 // A cluster-scoped path asks for no namespace.
@@ -191,7 +197,7 @@ func TestRequireAccess_cluster(t *testing.T) {
 	app.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, AuthorizeRequest{Api: "puppet.infrapi.io", Resource: "nodes/status", Verb: "update"}, got)
+	assert.Equal(t, AuthorizeRequest{Api: "puppet.infrapi.io", Resource: "nodes/status", Verb: "update", Name: "puppet01", SourceIP: "192.0.2.1"}, got)
 }
 
 func TestRequireAccess_outsideLayout(t *testing.T) {

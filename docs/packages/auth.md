@@ -179,6 +179,16 @@ validation. An operational route of the service's that needs a token puts
 
 `examples/auth` runs all of this against a stub authentication server.
 
+## Kayra's answer
+
+`Decide(ctx, token, req)` is the whole answer of Kayra's check: `Allowed`,
+`Reason`, and `User`, the caller's subject. `Authorize` returns the first
+two. `RequireAccess` sends Kayra the request's context, `Name` (its object),
+`RequestID` (`X-Request-Id`), `SourceIP` (gin's `ClientIP`) and `UserAgent`,
+for Kayra's audit to record the original request, not the service's. It
+keeps the user once the check passed: `auth.CheckedUser(c)`, what
+[`server.WithEvents`](server.md#events) names as the event's user.
+
 ## The API's own tokens
 
 `ClientCredentials` gets the tokens of the service's own identity at Kayra,
