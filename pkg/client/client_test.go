@@ -22,8 +22,8 @@ import (
 	"github.com/infrapi/lib/pkg/api"
 )
 
-// puppet is the API the test server exposes.
-var puppet = api.Group{Name: "puppet.infrapi.test", Version: "v1"}
+// compute is the API the test server exposes.
+var compute = api.Group{Name: "compute.infrapi.test", Version: "v1"}
 
 // generateTestCert creates a self-signed CA certificate and returns PEM-encoded cert and key.
 func generateTestCert(t *testing.T) (certPEM, keyPEM []byte) {
@@ -55,27 +55,27 @@ func setup_api_client_server(t *testing.T) {
 	serverMux := nhttp.NewServeMux()
 
 	for _, ns := range []string{"core", "other"} {
-		serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/"+ns+"/ok", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+		serverMux.HandleFunc("/apis/compute.infrapi.test/v1/namespaces/"+ns+"/ok", func(w nhttp.ResponseWriter, r *nhttp.Request) {
 			if _, err := w.Write([]byte("It works!")); err != nil {
 				t.Fatalf("client_test.go(WriteOk): %s", err)
 			}
 		})
 	}
 
-	serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/core/slow", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+	serverMux.HandleFunc("/apis/compute.infrapi.test/v1/namespaces/core/slow", func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		time.Sleep(9999 * time.Second)
 		if _, err := w.Write([]byte("This will never return!!!!!")); err != nil {
 			t.Fatalf("client_test.go(WriteSlow): %s", err)
 		}
 	})
 
-	serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/core/redirect", func(w nhttp.ResponseWriter, r *nhttp.Request) {
-		nhttp.Redirect(w, r, "/apis/puppet.infrapi.test/v1/namespaces/core/ok", StatusPermanentRedirect)
+	serverMux.HandleFunc("/apis/compute.infrapi.test/v1/namespaces/core/redirect", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+		nhttp.Redirect(w, r, "/apis/compute.infrapi.test/v1/namespaces/core/ok", StatusPermanentRedirect)
 	})
 
 	// Handler for retry testing
 	var retryCounter int32
-	serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/core/retry", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+	serverMux.HandleFunc("/apis/compute.infrapi.test/v1/namespaces/core/retry", func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		count := atomic.AddInt32(&retryCounter, 1)
 		if count < 3 {
 			w.WriteHeader(StatusInternalServerError)
@@ -92,7 +92,7 @@ func setup_api_client_server(t *testing.T) {
 
 	// Handler for 429 testing
 	var rateLimitCounter int32
-	serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/core/ratelimit", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+	serverMux.HandleFunc("/apis/compute.infrapi.test/v1/namespaces/core/ratelimit", func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		count := atomic.AddInt32(&rateLimitCounter, 1)
 		if count < 2 {
 			w.Header().Set("Retry-After", "1")
@@ -133,7 +133,7 @@ func TestAPIClient_NewClient(t *testing.T) {
 
 	_, err = NewClient(&ClientOptions{
 		Server:    "127.0.0.1",
-		API:       puppet,
+		API:       compute,
 		Namespace: "core",
 	})
 	if err != nil {
@@ -152,7 +152,7 @@ func TestAPIClient_NewClient(t *testing.T) {
 	}
 
 	_, err = NewClient(&ClientOptions{
-		API:       puppet,
+		API:       compute,
 		Namespace: "core",
 	})
 	if err != nil {
@@ -167,7 +167,7 @@ func TestAPIClient_NewClient(t *testing.T) {
 		Server:        "127.0.0.1",
 		Token:         "empty",
 		GlobalTimeout: 2,
-		API:           puppet,
+		API:           compute,
 		Namespace:     "core",
 	})
 	if err != nil {
@@ -185,7 +185,7 @@ func TestAPIClient_CustomUserAgent(t *testing.T) {
 	customAgent := "custom-user-agent/1.0"
 	client, err := NewClient(&ClientOptions{
 		Server:    "127.0.0.1",
-		API:       puppet,
+		API:       compute,
 		Namespace: "core",
 		UserAgent: customAgent,
 		Protocol:  "http",
@@ -204,7 +204,7 @@ func TestAPIClient_CustomUserAgent(t *testing.T) {
 func TestAPIClient_DefaultUserAgent(t *testing.T) {
 	client, err := NewClient(&ClientOptions{
 		Server:    "127.0.0.1",
-		API:       puppet,
+		API:       compute,
 		Namespace: "core",
 		Protocol:  "http",
 		Port:      8080,
@@ -213,7 +213,7 @@ func TestAPIClient_DefaultUserAgent(t *testing.T) {
 		t.Fatalf("client_test.go(NewClient): %s", err)
 	}
 
-	expectedAgent := "infrapi-lib-client-puppet.infrapi.test"
+	expectedAgent := "infrapi-lib-client-compute.infrapi.test"
 	if client.RestyClient.Header().Get("User-Agent") != expectedAgent {
 		t.Fatalf("client_test.go(DefaultUserAgent): expected '%s' but got '%s'", expectedAgent, client.RestyClient.Header().Get("User-Agent"))
 	}
@@ -227,7 +227,7 @@ func TestAPIClient_methods(t *testing.T) {
 		Server:        "127.0.0.1",
 		Token:         "empty",
 		GlobalTimeout: 2,
-		API:           puppet,
+		API:           compute,
 		Namespace:     "core",
 		Protocol:      "http",
 		Port:          8080,
@@ -313,14 +313,14 @@ func TestAPIClient_ClusterScoped(t *testing.T) {
 	defer srv.Close()
 	u, _ := url.Parse(srv.URL)
 	port, _ := strconv.Atoi(u.Port())
-	client, err := NewClient(&ClientOptions{Server: u.Hostname(), API: puppet, Protocol: "http", Port: port})
+	client, err := NewClient(&ClientOptions{Server: u.Hostname(), API: compute, Protocol: "http", Port: port})
 	if err != nil {
 		t.Fatalf("client_test.go(NewClient): %s", err)
 	}
-	if _, err = client.Get("nodes/puppet01", nil); err != nil {
+	if _, err = client.Get("hosts/host01", nil); err != nil {
 		t.Fatalf("client_test.go(ClusterScoped): %v", err)
 	}
-	if path != "/apis/puppet.infrapi.test/v1/nodes/puppet01" {
+	if path != "/apis/compute.infrapi.test/v1/hosts/host01" {
 		t.Fatalf("client_test.go(ClusterScoped): path %s", path)
 	}
 }
@@ -331,7 +331,7 @@ func TestAPIClient_NewRequest(t *testing.T) {
 
 	client, err := NewClient(&ClientOptions{
 		Server:           "127.0.0.1",
-		API:              puppet,
+		API:              compute,
 		Namespace:        "core",
 		Protocol:         "http",
 		Port:             8080,
@@ -342,7 +342,7 @@ func TestAPIClient_NewRequest(t *testing.T) {
 		t.Fatalf("client_test.go(NewClient): %s", err)
 	}
 
-	const okURL = "http://127.0.0.1:8080/apis/puppet.infrapi.test/v1/namespaces/core/ok"
+	const okURL = "http://127.0.0.1:8080/apis/compute.infrapi.test/v1/namespaces/core/ok"
 	ctx := context.Background()
 
 	res, err := client.NewRequest(ctx).Get(okURL)
@@ -360,7 +360,7 @@ func TestAPIClient_NewRequest(t *testing.T) {
 	res, err = client.NewRequest(ctx).Delete(okURL)
 	checkOk(t, res, err, MethodDelete)
 
-	res, err = client.NewRequest(ctx).Get("http://127.0.0.1:8080/apis/puppet.infrapi.test/v1/namespaces/core/fail")
+	res, err = client.NewRequest(ctx).Get("http://127.0.0.1:8080/apis/compute.infrapi.test/v1/namespaces/core/fail")
 	if err != nil {
 		t.Fatalf("client_test.go(NewRequest fail): %s", err)
 	}
@@ -383,7 +383,7 @@ func TestAPIClient_Retry(t *testing.T) {
 
 	client, err := NewClient(&ClientOptions{
 		Server:           "127.0.0.1",
-		API:              puppet,
+		API:              compute,
 		Namespace:        "core",
 		Protocol:         "http",
 		Port:             8080,
@@ -410,7 +410,7 @@ func TestAPIClient_RateLimit(t *testing.T) {
 
 	client, err := NewClient(&ClientOptions{
 		Server:           "127.0.0.1",
-		API:              puppet,
+		API:              compute,
 		Namespace:        "core",
 		Protocol:         "http",
 		Port:             8080,
@@ -452,7 +452,7 @@ func TestStatusText(t *testing.T) {
 func TestAPIClient_CustomHeaders(t *testing.T) {
 	client, err := NewClient(&ClientOptions{
 		Server:    "127.0.0.1",
-		API:       puppet,
+		API:       compute,
 		Namespace: "core",
 		Protocol:  "http",
 		Port:      8080,
@@ -472,7 +472,7 @@ func TestAPIClient_UnsupportedMethod(t *testing.T) {
 
 	client, err := NewClient(&ClientOptions{
 		Server:     "127.0.0.1",
-		API:        puppet,
+		API:        compute,
 		Namespace:  "core",
 		Protocol:   "http",
 		Port:       8080,
@@ -491,7 +491,7 @@ func TestAPIClient_CACertContent(t *testing.T) {
 	certPEM, _ := generateTestCert(t)
 	_, err := NewClient(&ClientOptions{
 		Server:        "127.0.0.1",
-		API:           puppet,
+		API:           compute,
 		Namespace:     "core",
 		CACertContent: certPEM,
 	})
@@ -515,7 +515,7 @@ func TestAPIClient_CACertPath(t *testing.T) {
 
 	_, err = NewClient(&ClientOptions{
 		Server:     "127.0.0.1",
-		API:        puppet,
+		API:        compute,
 		Namespace:  "core",
 		CACertPath: f.Name(),
 	})
@@ -527,7 +527,7 @@ func TestAPIClient_CACertPath(t *testing.T) {
 func TestAPIClient_CACertPathError(t *testing.T) {
 	_, err := NewClient(&ClientOptions{
 		Server:     "127.0.0.1",
-		API:        puppet,
+		API:        compute,
 		Namespace:  "core",
 		CACertPath: "/nonexistent/ca.pem",
 	})
@@ -540,7 +540,7 @@ func TestAPIClient_mTLSContent(t *testing.T) {
 	certPEM, keyPEM := generateTestCert(t)
 	_, err := NewClient(&ClientOptions{
 		Server:            "127.0.0.1",
-		API:               puppet,
+		API:               compute,
 		Namespace:         "core",
 		ClientCertContent: certPEM,
 		ClientKeyContent:  keyPEM,
@@ -553,7 +553,7 @@ func TestAPIClient_mTLSContent(t *testing.T) {
 func TestAPIClient_mTLSContentError(t *testing.T) {
 	_, err := NewClient(&ClientOptions{
 		Server:            "127.0.0.1",
-		API:               puppet,
+		API:               compute,
 		Namespace:         "core",
 		ClientCertContent: []byte("not-a-cert"),
 		ClientKeyContent:  []byte("not-a-key"),
@@ -587,7 +587,7 @@ func TestAPIClient_mTLSPath(t *testing.T) {
 
 	_, err = NewClient(&ClientOptions{
 		Server:         "127.0.0.1",
-		API:            puppet,
+		API:            compute,
 		Namespace:      "core",
 		ClientCertPath: certFile.Name(),
 		ClientKeyPath:  keyFile.Name(),
@@ -600,7 +600,7 @@ func TestAPIClient_mTLSPath(t *testing.T) {
 func TestAPIClient_mTLSPathError(t *testing.T) {
 	_, err := NewClient(&ClientOptions{
 		Server:         "127.0.0.1",
-		API:            puppet,
+		API:            compute,
 		Namespace:      "core",
 		ClientCertPath: "/nonexistent/cert.pem",
 		ClientKeyPath:  "/nonexistent/key.pem",
@@ -613,7 +613,7 @@ func TestAPIClient_mTLSPathError(t *testing.T) {
 func TestAPIClient_HedgingNonReadOnly(t *testing.T) {
 	_, err := NewClient(&ClientOptions{
 		Server:    "127.0.0.1",
-		API:       puppet,
+		API:       compute,
 		Namespace: "core",
 		Protocol:  "http",
 		Port:      8080,
@@ -635,7 +635,7 @@ func TestAPIClient_Hedging(t *testing.T) {
 
 	client, err := NewClient(&ClientOptions{
 		Server:     "127.0.0.1",
-		API:        puppet,
+		API:        compute,
 		Namespace:  "core",
 		Protocol:   "http",
 		Port:       8080,
@@ -662,7 +662,7 @@ func TestAPIClient_Hedging(t *testing.T) {
 // Benchmark tests
 func BenchmarkClient_Get(b *testing.B) {
 	serverMux := nhttp.NewServeMux()
-	serverMux.HandleFunc("/apis/puppet.infrapi.test/v1/namespaces/core/benchmark", func(w nhttp.ResponseWriter, r *nhttp.Request) {
+	serverMux.HandleFunc("/apis/compute.infrapi.test/v1/namespaces/core/benchmark", func(w nhttp.ResponseWriter, r *nhttp.Request) {
 		_, _ = fmt.Fprint(w, "benchmark")
 	})
 
@@ -677,7 +677,7 @@ func BenchmarkClient_Get(b *testing.B) {
 
 	client, _ := NewClient(&ClientOptions{
 		Server:     "127.0.0.1",
-		API:        puppet,
+		API:        compute,
 		Namespace:  "core",
 		Protocol:   "http",
 		Port:       8081,

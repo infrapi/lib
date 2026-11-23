@@ -251,14 +251,14 @@ service knows and the engine cannot:
 
 ```go
 // in a gin handler
-server.LogField(c, "tenant", tenant)
+server.LogField(c, "namespace", namespace)
 
 // in a net/http handler mounted with gin.WrapH, or its middleware
 server.LogField(r.Context(), "resource", map[string]string{"kind": "folder", "id": id})
 ```
 
 ```json
-{"time":"…","level":"info","msg":"request","method":"POST",…,"resource":{"id":"f1","kind":"folder"},"tenant":"acme"}
+{"time":"…","level":"info","msg":"request","method":"POST",…,"resource":{"id":"f1","kind":"folder"},"namespace":"acme"}
 ```
 
 Your fields come after the engine's, in key order. The value is marshalled to
@@ -271,7 +271,7 @@ With text logs, the fields follow gin's line as `key=value`, in key order; a
 value with a space, a quote or an `=` is quoted:
 
 ```text
-[GIN] 2026/10/08 - 16:38:25 | 201 |    2.52ms |  127.0.0.1 | POST     "/folders" tenant=acme broadcast_id=go3ouhwv…
+[GIN] 2026/10/08 - 16:38:25 | 201 |    2.52ms |  127.0.0.1 | POST     "/folders" namespace=acme broadcast_id=go3ouhwv…
 ```
 
 The engine leaves the global logrus logger alone: a service that wants its own

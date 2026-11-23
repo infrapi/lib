@@ -94,7 +94,7 @@ var reservedFields = map[string]bool{
 }
 
 // LogField adds key to the access log line of the request ctx belongs to:
-// a tenant, a resource id, an outcome — whatever the service knows and the
+// a namespace, a resource id, an outcome — whatever the service knows and the
 // engine cannot. Call it from a gin handler with the *gin.Context itself, or
 // from a net/http handler mounted with gin.WrapH with the request's context.
 // The value must marshal to JSON; adding the same key again replaces it. In

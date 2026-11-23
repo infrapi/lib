@@ -190,14 +190,14 @@ func TestRequireAccess_cluster(t *testing.T) {
 	require.NoError(t, err)
 
 	app := gin.New()
-	app.PUT("/apis/puppet.infrapi.io/v1/nodes/:node/status", client.RequireAccess(), func(c *gin.Context) { c.Status(http.StatusOK) })
-	req := httptest.NewRequest(http.MethodPut, "/apis/puppet.infrapi.io/v1/nodes/puppet01/status", nil)
+	app.PUT("/apis/compute.infrapi.io/v1/hosts/:host/status", client.RequireAccess(), func(c *gin.Context) { c.Status(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodPut, "/apis/compute.infrapi.io/v1/hosts/host01/status", nil)
 	req.Header.Set("Authorization", "Bearer good-token")
 	w := httptest.NewRecorder()
 	app.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, AuthorizeRequest{Api: "puppet.infrapi.io", Resource: "nodes/status", Verb: "update", Name: "puppet01", SourceIP: "192.0.2.1"}, got)
+	assert.Equal(t, AuthorizeRequest{Api: "compute.infrapi.io", Resource: "hosts/status", Verb: "update", Name: "host01", SourceIP: "192.0.2.1"}, got)
 }
 
 func TestRequireAccess_outsideLayout(t *testing.T) {

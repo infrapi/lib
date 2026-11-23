@@ -20,7 +20,7 @@ this package, so the three never disagree on a path:
 ```
 
 A resource lives in a namespace, or in none: cluster-scoped, the platform's rather than
-a tenant's (`/apis/compute.infrapi.io/v1/flavors/large`). A path is namespaced when
+a namespace's (`/apis/compute.infrapi.io/v1/flavors/large`). A path is namespaced when
 `namespaces` follows the version, then a namespace and a resource; any other is
 cluster-scoped, its resource everything after the version.
 
