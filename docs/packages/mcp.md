@@ -87,3 +87,10 @@ A client may hold a request open to be notified (`subscriptions/listen`),
 until it leaves: a graceful `http.Server.Shutdown` would wait for it until
 its deadline. `Handler.Close` ends these requests, and the others in
 progress; register it with `srv.RegisterOnShutdown(h.Close)`.
+
+## Behind ulgen
+
+[ulgen](https://infrapi.github.io/ulgen/) serves several services' MCP
+endpoints, and other MCP servers, behind a single endpoint, after a single
+login at Kayra. It passes the caller's token on, and the service keeps
+checking every call itself.
