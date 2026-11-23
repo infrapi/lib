@@ -363,7 +363,7 @@ each request: a 503 while Kayra cannot be reached.
 [identity keys](identity.md) at each root's `-/jwks.json`, without a token:
 Kayra's reconciler reads them there when the API's registration says
 `identity.jwks_from: spec`. No keys, no route: Kayra then finds none (a
-`404`), and the API gets no token.
+`404`, or a `401` from `WithAuth`), and the API gets no token.
 
 ```go
 keys, err := identity.LoadKeys(cfg.Identity.KeyPaths)
