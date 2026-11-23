@@ -357,6 +357,23 @@ engine, err := server.NewServerGin(cfg, roots,
 The resource is `AppUrl` and the root. The authorization server is read at
 each request: a 503 while Kayra cannot be reached.
 
+## Identity keys
+
+`WithIdentity(keys...)` serves the public half of the service's
+[identity keys](identity.md) at each root's `-/jwks.json`, without a token:
+Kayra's reconciler reads them there when the API's registration says
+`identity.jwks_from: spec`. No keys, no route: Kayra then finds none (a
+`404`), and the API gets no token.
+
+```go
+keys, err := identity.LoadKeys(cfg.Identity.KeyPaths)
+engine, err := server.NewServerGin(cfg.App, roots, server.WithIdentity(keys...))
+```
+
+```json
+{"keys": [{"kty": "EC", "crv": "P-256", "x": "…", "y": "…", "kid": "…", "use": "sig", "alg": "ES256"}]}
+```
+
 ## Health
 
 A gateway or a load balancer checks `<root>/-/readyz` to know whether to send a replica

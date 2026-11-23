@@ -12,6 +12,7 @@ pkg/api       URL layout: /apis/{group}/{version}/namespaces/{namespace}/{resour
 pkg/client    resty v3 client of pkg/server APIs (TLS/mTLS, retry, hedging)
 pkg/config    dotenv loading, go-playground validation, typed AppConfig
 pkg/errors    application error: RFC 9457 payload, cause, remediation
+pkg/identity  the service's own identity at Kayra (system:api:<group>): EC P-256 key, -/jwks.json, ES256 assertions
 pkg/listener  service socket, TCP or systemd socket activation
 pkg/server    gin.Engine factory (CORS, proxies, <root>/-/{metadata,healthz,readyz,metrics,openapi.json,docs} per API group root, /.well-known/api.json, all open), APIGroup
 pkg/tofu      drive any OpenTofu provider plugin/resource type, and a declarative apply/destroy on top

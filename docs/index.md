@@ -28,6 +28,7 @@ Install with `go get github.com/infrapi/lib` (Go 1.27.3 or later).
 | [`client`](packages/client.md) | `github.com/infrapi/lib/pkg/client` | Resty-based client of the APIs `server` exposes, with TLS/mTLS, retry and hedging. |
 | [`config`](packages/config.md) | `github.com/infrapi/lib/pkg/config` | Reads a dotenv file, validates values, exposes a typed `AppConfig`. |
 | [`errors`](packages/errors.md) | `github.com/infrapi/lib/pkg/errors` | RFC 9457 application error with an HTTP status, a cause, a remediation hint, a stable code and an explicit retryable flag. |
+| [`identity`](packages/identity.md) | `github.com/infrapi/lib/pkg/identity` | A service's own identity at Kayra, `system:api:<group>`: its EC P-256 key, served at `-/jwks.json`, signing its assertions for `auth.ClientCredentials`. |
 | [`listener`](packages/listener.md) | `github.com/infrapi/lib/pkg/listener` | Opens the service socket, TCP or systemd socket activation. |
 | [`logger`](packages/logger.md) | `github.com/infrapi/lib/pkg/logger` | Builds the `*logger.Logger` a service's own code logs through, from the same `AppConfig` log level and format, with one shared set of conventions. |
 | [`mcp`](packages/mcp.md) | `github.com/infrapi/lib/pkg/mcp` | Serves a service's API to AI agents over the Model Context Protocol, generated from its OpenAPI document, with its documents and prompts as context. |

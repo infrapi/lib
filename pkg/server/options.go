@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/infrapi/lib/pkg/identity"
 )
 
 // Option adjusts the engine NewServerGin builds.
@@ -19,6 +21,8 @@ type options struct {
 	auth       gin.HandlerFunc
 	// authorizationServer is WithProtectedResource's
 	authorizationServer func(ctx context.Context) (string, error)
+	// identity is WithIdentity's keys
+	identity []*identity.Key
 }
 
 // OpenAPISpec is an OpenAPI document a service maintains itself — a contract
@@ -116,6 +120,19 @@ func WithProtectedResource(authorizationServer func(ctx context.Context) (string
 			return fmt.Errorf("server: WithProtectedResource needs an authorization server")
 		}
 		o.authorizationServer = authorizationServer
+		return nil
+	}
+}
+
+// WithIdentity serves the public half of keys, the service's identity
+// keys, at each root's -/jwks.json: Kayra's reconciler reads them there when
+// the API's registration says identity.jwks_from: spec, and trusts what the
+// first one signs (auth.ClientCredentials). Every key is published; list
+// the new key after the old one while rotating. Without authentication,
+// like every operational endpoint. No keys, no route.
+func WithIdentity(keys ...*identity.Key) Option {
+	return func(o *options) error {
+		o.identity = append(o.identity, keys...)
 		return nil
 	}
 }

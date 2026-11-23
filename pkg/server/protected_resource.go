@@ -13,6 +13,9 @@ import (
 // with WithProtectedResource.
 const ProtectedResourcePath = "/-/oauth-protected-resource"
 
+// JWKSPath is a root's identity keys, the public halves, with WithIdentity.
+const JWKSPath = "/-/jwks.json"
+
 // WellKnownProtectedResource prefixes a root's metadata at the engine's root:
 // RFC 9728's well-known URI, /.well-known/oauth-protected-resource<root>.
 const WellKnownProtectedResource = "/.well-known/oauth-protected-resource"

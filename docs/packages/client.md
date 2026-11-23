@@ -43,7 +43,19 @@ else has a default:
 | `RetryWaitTime` | `time.Duration` | `1s` |
 | `RetryMaxWaitTime` | `time.Duration` | `30s` |
 
-`Token`, when set, is sent as a bearer token on every request.
+`Token`, when set, is sent as a bearer token on every request. `TokenSource`
+gives one for each request instead, `Token` then ignored: the service's
+[own identity's](auth.md#the-apis-own-tokens), renewed as it expires. An
+error from it fails the request before it is sent.
+
+```go
+tokens, err := infraauth.NewClientCredentials(infraauth.ClientCredentialsOptions{
+	Kayra: kayra, ClientID: identity.Subject("compute.infrapi.io"), Key: keys[0],
+	Resources: []string{"https://gateway.example.com/apis/network.infrapi.io/v1"}})
+network, err := infraclient.NewClient(&infraclient.ClientOptions{
+	Server: "gateway.example.com", API: api.Group{Name: "network.infrapi.io", Version: "v1"},
+	Namespace: "core", TokenSource: tokens.Token})
+```
 
 `Update(opts)` rebuilds an existing client in place with a new set of options, which is
 what `NewClient` calls internally.

@@ -3,6 +3,9 @@
 package config
 
 import (
+	"fmt"
+	"strings"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -239,4 +242,36 @@ func (v *Variables) GetAppConfig() (*AppConfig, error) {
 		AppCorsAllowCredentials: appCorsAllowCredentials,
 		AppCorsMaxAge:           appCorsMaxAge,
 	}, nil
+}
+
+// Identity is the service's own identity at Kayra (pkg/identity), both
+// optional: INFRAPI_IDENTITY_KEY_PATH, its keys' PEM files separated by
+// commas, the first signing, and INFRAPI_IDENTITY_TOKEN_PATH, a platform's
+// identity token instead (a projected Kubernetes service account token).
+type Identity struct {
+	KeyPaths  []string
+	TokenPath string
+}
+
+// GetIdentity returns INFRAPI_IDENTITY_KEY_PATH and
+// INFRAPI_IDENTITY_TOKEN_PATH. Neither set, the service has no identity.
+func (v *Variables) GetIdentity() (Identity, error) {
+	keys, err := v.GetString(&VariableOpts{Key: "INFRAPI_IDENTITY_KEY_PATH", Optional: true})
+	if err != nil {
+		return Identity{}, err
+	}
+	token, err := v.GetString(&VariableOpts{Key: "INFRAPI_IDENTITY_TOKEN_PATH", Optional: true})
+	if err != nil {
+		return Identity{}, err
+	}
+	id := Identity{TokenPath: token}
+	for p := range strings.SplitSeq(keys, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			id.KeyPaths = append(id.KeyPaths, p)
+		}
+	}
+	if len(id.KeyPaths) > 0 && id.TokenPath != "" {
+		return Identity{}, fmt.Errorf("INFRAPI_IDENTITY_KEY_PATH and INFRAPI_IDENTITY_TOKEN_PATH are both set: the service proves its identity one way, dotenv located at %s", v.Path)
+	}
+	return id, nil
 }

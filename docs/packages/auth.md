@@ -179,6 +179,39 @@ validation. An operational route of the service's that needs a token puts
 
 `examples/auth` runs all of this against a stub authentication server.
 
+## The API's own tokens
+
+`ClientCredentials` gets the tokens of the service's own identity at Kayra,
+`system:api:<group>` ([identity](identity.md)): Kayra's `client_credentials`
+grant, authenticated by a JWT (RFC 7523). The service's `Key` signs it
+(iss and sub its client id, aud Kayra's token endpoint, a minute long, a
+`jti`), or a platform's identity token is read from `TokenFile` for every
+token asked.
+
+```go
+kayra, err := infraauth.NewClient(infraauth.ClientOptions{BaseURL: kayraURL})
+tokens, err := infraauth.NewClientCredentials(infraauth.ClientCredentialsOptions{
+	Kayra:    kayra,
+	ClientID: identity.Subject("compute.infrapi.io"),
+	Key:      keys[0], // or TokenFile: "/var/run/secrets/kayra/token"
+})
+token, err := tokens.Token(ctx)
+```
+
+- **The endpoint:** read from Kayra's
+  `/.well-known/oauth-authorization-server` and called through `BaseURL`,
+  even when Kayra's issuer is a public URL the service cannot reach.
+- **Renewal:** the token is kept, and a new one asked once 80% of its life
+  is gone. While Kayra cannot answer, the kept one is returned until it
+  expires. Safe for concurrent use.
+- **`Resources`:** what the token is for (RFC 8707), the URL of each API it
+  calls; Kayra's own when empty.
+- **Kayra's refusal** is a 502 that carries its `error` and
+  `error_description`: an unknown key, no identity in the registration.
+
+Give `tokens.Token` to a [client](client.md#creating-a-client) as its
+`TokenSource`.
+
 ## Authorizing api/resource/verb access
 
 A service mounting its routes with [`server.APIGroup`](server.md#api-routes), under

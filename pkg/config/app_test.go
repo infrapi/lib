@@ -789,3 +789,23 @@ func TestGetAppLogLevel_parselevel_error(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, log.InfoLevel, v)
 }
+
+func TestGetIdentity(t *testing.T) {
+	vars := func(kv map[string]string) *Variables {
+		return &Variables{Values: kv, Path: ".env", DefaultConfig: NewDefaultConfig()}
+	}
+	id, err := vars(nil).GetIdentity()
+	require.NoError(t, err)
+	assert.Equal(t, Identity{}, id)
+
+	id, err = vars(map[string]string{"INFRAPI_IDENTITY_KEY_PATH": "/keys/new.pem, /keys/old.pem,"}).GetIdentity()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/keys/new.pem", "/keys/old.pem"}, id.KeyPaths)
+
+	id, err = vars(map[string]string{"INFRAPI_IDENTITY_TOKEN_PATH": "/var/run/secrets/kayra/token"}).GetIdentity()
+	require.NoError(t, err)
+	assert.Equal(t, "/var/run/secrets/kayra/token", id.TokenPath)
+
+	_, err = vars(map[string]string{"INFRAPI_IDENTITY_KEY_PATH": "/k.pem", "INFRAPI_IDENTITY_TOKEN_PATH": "/t"}).GetIdentity()
+	assert.Error(t, err)
+}

@@ -15,6 +15,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/infrapi/lib/pkg/config"
+	"github.com/infrapi/lib/pkg/identity"
 )
 
 // NewServerGin creates a gin.Engine pre-configured from the supplied AppConfig:
@@ -132,6 +133,14 @@ func NewServerGin(cfg *config.AppConfig, roots []string, opts ...Option) (*gin.E
 			app.GET(WellKnownProtectedResource+root, h)
 			open[root+ProtectedResourcePath] = true
 			open[WellKnownProtectedResource+root] = true
+		}
+		if len(o.identity) > 0 {
+			jwks := identity.PublicJWKS(o.identity...)
+			ops.GET(JWKSPath, func(c *gin.Context) {
+				c.Header("Cache-Control", "max-age=300")
+				c.JSON(http.StatusOK, jwks)
+			})
+			open[root+JWKSPath] = true
 		}
 		for _, s := range specs[root] {
 			open[root+OpenAPIPrefix+s.Path] = true

@@ -112,6 +112,20 @@ type AppConfig struct {
 ```
 
 The first failing key aborts the call, so the error tells you exactly what to fix.
+
+`GetIdentity()` reads the service's own identity at Kayra, both keys
+optional ([identity](identity.md)):
+
+| Key | |
+|---|---|
+| `INFRAPI_IDENTITY_KEY_PATH` | its keys' PEM files, separated by commas: the first signs, every one is served at `-/jwks.json` |
+| `INFRAPI_IDENTITY_TOKEN_PATH` | a platform's identity token instead, a projected Kubernetes service account token |
+
+```go
+id, err := vars.GetIdentity() // config.Identity{KeyPaths, TokenPath}
+```
+
+Neither set, the service has no identity. Both set is an error.
 Individual getters (`GetAppName`, `GetAppLogLevel`, `GetAppCorsMaxAge`, ...) are exported
 too when only one value is needed.
 

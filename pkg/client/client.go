@@ -45,6 +45,11 @@ type ClientOptions struct {
 	// InfraPI token, should be set
 	Token string
 
+	// TokenSource gives the token of each request instead, when set:
+	// auth.ClientCredentials.Token, the service's own identity's,
+	// renewed as it expires. Token is ignored. An error fails the request.
+	TokenSource func(ctx context.Context) (string, error)
+
 	// API called: compute, infrapi.io, v1 for
 	// /apis/compute.infrapi.io/v1/...
 	API api.Group
@@ -213,7 +218,18 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 	c.RestyClient.SetHeader("User-Agent", userAgent)
 
 	// Set default headers
-	if opts.Token != "" {
+	switch {
+	case opts.TokenSource != nil:
+		source := opts.TokenSource
+		c.RestyClient.AddRequestMiddleware(func(_ *resty.Client, r *resty.Request) error {
+			token, err := source(r.Context())
+			if err != nil {
+				return err
+			}
+			r.SetAuthToken(token)
+			return nil
+		})
+	case opts.Token != "":
 		c.RestyClient.SetAuthToken(opts.Token)
 	}
 
