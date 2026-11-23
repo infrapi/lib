@@ -22,7 +22,7 @@ of its own:
   spec`.
 
 [`auth.ClientCredentials`](auth.md#the-apis-own-tokens) gets the tokens. See
-Kayra's [API identity](https://infrapi.github.io/kayra/architecture/api-identity/)
+Kayra's [API identity](https://infrapi.github.io/kayra/architecture/auth/api-identity/)
 for the registration and the rights.
 
 ## The key

@@ -39,7 +39,7 @@ request's resource (RFC 8707) is `PublicURL` and the request's root,
   client, an MCP client such as Claude, follows it to the resource's
   metadata ([`server.WithProtectedResource`](server.md#oauth-clients)),
   then to Kayra's
-  [authorization server](https://infrapi.github.io/kayra/architecture/oauth2-server/),
+  [authorization server](https://infrapi.github.io/kayra/architecture/auth/oauth2-server/),
   and logs its user in there;
 - **a token of Kayra's authorization server** must have been issued for
   the resource: its `aud` (`UserInfo.Audience`) is the resource, or a URL
