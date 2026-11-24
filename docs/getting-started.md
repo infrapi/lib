@@ -9,8 +9,10 @@ weight: 20
 ## 1. Add the dependency
 
 ```bash
-go get github.com/infrapi/lib
+go get github.com/infrapi/lib@v0.21.0
 ```
+
+Pin the version: `@latest` resolves to old v1 tags, not the current release.
 
 ## 2. Write a dotenv file
 

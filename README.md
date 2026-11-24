@@ -13,8 +13,10 @@ each one does and lists its import path.
 ## Install
 
 ```bash
-go get github.com/infrapi/lib
+go get github.com/infrapi/lib@v0.21.0
 ```
+
+Pin the version: `@latest` resolves to old v1 tags, not the current release.
 
 Requires Go 1.27.4 or later.
 
