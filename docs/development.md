@@ -24,8 +24,10 @@ runs `setup clean tidy fmt lint security test`. The individual targets:
 | `test` | `go test` with coverage, writes `cover.out` and `coverage.html` |
 | `docs` | previews these pages in the InfraPI portal, see below |
 
-CI runs the same targets and fails when `make fmt` produces a diff, so format before
-pushing.
+CI is [infrapi/ci](https://github.com/infrapi/ci)'s Go workflow, called by
+`.github/workflows/ci.yml`: gofmt, `go vet`, golangci-lint, gosec and
+`go test -race`, then, on `main`, the release. It fails when a file is not
+gofmt'ed, so run `make fmt` before pushing.
 
 ## Documentation
 
@@ -62,8 +64,8 @@ the portal:
   README. `README.md` stays the repository's front door and links into `docs/` with
   relative paths (`docs/getting-started.md`, `docs/packages/api.md`).
 
-A push to `main` that changes `docs/` runs `.github/workflows/notify-docs.yml`,
-which asks the portal to rebuild, and so does every release; the portal also
+A push to `main` that changes `docs/` asks the portal to rebuild, and so does
+every release (infrapi/ci's workflow, `notify-docs: true`); the portal also
 rebuilds every night. There is no manual deploy step.
 
 ## Layout
