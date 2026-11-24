@@ -26,6 +26,13 @@ const (
 	// out of rotation while it starts, stops or misses its backend.
 	ReadyzPath = "/-/readyz"
 
+	// MCPPath is where a service serves its API to AI agents over MCP
+	// (pkg/mcp), when it does: engine.Any(root+server.MCPPath, gin.WrapH(h)).
+	// The engine documents it in the operations' specification, and the
+	// index (APIIndexPath) links it, once the service has mounted it; an
+	// MCP client such as ulgen finds it there.
+	MCPPath = "/-/mcp"
+
 	// ReadinessTimeout bounds each readiness check: a check that does not
 	// answer in time counts as not ready.
 	ReadinessTimeout = 2 * time.Second

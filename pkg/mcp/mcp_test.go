@@ -109,6 +109,12 @@ func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 // with token.
 func connect(t *testing.T, s *service, opts mcp.Options, token string) *sdk.ClientSession {
 	t.Helper()
+	return connectContract(t, s, contract, opts, token)
+}
+
+// connectContract is connect with a contract of its own.
+func connectContract(t *testing.T, s *service, contract string, opts mcp.Options, token string) *sdk.ClientSession {
+	t.Helper()
 	e := s.engine()
 	h, err := mcp.New([]byte(contract), e, opts)
 	require.NoError(t, err)
@@ -309,5 +315,75 @@ func TestCloseEndsListen(t *testing.T) {
 		require.NoError(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("listen still open after Close")
+	}
+}
+
+// An operation whose x-infrapi-mcp extension is false is not a tool; true,
+// or anything else, changes nothing.
+func TestExtensionExcludes(t *testing.T) {
+	excluded := strings.Replace(contract, `"operationId": "getThing",`, `"operationId": "getThing", "x-infrapi-mcp": false,`, 1)
+	require.NotEqual(t, contract, excluded)
+	tools := toolNames(t, connectContract(t, &service{}, excluded, mcp.Options{Name: "things"}, "good"))
+	assert.Equal(t, []string{"plan_create_thing"}, keys(tools))
+
+	kept := strings.Replace(contract, `"operationId": "getThing",`, `"operationId": "getThing", "x-infrapi-mcp": "no",`, 1)
+	tools = toolNames(t, connectContract(t, &service{}, kept, mcp.Options{Name: "things"}, "good"))
+	assert.Equal(t, []string{"get_thing", "plan_create_thing"}, keys(tools))
+}
+
+// Options.Tools: tools of the service's own, called through its handler
+// with the caller's headers, as the operations' tools are.
+func TestTools(t *testing.T) {
+	s := &service{}
+	session := connect(t, s, mcp.Options{Name: "things", Tools: []mcp.Tool{
+		{
+			Name: "thing_of_the_day", Description: "Today's thing", ReadOnly: true, Idempotent: true,
+			Request: func(ctx context.Context, args map[string]any) (*http.Request, error) {
+				ns, _ := args["namespace"].(string)
+				if ns == "" {
+					return nil, errors.New("namespace is required")
+				}
+				return http.NewRequestWithContext(ctx, http.MethodGet, "/v1/namespaces/"+ns+"/thing/today", nil)
+			},
+		},
+	}}, "good")
+
+	tools := toolNames(t, session)
+	assert.Equal(t, []string{"get_thing", "plan_create_thing", "thing_of_the_day"}, keys(tools))
+	day := tools["thing_of_the_day"]
+	assert.True(t, day.Annotations.ReadOnlyHint)
+	assert.False(t, *day.Annotations.DestructiveHint)
+	assert.True(t, day.Annotations.IdempotentHint)
+	raw, err := json.Marshal(day.InputSchema)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"object"}`, string(raw), "an object unless set")
+
+	res, err := session.CallTool(context.Background(), &sdk.CallToolParams{Name: "thing_of_the_day", Arguments: map[string]any{"namespace": "acme"}})
+	require.NoError(t, err)
+	require.False(t, res.IsError)
+	assert.Equal(t, "today", res.StructuredContent.(map[string]any)["id"])
+	assert.Equal(t, "GET /v1/namespaces/acme/thing/today", s.calls[len(s.calls)-1])
+	assert.Equal(t, "Bearer good", s.auth[len(s.auth)-1], "the caller's token")
+
+	res, err = session.CallTool(context.Background(), &sdk.CallToolParams{Name: "thing_of_the_day", Arguments: map[string]any{}})
+	require.NoError(t, err)
+	assert.True(t, res.IsError)
+	assert.Equal(t, "namespace is required", res.Content[0].(*sdk.TextContent).Text)
+}
+
+// A tool of Options.Tools needs a name and a Request, and a name no other
+// tool has.
+func TestToolsRefused(t *testing.T) {
+	request := func(context.Context, map[string]any) (*http.Request, error) { return nil, errors.New("unused") }
+	for name, tools := range map[string][]mcp.Tool{
+		"no name":    {{Request: request}},
+		"no request": {{Name: "x"}},
+		"taken":      {{Name: "get_thing", Request: request}},
+		"twice":      {{Name: "x", Request: request}, {Name: "x", Request: request}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := mcp.New([]byte(contract), (&service{}).engine(), mcp.Options{Name: "things", Tools: tools})
+			require.Error(t, err)
+		})
 	}
 }

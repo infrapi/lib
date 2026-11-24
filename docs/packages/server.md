@@ -83,6 +83,7 @@ engine, err := server.NewServerGin(cfg, []string{
 | `GET <root>/-/metrics` | Prometheus exposition format, the root's requests. |
 | `GET <root>/-/openapi.json` | OpenAPI 3.1, generated from the root's routes - of its endpoints under `<root>/-/` only when the service passes its own documents with `WithOpenAPI`. |
 | `GET <root>/-/docs` | Swagger UI reading that specification, or the documents passed with `WithOpenAPI`. |
+| `<root>/-/mcp` | The API as MCP tools, when the service mounts [`mcp`](mcp.md)'s handler there (`server.MCPPath`): documented in the specification, linked in the index below. |
 
 At its own root, not under a group's, the engine lists its groups, for a caller who
 knows only its address, without a token:
@@ -109,7 +110,9 @@ curl -s http://compute.example.com/.well-known/api.json
 `url` is the root on `AppUrl`, the root alone when it is not set. A root outside the
 `/apis/<group>/<version>` layout, such as tofu-api's `/grafana/v1`, has an empty `api`:
 its `name` and `version` are its last segments. The path is `server.APIIndexPath`, the
-document `server.APIIndex`.
+document `server.APIIndex`. A group whose service mounted an MCP endpoint at
+`<root>/-/mcp` (`server.MCPPath`) also has `links.mcp`: where an MCP client such as
+ulgen finds it.
 
 The paths are exported relative to the root, as `server.MetadataPath`,
 `server.MetricsPath`, `server.HealthzPath`, `server.ReadyzPath`, `server.OpenAPIPath`
