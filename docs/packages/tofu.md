@@ -67,6 +67,10 @@ for name, attr := range schema.Attributes {
 }
 ```
 
+`ConfigSchema` is the same for the provider's own configuration block, what
+`Configure` takes: a caller that lays settings of its own over it (a
+namespace's secret, say) can tell the provider's keys from the others.
+
 `Import` brings an existing object under management from its id, as
 `terraform import` does: the provider turns the id into a state, which is
 then read. A caller that keeps only ids rebuilds a `Resource` this way
