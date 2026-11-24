@@ -17,7 +17,7 @@ and they are designed to be used together from the same `AppConfig`.
 | [Getting started](getting-started.md) | Add the dependency, write a dotenv file, serve an API group and call another service. |
 | [Development](development.md) | The quality gate, building these docs, and the repository layout. |
 
-Install with `go get github.com/infrapi/lib` (Go 1.27.3 or later).
+Install with `go get github.com/infrapi/lib` (Go 1.27.4 or later).
 
 ## Packages
 

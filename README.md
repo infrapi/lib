@@ -16,7 +16,7 @@ each one does and lists its import path.
 go get github.com/infrapi/lib
 ```
 
-Requires Go 1.27.3 or later.
+Requires Go 1.27.4 or later.
 
 ## In one minute
 

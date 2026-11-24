@@ -4,7 +4,7 @@ Working notes for coding agents on this repository. Read before touching code.
 
 ## Project
 
-`github.com/infrapi/lib` is a Go 1.27.3 library, no binary. The packages that
+`github.com/infrapi/lib` is a Go 1.27.4 library, no binary. The packages that
 InfraPI services import:
 
 ```text
