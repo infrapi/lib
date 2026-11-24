@@ -110,16 +110,19 @@ tools is called in a namespace of the API, with the credential the service
 holds for that namespace, after the same checks as any other route.
 
 Rules select the tools, a regular expression on the whole tool name, first
-match wins, and give each one a resource of the API. A tool no rule selects
-is not bridged; a tool that is not read-only only with `Config.Writes`.
+match wins, and give each one a resource of the API, its name starting with
+`mcp-` (`bridge.ResourcePrefix`): a role then reads as what it grants, and a
+bridged family never shares a resource with one of the API's own. A tool no
+rule selects is not bridged; a tool that is not read-only only with
+`Config.Writes`.
 
 ```go
 b, err := bridge.New(ctx, bridge.Config{
 	Name: "grafana",
 	URL:  "http://127.0.0.1:8000/mcp",
 	Rules: []bridge.Rule{
-		{Match: "query_prometheus.*|list_prometheus_.*", Resource: "prometheus"},
-		{Match: "query_loki.*|list_loki_.*", Resource: "loki"},
+		{Match: "query_prometheus.*|list_prometheus_.*", Resource: "mcp-prometheus"},
+		{Match: "query_loki.*|list_loki_.*", Resource: "mcp-loki"},
 	},
 	// sent on every request: the bearer the server expects of its only client
 	Headers: http.Header{"Authorization": {"Bearer " + serverToken}},
@@ -152,8 +155,10 @@ tools:
 | `POST <base>/<resource>/{tool}`, the arguments the body | the others, with `Writes` | `create` on `<resource>` |
 
 Kayra reads these routes in the contract as any others: a role granting
-`prometheus` and not `loki` on the API gives the Prometheus tools and not
-the Loki ones.
+`mcp-prometheus` and not `mcp-loki` on the API gives the Prometheus tools and
+not the Loki ones. `Contract` refuses a contract that already has a route of
+a bridged resource (`<base>/mcp-prometheus`, `<base>/mcp-prometheus/{id}`...):
+one rule would grant both, and gin would refuse the two routes side by side.
 
 The answer is the tool's structured content, or its text when that is
 JSON, or `{"content": [...]}`. A tool's own error is a `422` problem,

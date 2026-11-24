@@ -240,3 +240,16 @@ func TestRegistry(t *testing.T) {
 
 	require.NoError(t, registry.Close())
 }
+
+// The provider's own configuration block: hashicorp/local has none, so no
+// attribute, and a copy each time.
+func TestProvider_ConfigSchema(t *testing.T) {
+	p := startLocalProvider(t, "local")
+	b, err := p.ConfigSchema()
+	require.NoError(t, err)
+	assert.Empty(t, b.Attributes)
+	b.Attributes = map[string]tofu.Attribute{"x": {}}
+	again, err := p.ConfigSchema()
+	require.NoError(t, err)
+	assert.Empty(t, again.Attributes, "a copy")
+}

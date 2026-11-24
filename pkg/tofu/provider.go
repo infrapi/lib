@@ -135,6 +135,19 @@ func (p *Provider) ResourceSchema(resourceType string) (Block, error) {
 	return b, nil
 }
 
+// ConfigSchema returns the schema of the provider's own configuration block,
+// what Configure takes: its attributes and nested blocks, which of them are
+// required, optional or sensitive. Each call returns a new copy, which the
+// caller may change.
+func (p *Provider) ConfigSchema() (Block, error) {
+	b, err := blockFrom(p.schema.ProviderConfigSchema())
+	if err != nil {
+		return Block{}, infraerrors.Wrap(err, http.StatusBadGateway, "tofu.Provider.ConfigSchema("+p.name+")",
+			"provider %q has a configuration schema this client cannot describe", p.name)
+	}
+	return b, nil
+}
+
 // Configure validates and applies the provider-level configuration. Call it
 // once, before any resource method. terraformVersion is reported to the
 // provider as the calling Terraform/OpenTofu version; providers generally

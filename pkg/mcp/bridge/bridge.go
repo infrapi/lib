@@ -13,9 +13,10 @@
 //
 // base is the API's namespaced path, /apis/compute.infrapi.io/v1/namespaces/{namespace}.
 // The resource of a tool is the one of the first Config.Rules entry its name
-// matches; a tool no entry matches is not bridged. A role granting
-// prometheus and not loki on the API then gives the Prometheus tools of
-// mcp-grafana and not its Loki ones.
+// matches, its name starting with mcp- (ResourcePrefix); a tool no entry
+// matches is not bridged. A role granting mcp-prometheus and not mcp-loki on
+// the API then gives the Prometheus tools of mcp-grafana and not its Loki
+// ones.
 //
 // The routes are generic, one per resource, and kept out of the service's
 // own MCP tools (x-infrapi-mcp: false); [Bridge.Tools] are the tools an agent
@@ -25,8 +26,8 @@
 //	b, err := bridge.New(ctx, bridge.Config{
 //		Name: "grafana", URL: "http://127.0.0.1:8000/mcp",
 //		Rules: []bridge.Rule{
-//			{Match: "query_prometheus.*|list_prometheus_.*", Resource: "prometheus"},
-//			{Match: "query_loki.*|list_loki_.*", Resource: "loki"},
+//			{Match: "query_prometheus.*|list_prometheus_.*", Resource: "mcp-prometheus"},
+//			{Match: "query_loki.*|list_loki_.*", Resource: "mcp-loki"},
 //		},
 //		CallHeaders: func(r *http.Request, namespace string) (http.Header, error) {
 //			// the namespace's credential
@@ -53,6 +54,7 @@ import (
 	"github.com/gin-gonic/gin"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/infrapi/lib/pkg/auth"
 	infraerrors "github.com/infrapi/lib/pkg/errors"
 	"github.com/infrapi/lib/pkg/mcp"
 	"github.com/infrapi/lib/pkg/server"
@@ -103,8 +105,8 @@ type Config struct {
 type Rule struct {
 	// Match is a regular expression on the whole tool name.
 	Match string
-	// Resource is the API resource its calls are authorized on: lower case
-	// letters, digits and dashes.
+	// Resource is the API resource its calls are authorized on: mcp- then
+	// lower case letters, digits and dashes, mcp-prometheus.
 	Resource string
 }
 
@@ -124,7 +126,12 @@ type bridged struct {
 	readOnly bool
 }
 
-var resourceName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+// ResourcePrefix starts every bridged resource's name: mcp-prometheus. A
+// role reads as what it grants, and a bridged family never shares its
+// resource with one of the API's own.
+const ResourcePrefix = "mcp-"
+
+var resourceName = regexp.MustCompile(`^mcp-[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
 // New connects to the bridged server and lists its tools, keeping those the
 // rules select. The tools are read once: the contract they make is the
@@ -147,7 +154,7 @@ func New(ctx context.Context, cfg Config) (*Bridge, error) {
 			return nil, fmt.Errorf("bridge %s: rule %q: want a regular expression", cfg.Name, r.Match)
 		}
 		if !resourceName.MatchString(r.Resource) {
-			return nil, fmt.Errorf("bridge %s: rule %q: resource %q: want lower case letters, digits and dashes", cfg.Name, r.Match, r.Resource)
+			return nil, fmt.Errorf("bridge %s: rule %q: resource %q: want mcp- then lower case letters, digits and dashes, as mcp-prometheus", cfg.Name, r.Match, r.Resource)
 		}
 		rules = append(rules, rule{re, r.Resource})
 	}
@@ -233,11 +240,11 @@ func (b *Bridge) Contract(contract []byte, base string) ([]byte, error) {
 	if doc.Paths == nil {
 		doc.Paths = openapi3.NewPaths()
 	}
+	if err := b.collisions(doc, base); err != nil {
+		return nil, err
+	}
 	for _, res := range b.resource {
 		path := base + "/" + res + "/{tool}"
-		if doc.Paths.Value(path) != nil {
-			return nil, fmt.Errorf("bridge %s: the contract already has %s", b.cfg.Name, path)
-		}
 		var reads, writes []string
 		for _, t := range b.tools {
 			if t.resource != res {
@@ -290,6 +297,33 @@ func (b *Bridge) Contract(contract []byte, base string) ([]byte, error) {
 		return nil, fmt.Errorf("bridge %s: encode the contract: %w", b.cfg.Name, err)
 	}
 	return out, nil
+}
+
+// collisions refuses a route of the contract, under base, of a resource a
+// bridged family is: the RBAC would grant both with one rule, and a route
+// <resource>/{id} would make gin panic beside <resource>/{tool}. The
+// resource is the path's after the namespace, as Kayra and lib's auth read
+// it.
+func (b *Bridge) collisions(doc *openapi3.T, base string) error {
+	bridged := map[string]bool{}
+	for _, res := range b.resource {
+		bridged[res] = true
+	}
+	for _, path := range doc.Paths.InMatchingOrder() {
+		rest, ok := strings.CutPrefix(path, base+"/")
+		if !ok {
+			continue
+		}
+		resource, _, err := auth.ParseResource(rest)
+		if err != nil {
+			continue
+		}
+		first, _, _ := strings.Cut(resource, "/")
+		if bridged[resource] || bridged[first] {
+			return fmt.Errorf("bridge %s: resource %q is also the contract's %s: give the bridged tools another resource", b.cfg.Name, first, path)
+		}
+	}
+	return nil
 }
 
 func namespaceParam(pattern string) *openapi3.ParameterRef {

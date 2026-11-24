@@ -164,9 +164,9 @@ func (u *upstreamServer) start(t *testing.T) *httptest.Server {
 }
 
 var rules = []bridge.Rule{
-	{Match: "query_prometheus.*|list_prometheus_.*", Resource: "prometheus"},
-	{Match: "query_loki.*", Resource: "loki"},
-	{Match: "get_panel_image|update_dashboard", Resource: "dashboards"},
+	{Match: "query_prometheus.*|list_prometheus_.*", Resource: "mcp-prometheus"},
+	{Match: "query_loki.*", Resource: "mcp-loki"},
+	{Match: "get_panel_image|update_dashboard", Resource: "mcp-dashboards"},
 }
 
 // callHeaders gives each namespace its own token; ghost has none.
@@ -258,7 +258,7 @@ func TestNewSelectsTools(t *testing.T) {
 	up := (&upstreamServer{}).start(t)
 
 	b := newBridge(t, up, false)
-	assert.Equal(t, []string{"dashboards", "loki", "prometheus"}, b.Resources())
+	assert.Equal(t, []string{"mcp-dashboards", "mcp-loki", "mcp-prometheus"}, b.Resources())
 	var names []string
 	for _, tool := range b.Tools(base) {
 		names = append(names, tool.Name)
@@ -277,10 +277,11 @@ func TestNewRefuses(t *testing.T) {
 	for name, cfg := range map[string]bridge.Config{
 		"no name":         {URL: up.URL, Rules: rules},
 		"no rule":         {Name: "grafana", URL: up.URL},
-		"bad expression":  {Name: "grafana", URL: up.URL, Rules: []bridge.Rule{{Match: "(", Resource: "x"}}},
-		"empty match":     {Name: "grafana", URL: up.URL, Rules: []bridge.Rule{{Resource: "x"}}},
-		"bad resource":    {Name: "grafana", URL: up.URL, Rules: []bridge.Rule{{Match: ".*", Resource: "Prom/etheus"}}},
-		"nothing matches": {Name: "grafana", URL: up.URL, Rules: []bridge.Rule{{Match: "nope", Resource: "x"}}},
+		"bad expression":  {Name: "grafana", URL: up.URL, Rules: []bridge.Rule{{Match: "(", Resource: "mcp-x"}}},
+		"empty match":     {Name: "grafana", URL: up.URL, Rules: []bridge.Rule{{Resource: "mcp-x"}}},
+		"bad resource":    {Name: "grafana", URL: up.URL, Rules: []bridge.Rule{{Match: ".*", Resource: "mcp-Prom/etheus"}}},
+		"no mcp- prefix":  {Name: "grafana", URL: up.URL, Rules: []bridge.Rule{{Match: ".*", Resource: "prometheus"}}},
+		"nothing matches": {Name: "grafana", URL: up.URL, Rules: []bridge.Rule{{Match: "nope", Resource: "mcp-x"}}},
 		"unreachable":     {Name: "grafana", URL: "http://127.0.0.1:1/mcp", Rules: rules},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -305,11 +306,11 @@ func TestContract(t *testing.T) {
 	}
 	sort.Strings(paths)
 	assert.Equal(t, []string{
-		base + "/dashboards/{tool}", base + "/loki/{tool}", base + "/prometheus/{tool}", base + "/vms/{vm}",
+		base + "/mcp-dashboards/{tool}", base + "/mcp-loki/{tool}", base + "/mcp-prometheus/{tool}", base + "/vms/{vm}",
 	}, paths)
-	assert.Contains(t, doc.Paths[base+"/dashboards/{tool}"], "get")
-	assert.Contains(t, doc.Paths[base+"/dashboards/{tool}"], "post")
-	assert.NotContains(t, doc.Paths[base+"/prometheus/{tool}"], "post")
+	assert.Contains(t, doc.Paths[base+"/mcp-dashboards/{tool}"], "get")
+	assert.Contains(t, doc.Paths[base+"/mcp-dashboards/{tool}"], "post")
+	assert.NotContains(t, doc.Paths[base+"/mcp-prometheus/{tool}"], "post")
 
 	// Kayra authorizes a call on the resource of its family, verb get for
 	// a read, create for a write: as lib's auth reads the request's path.
@@ -330,7 +331,7 @@ func TestContract(t *testing.T) {
 
 	// added twice: the routes exist already
 	_, err := b.Contract(merged, base)
-	require.ErrorContains(t, err, "already has")
+	require.ErrorContains(t, err, "is also the contract's")
 	_, err = b.Contract(merged, "/apis/compute.infrapi.io/v1")
 	require.ErrorContains(t, err, "{namespace}")
 	_, err = b.Contract([]byte("not a contract"), base)
@@ -343,7 +344,7 @@ func TestREST(t *testing.T) {
 	b := newBridge(t, u.start(t), true)
 	srv, _ := service(t, b)
 
-	code, body := get(t, srv, root+"/namespaces/acme/prometheus/query_prometheus", `{"expr":"up"}`)
+	code, body := get(t, srv, root+"/namespaces/acme/mcp-prometheus/query_prometheus", `{"expr":"up"}`)
 	require.Equal(t, http.StatusOK, code, body)
 	assert.Equal(t, map[string]any{"expr": "up", "result": []any{1.0}}, body)
 	c := u.last(t)
@@ -351,30 +352,30 @@ func TestREST(t *testing.T) {
 		token: "token-acme", static: "Bearer server-token", request: "req-1"}, c)
 
 	// a JSON text is the body as it is; another text, wrapped
-	code, raw := get(t, srv, root+"/namespaces/acme/dashboards/get_panel_image", "")
+	code, raw := get(t, srv, root+"/namespaces/acme/mcp-dashboards/get_panel_image", "")
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, []any{map[string]any{"type": "text", "text": "not JSON"}}, raw["content"])
 
 	// a tool's error: 422, its text the detail
-	code, body = get(t, srv, root+"/namespaces/acme/loki/query_loki_logs", `{"logql":"{"}`)
+	code, body = get(t, srv, root+"/namespaces/acme/mcp-loki/query_loki_logs", `{"logql":"{"}`)
 	assert.Equal(t, http.StatusUnprocessableEntity, code)
 	assert.Equal(t, "tool_error", body["code"])
 	assert.Equal(t, "parse error: unexpected }", body["detail"])
 
 	// the contract refuses a tool not of the family, and arguments that are
 	// not an object
-	code, _ = get(t, srv, root+"/namespaces/acme/prometheus/query_loki_logs", "")
+	code, _ = get(t, srv, root+"/namespaces/acme/mcp-prometheus/query_loki_logs", "")
 	assert.Equal(t, http.StatusBadRequest, code)
-	code, _ = get(t, srv, root+"/namespaces/acme/prometheus/query_prometheus", `[1]`)
+	code, _ = get(t, srv, root+"/namespaces/acme/mcp-prometheus/query_prometheus", `[1]`)
 	assert.Equal(t, http.StatusBadRequest, code)
 
 	// a namespace without a credential: CallHeaders' answer
-	code, body = get(t, srv, root+"/namespaces/ghost/prometheus/query_prometheus", `{"expr":"up"}`)
+	code, body = get(t, srv, root+"/namespaces/ghost/mcp-prometheus/query_prometheus", `{"expr":"up"}`)
 	assert.Equal(t, http.StatusUnprocessableEntity, code, body)
 	assert.Equal(t, "tenant_not_onboarded", body["code"])
 
 	// a write: POST, its arguments the body
-	req, err := http.NewRequest(http.MethodPost, srv.URL+root+"/namespaces/acme/dashboards/update_dashboard", strings.NewReader(`{"uid":"abc"}`))
+	req, err := http.NewRequest(http.MethodPost, srv.URL+root+"/namespaces/acme/mcp-dashboards/update_dashboard", strings.NewReader(`{"uid":"abc"}`))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	code, body = do(t, req)
@@ -384,12 +385,12 @@ func TestREST(t *testing.T) {
 
 	// a read tool is not POSTed, nor a write read: the contract's tool
 	// enum, per method
-	req, err = http.NewRequest(http.MethodPost, srv.URL+root+"/namespaces/acme/dashboards/get_panel_image", strings.NewReader(`{}`))
+	req, err = http.NewRequest(http.MethodPost, srv.URL+root+"/namespaces/acme/mcp-dashboards/get_panel_image", strings.NewReader(`{}`))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	code, _ = do(t, req)
 	assert.Equal(t, http.StatusBadRequest, code)
-	code, _ = get(t, srv, root+"/namespaces/acme/dashboards/update_dashboard", "")
+	code, _ = get(t, srv, root+"/namespaces/acme/mcp-dashboards/update_dashboard", "")
 	assert.Equal(t, http.StatusBadRequest, code)
 }
 
@@ -461,10 +462,10 @@ func TestReconnects(t *testing.T) {
 	b := newBridge(t, u.start(t), false)
 	srv, _ := service(t, b)
 
-	code, _ := get(t, srv, root+"/namespaces/acme/prometheus/query_prometheus", `{"expr":"up"}`)
+	code, _ := get(t, srv, root+"/namespaces/acme/mcp-prometheus/query_prometheus", `{"expr":"up"}`)
 	require.Equal(t, http.StatusOK, code)
 	u.restart()
-	code, body := get(t, srv, root+"/namespaces/acme/prometheus/query_prometheus", `{"expr":"up"}`)
+	code, body := get(t, srv, root+"/namespaces/acme/mcp-prometheus/query_prometheus", `{"expr":"up"}`)
 	require.Equal(t, http.StatusOK, code, body)
 	assert.Equal(t, "token-acme", u.last(t).token)
 }
@@ -477,7 +478,7 @@ func TestUpstreamDown(t *testing.T) {
 	srv, _ := service(t, b)
 	up.Close()
 
-	code, body := get(t, srv, root+"/namespaces/acme/prometheus/query_prometheus", `{"expr":"up"}`)
+	code, body := get(t, srv, root+"/namespaces/acme/mcp-prometheus/query_prometheus", `{"expr":"up"}`)
 	assert.Equal(t, http.StatusBadGateway, code)
 	assert.Equal(t, "upstream_error", body["code"])
 	assert.Equal(t, true, body["retryable"])
@@ -501,17 +502,17 @@ func TestHandlerAlone(t *testing.T) {
 	srv := httptest.NewServer(engine)
 	t.Cleanup(srv.Close)
 
-	code, body := get(t, srv, root+"/namespaces/acme/prometheus/nope", "")
+	code, body := get(t, srv, root+"/namespaces/acme/mcp-prometheus/nope", "")
 	assert.Equal(t, http.StatusNotFound, code, body)
-	code, body = get(t, srv, root+"/namespaces/acme/prometheus/query_prometheus", `[1]`)
+	code, body = get(t, srv, root+"/namespaces/acme/mcp-prometheus/query_prometheus", `[1]`)
 	assert.Equal(t, http.StatusBadRequest, code, body)
-	code, body = get(t, srv, root+"/namespaces/acme/prometheus/query_prometheus", `{"expr":"up"}`)
+	code, body = get(t, srv, root+"/namespaces/acme/mcp-prometheus/query_prometheus", `{"expr":"up"}`)
 	require.Equal(t, http.StatusOK, code, body)
 
 	// the guard runs first, and may refuse
-	code, _ = get(t, srv, root+"/namespaces/forbidden/loki/query_loki_logs", "")
+	code, _ = get(t, srv, root+"/namespaces/forbidden/mcp-loki/query_loki_logs", "")
 	assert.Equal(t, http.StatusForbidden, code)
-	assert.Equal(t, []string{"prometheus nope", "prometheus query_prometheus", "prometheus query_prometheus", "loki query_loki_logs"}, guarded)
+	assert.Equal(t, []string{"mcp-prometheus nope", "mcp-prometheus query_prometheus", "mcp-prometheus query_prometheus", "mcp-loki query_loki_logs"}, guarded)
 }
 
 // NamespacePattern: the routes' namespace parameter has the API's pattern.
@@ -554,4 +555,27 @@ func TestMCPWrite(t *testing.T) {
 	require.False(t, res.IsError, res.Content)
 	assert.Equal(t, map[string]any{"updated": "abc"}, res.StructuredContent)
 	assert.Equal(t, call{tool: "update_dashboard", args: map[string]any{"uid": "abc"}, token: "token-acme", static: "Bearer server-token"}, u.last(t))
+}
+
+// A route of the contract whose resource a bridged family is: refused,
+// whether a list, an item under another parameter, or a sub-resource.
+func TestContractCollisions(t *testing.T) {
+	b := newBridge(t, (&upstreamServer{}).start(t), false)
+	route := func(path string) string {
+		return `{"openapi": "3.0.3", "info": {"title": "compute", "version": "v1"}, "paths": {"` + path + `": {
+		  "parameters": [{"name": "namespace", "in": "path", "required": true, "schema": {"type": "string"}},
+		                 {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+		  "get": {"operationId": "x", "responses": {"200": {"description": "ok"}}}}}}`
+	}
+	for _, path := range []string{base + "/mcp-prometheus/{id}", base + "/mcp-loki/{id}/logs/{id}"} {
+		_, err := b.Contract([]byte(route(path)), base)
+		require.ErrorContains(t, err, "give the bridged tools another resource", path)
+	}
+	list := strings.Replace(route(base+"/mcp-dashboards"), `{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}`, `{"name": "q", "in": "query", "schema": {"type": "string"}}`, 1)
+	_, err := b.Contract([]byte(list), base)
+	require.ErrorContains(t, err, `resource "mcp-dashboards"`)
+
+	// another resource, or another API's root: fine
+	_, err = b.Contract([]byte(route(base+"/vms/{id}")), base)
+	require.NoError(t, err)
 }
