@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,4 +61,22 @@ func TestAPIIndex_outsideTheLayout(t *testing.T) {
 	assert.Equal(t, "/grafana/v1", idx.Groups[0].URL)
 	assert.Equal(t, "/grafana/v1/-/docs", idx.Groups[0].Links.Docs)
 	assert.Equal(t, APIIndexGroup{Name: "orgs"}, APIIndexGroup{Name: idx.Groups[1].Name, API: idx.Groups[1].API, Version: idx.Groups[1].Version})
+}
+
+// A group's MCP endpoint, once the service mounts it: linked in the index,
+// and documented in its specification.
+func TestAPIIndex_MCP(t *testing.T) {
+	app := multiRootEngine(t)
+	idx := index(t, get(t, app, APIIndexPath).Body)
+	assert.Empty(t, idx.Groups[0].Links.MCP, "none mounted")
+
+	app.Any(systemRoot+MCPPath, func(c *gin.Context) { c.Status(http.StatusOK) })
+	idx = index(t, get(t, app, APIIndexPath).Body)
+	assert.Equal(t, "http://test.example.com"+systemRoot+"/-/mcp", idx.Groups[0].Links.MCP)
+	assert.Empty(t, idx.Groups[1].Links.MCP, "the other group has none")
+
+	var spec map[string]any
+	require.NoError(t, json.Unmarshal(get(t, app, systemRoot+OpenAPIPath).Body.Bytes(), &spec))
+	post := spec["paths"].(map[string]any)[systemRoot+MCPPath].(map[string]any)["post"].(map[string]any)
+	assert.Contains(t, post["summary"], "MCP tools")
 }

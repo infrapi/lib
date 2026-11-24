@@ -110,6 +110,12 @@ var engineOperations = []Operation{
 		},
 	},
 	{
+		Method: http.MethodPost, Path: MCPPath, Summary: "The API as MCP tools for AI agents (Streamable HTTP), when the service serves it",
+		Responses: map[string]Response{
+			"200": {Description: "A JSON-RPC answer", ContentType: "application/json"},
+		},
+	},
+	{
 		Method: http.MethodGet, Path: OpenAPIPath, Summary: "This specification",
 		Responses: map[string]Response{
 			"200": {Description: "OpenAPI 3.1", ContentType: "application/json"},

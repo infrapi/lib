@@ -54,6 +54,9 @@ type APIIndexLinks struct {
 	Healthz  string `json:"healthz"`
 	Readyz   string `json:"readyz"`
 	Metadata string `json:"metadata"`
+	// MCP is the group's MCP endpoint (MCPPath), when the service has
+	// mounted one.
+	MCP string `json:"mcp,omitempty"`
 }
 
 // apiIndex describes rs, built once: the roots do not change.
@@ -94,7 +97,25 @@ func describeRoot(root string) APIIndexGroup {
 	return APIIndexGroup{Name: last}
 }
 
-// apiIndexHandler serves the index.
-func apiIndexHandler(index APIIndex) gin.HandlerFunc {
-	return func(c *gin.Context) { c.JSON(http.StatusOK, index) }
+// apiIndexHandler serves the index, each group's MCP endpoint linked when
+// app has the route: the service mounts it after NewServerGin, so it is
+// looked for at each request.
+func apiIndexHandler(app *gin.Engine, index APIIndex) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		mounted := map[string]bool{}
+		for _, r := range app.Routes() {
+			if root, ok := strings.CutSuffix(r.Path, MCPPath); ok {
+				mounted[root] = true
+			}
+		}
+		out := index
+		out.Groups = make([]APIIndexGroup, len(index.Groups))
+		for i, g := range index.Groups {
+			if mounted[g.Root] {
+				g.Links.MCP = g.URL + MCPPath
+			}
+			out.Groups[i] = g
+		}
+		c.JSON(http.StatusOK, out)
+	}
 }

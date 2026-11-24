@@ -5,6 +5,11 @@
 // RBAC and the handlers themselves apply exactly as for any HTTP client.
 // Documents and prompts the service supplies are offered as context.
 //
+// An operation whose x-infrapi-mcp extension is false is not a tool.
+// Options.Tools adds tools of the service's own, called through its handler
+// too: the tools of another MCP server bridged into the service's API, for
+// one (package bridge).
+//
 // Read only by default: GET operations become tools, and a write operation
 // only if it takes a dryRun query parameter, then fixed to true, so that an
 // agent can see what a change would do without making it. Options.Writes
@@ -15,7 +20,7 @@
 //		Instructions: "An order belongs to its namespace. Plan before you change one.",
 //		Documents: []mcp.Document{{Name: "orders", Title: "Orders", Content: guide}},
 //	})
-//	engine.Any("/-/mcp", gin.WrapH(h))
+//	engine.Any(root+server.MCPPath, gin.WrapH(h))
 package mcp
 
 import (
@@ -65,6 +70,31 @@ type Options struct {
 	// for every call; Authorization, X-Request-Id and Traceparent unless
 	// set.
 	Forward []string
+	// Tools are served besides the contract's operations, each call going
+	// through the service's handler as Tool.Request builds it.
+	Tools []Tool
+}
+
+// Extension is the operation extension that keeps an operation out of the
+// tools when false: an operation another tool calls, say.
+const Extension = "x-infrapi-mcp"
+
+// Tool is a tool of the service's besides its contract's operations. Its
+// calls go through the service's handler like the operations' tools: the
+// contract's validation, the authentication and the RBAC apply.
+type Tool struct {
+	Name        string
+	Title       string
+	Description string
+	// InputSchema is the JSON Schema of its arguments, an object.
+	InputSchema map[string]any
+	// ReadOnly, Destructive and Idempotent are hints to the agent.
+	ReadOnly    bool
+	Destructive bool
+	Idempotent  bool
+	// Request builds the HTTP request to the service's handler from the
+	// agent's arguments; an error is a tool error the agent reads.
+	Request func(ctx context.Context, args map[string]any) (*http.Request, error)
 }
 
 // Document is context an agent can read, in Markdown or any text type.
@@ -145,6 +175,9 @@ func New(contract []byte, handler http.Handler, opts Options) (*Handler, error) 
 	for _, path := range doc.Paths.InMatchingOrder() {
 		item := doc.Paths.Value(path)
 		for method, op := range item.Operations() {
+			if excluded(op) {
+				continue
+			}
 			if opts.Include != nil && !opts.Include(Operation{Method: method, Path: path, OperationID: op.OperationID, Tags: op.Tags}) {
 				continue
 			}
@@ -157,9 +190,29 @@ func New(contract []byte, handler http.Handler, opts Options) (*Handler, error) 
 					return nil, fmt.Errorf("mcp: %s %s and %s are both the tool %q: give them distinct operationIds", method, path, other, def.Name)
 				}
 				names[def.Name] = method + " " + path
-				server.AddTool(def, call(t, handler, opts.Forward))
+				server.AddTool(def, call(func(ctx context.Context, args map[string]any) (*http.Request, error) {
+					return request(ctx, t, args)
+				}, handler, opts.Forward))
 			}
 		}
+	}
+	for _, t := range opts.Tools {
+		if t.Name == "" || t.Request == nil {
+			return nil, fmt.Errorf("mcp: tool %q: a name and a Request are required", t.Name)
+		}
+		if other, taken := names[t.Name]; taken {
+			return nil, fmt.Errorf("mcp: tool %q is also %s", t.Name, other)
+		}
+		names[t.Name] = "a tool of Options.Tools"
+		input := t.InputSchema
+		if input == nil {
+			input = map[string]any{"type": "object"}
+		}
+		destructive := t.Destructive
+		server.AddTool(&sdk.Tool{
+			Name: t.Name, Title: t.Title, Description: t.Description, InputSchema: input,
+			Annotations: &sdk.ToolAnnotations{ReadOnlyHint: t.ReadOnly, DestructiveHint: &destructive, IdempotentHint: t.Idempotent},
+		}, call(t.Request, handler, opts.Forward))
 	}
 
 	server.AddResource(&sdk.Resource{URI: "openapi://contract", Name: "contract", Title: "OpenAPI contract",
@@ -335,10 +388,20 @@ func build(method, path string, item *openapi3.PathItem, op *openapi3.Operation,
 	return t, def, nil
 }
 
+// excluded: the operation's x-infrapi-mcp extension is false.
+func excluded(op *openapi3.Operation) bool {
+	v, ok := op.Extensions[Extension]
+	if !ok {
+		return false
+	}
+	b, isBool := v.(bool)
+	return isBool && !b
+}
+
 // call is a tool's handler: the agent's arguments as an HTTP request to the
-// service's handler, its answer as the result; an error status is a tool
-// error, its body the problem the agent reads.
-func call(t tool, handler http.Handler, forward []string) sdk.ToolHandler {
+// service's handler, built by build, its answer as the result; an error
+// status is a tool error, its body the problem the agent reads.
+func call(build func(context.Context, map[string]any) (*http.Request, error), handler http.Handler, forward []string) sdk.ToolHandler {
 	return func(ctx context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		args := map[string]any{}
 		if len(req.Params.Arguments) > 0 {
@@ -346,7 +409,7 @@ func call(t tool, handler http.Handler, forward []string) sdk.ToolHandler {
 				return failed(fmt.Sprintf("arguments: %v", err)), nil
 			}
 		}
-		r, err := request(ctx, t, args)
+		r, err := build(ctx, args)
 		if err != nil {
 			return failed(err.Error()), nil
 		}

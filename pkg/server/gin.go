@@ -151,7 +151,7 @@ func NewServerGin(cfg *config.AppConfig, roots []string, opts ...Option) (*gin.E
 	}
 
 	// The index of the roots, at the engine's own root.
-	app.GET(APIIndexPath, apiIndexHandler(apiIndex(cfg, rs)))
+	app.GET(APIIndexPath, apiIndexHandler(app, apiIndex(cfg, rs)))
 	open[APIIndexPath] = true
 
 	// The contracts supplied with WithOpenAPI are enforced, not only
