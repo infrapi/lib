@@ -18,6 +18,7 @@ type errorBody struct {
 	Title         string `json:"title"`
 	Status        int    `json:"status"`
 	Detail        string `json:"detail,omitempty"`
+	Solution      string `json:"solution,omitempty"`
 	Code          string `json:"code"`
 	Retryable     bool   `json:"retryable"`
 	CorrelationID string `json:"correlation_id,omitempty"`
@@ -47,7 +48,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	w.Header().Set("Content-Type", infraerrors.MediaType)
 	w.WriteHeader(e.Code)
 	if jsonErr := json.NewEncoder(w).Encode(errorBody{
-		Title: title, Status: e.Code, Detail: e.Message, Code: e.Slug, Retryable: retryable,
+		Title: title, Status: e.Code, Detail: e.Message, Solution: e.Solution, Code: e.Slug, Retryable: retryable,
 		CorrelationID: CorrelationID(r.Context()), Current: e.Current,
 	}); jsonErr != nil {
 		// The status is sent: all that is left is to say so in the log.

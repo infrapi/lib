@@ -36,6 +36,17 @@ func TestWriteError_refusalCarriesItsCodeAndRetryability(t *testing.T) {
 	}
 }
 
+// A refusal says what to do about it, when the error does.
+func TestWriteError_carriesItsSolution(t *testing.T) {
+	_, body := render(infraerrors.Invalid("bad name").WithSolution("use a DNS label"))
+	if body["solution"] != "use a DNS label" {
+		t.Errorf("%v", body)
+	}
+	if _, body := render(infraerrors.Invalid("bad name")); body["solution"] != nil {
+		t.Errorf("solution without one: %v", body)
+	}
+}
+
 // An error that is not *infraerrors.Error is a bug: reported without its text.
 func TestWriteError_unexpectedErrorHidesItsText(t *testing.T) {
 	code, body := render(stderrors.New("dial tcp 10.0.0.1:5432: secret detail"))
