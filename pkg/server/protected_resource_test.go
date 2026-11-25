@@ -39,3 +39,21 @@ func TestWithProtectedResource(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, get(t, plain, testRoot+ProtectedResourcePath).Code)
 }
+
+// WithResource: the metadata names a URL the roots are under, the gateway's;
+// one they are not under is refused.
+func TestWithResource(t *testing.T) {
+	cfg := testAppConfig(t)
+	kayra := func(context.Context) (string, error) { return "https://kayra.example.com", nil }
+	gateway := strings.TrimRight(cfg.AppUrl, "/")
+	app, err := NewServerGin(cfg, []string{testRoot}, WithProtectedResource(kayra), WithResource(gateway+"/"))
+	require.NoError(t, err)
+	var pr ProtectedResource
+	require.NoError(t, json.Unmarshal(get(t, app, testRoot+ProtectedResourcePath).Body.Bytes(), &pr))
+	assert.Equal(t, gateway, pr.Resource)
+
+	_, err = NewServerGin(cfg, []string{testRoot}, WithProtectedResource(kayra), WithResource("https://other.example.com"))
+	require.ErrorContains(t, err, "not under it")
+	_, err = NewServerGin(cfg, []string{testRoot}, WithProtectedResource(kayra), WithResource(gateway+"/ap"))
+	require.ErrorContains(t, err, "not under it", "a prefix of a segment is not a URL it is under")
+}

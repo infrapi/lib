@@ -22,6 +22,8 @@ type options struct {
 	auth       gin.HandlerFunc
 	// authorizationServer is WithProtectedResource's
 	authorizationServer func(ctx context.Context) (string, error)
+	// resource is WithResource's: "" for AppUrl and the root
+	resource string
 	// identity is WithIdentity's keys
 	identity []*identity.Key
 	// events is WithEvents' recorder, and its hooks
@@ -124,6 +126,20 @@ func WithProtectedResource(authorizationServer func(ctx context.Context) (string
 			return fmt.Errorf("server: WithProtectedResource needs an authorization server")
 		}
 		o.authorizationServer = authorizationServer
+		return nil
+	}
+}
+
+// WithResource sets the resource (RFC 8707) WithProtectedResource's metadata
+// names, which a client asks its tokens for: a URL every root is under,
+// rather than AppUrl and the root. The gateway's, so that a token is good for
+// every API behind it: a service that passes its caller's token on to other
+// APIs (an MCP gateway, ulgen) names it, and its callers get a token those
+// APIs accept too. The token is still checked against the request's root
+// (auth.ClientOptions.PublicURL), which such a token covers.
+func WithResource(url string) Option {
+	return func(o *options) error {
+		o.resource = strings.TrimRight(url, "/")
 		return nil
 	}
 }
