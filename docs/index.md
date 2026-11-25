@@ -37,4 +37,5 @@ version pinned: `@latest` resolves to old v1 tags.
 | [`server`](packages/server.md) | `github.com/infrapi/lib/pkg/server` | `gin.Engine` pre-wired with CORS, trusted proxies, Prometheus metrics, a span per request, generated OpenAPI docs or the service's own contracts — enforced on every request — and rendering an `errors.Error` as `application/problem+json`. |
 | [`tofu`](packages/tofu.md) | `github.com/infrapi/lib/pkg/tofu` | Drives any OpenTofu provider plugin and resource type, and applies a declarative set of providers and resources on top. |
 | [`tracing`](packages/tracing.md) | `github.com/infrapi/lib/pkg/tracing` | Sends the traces over OTLP (HTTP or gRPC), from the `INFRAPI_TRACING_*` keys. |
+| [`useragent`](packages/useragent.md) | `github.com/infrapi/lib/pkg/useragent` | Names the service and its version in the `User-Agent` of the HTTP requests lib makes for it (Kayra, a bridged MCP server, another API): `tofu-api/v0.13.0`. |
 | [`vault`](packages/vault.md) | `github.com/infrapi/lib/pkg/vault` | Wraps `vault-client-go` with TLS/mTLS, retry, AppRole/token login, and an opinionated KV v2 and PKI surface. |

@@ -21,6 +21,7 @@ import (
 	"resty.dev/v3"
 
 	"github.com/infrapi/lib/pkg/api"
+	"github.com/infrapi/lib/pkg/useragent"
 )
 
 // Client calls one API of an InfraPI service. It carries the options it was built with and
@@ -61,7 +62,7 @@ type ClientOptions struct {
 	// Default headers to set, if empty will add application/json as content type and accept
 	Headers map[string]string
 
-	// Custom user agent (default: infrapi-lib-client-{group})
+	// Custom user agent (default: useragent.String(), <service>/<version>)
 	UserAgent string
 
 	// Server CA to trust, could be byte or filesystem path, CACertContent win over CACertPath
@@ -211,7 +212,7 @@ func (c *Client) Update(opts *ClientOptions) (*Client, error) {
 	}
 
 	// Set user agent
-	userAgent := "infrapi-lib-client-" + opts.API.Name
+	userAgent := useragent.String()
 	if opts.UserAgent != "" {
 		userAgent = opts.UserAgent
 	}

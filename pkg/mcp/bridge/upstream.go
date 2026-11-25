@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/infrapi/lib/pkg/useragent"
 )
 
 type headersKey struct{}
@@ -59,7 +61,8 @@ func newUpstream(cfg Config) *upstream {
 		url:      cfg.URL,
 		protocol: cfg.ProtocolVersion,
 		client:   sdk.NewClient(&sdk.Implementation{Name: "infrapi-bridge", Version: "v1"}, nil),
-		http:     &http.Client{Transport: headerTransport{static: cfg.Headers, next: base}, Timeout: cfg.Timeout},
+		// the bridged server's logs name the service (useragent)
+		http: &http.Client{Transport: headerTransport{static: cfg.Headers, next: useragent.Transport(base)}, Timeout: cfg.Timeout},
 	}
 }
 
