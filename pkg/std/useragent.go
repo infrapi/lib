@@ -1,13 +1,16 @@
-// Package useragent names the service in the User-Agent of the HTTP requests
-// infrapi/lib makes for it: to Kayra (auth, events), to a bridged MCP server,
-// to another API (client). The service's module and version, from the
-// binary's build information, as one product token (RFC 9110):
+// Package std holds the small helpers, standard library only, that lib's
+// packages and the services share.
+package std
+
+// The User-Agent of the HTTP requests infrapi/lib makes for a service: to
+// Kayra (auth, events), to a bridged MCP server, to another API (client).
+// The service's module and version, from the binary's build information,
+// as one product token (RFC 9110):
 //
 //	tofu-api/v0.13.0
 //
 // so that the logs of whoever is called tell which service, at which
 // version, called; Go's own default, Go-http-client/1.1, tells nothing.
-package useragent
 
 import (
 	"net/http"
@@ -16,10 +19,10 @@ import (
 	"runtime/debug"
 )
 
-var value = build(debug.ReadBuildInfo)
+var userAgent = build(debug.ReadBuildInfo)
 
-// String is the User-Agent: <service>/<version>.
-func String() string { return value }
+// UserAgent is the User-Agent: <service>/<version>.
+func UserAgent() string { return userAgent }
 
 var majorSuffix = regexp.MustCompile(`^v[0-9]+$`)
 
@@ -46,34 +49,34 @@ func version(v string) string {
 	return v
 }
 
-// Transport sets the User-Agent of every request that has none, then
+// UserAgentTransport sets the User-Agent of every request that has none, then
 // passes it to next (http.DefaultTransport when nil). The request is
 // cloned, never changed: a RoundTripper must not modify it.
-func Transport(next http.RoundTripper) http.RoundTripper {
+func UserAgentTransport(next http.RoundTripper) http.RoundTripper {
 	if next == nil {
 		next = http.DefaultTransport
 	}
-	return transport{next: next}
+	return userAgentTransport{next: next}
 }
 
-type transport struct{ next http.RoundTripper }
+type userAgentTransport struct{ next http.RoundTripper }
 
-func (t transport) RoundTrip(r *http.Request) (*http.Response, error) {
+func (t userAgentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if r.Header.Get("User-Agent") != "" {
 		return t.next.RoundTrip(r)
 	}
 	r = r.Clone(r.Context())
-	r.Header.Set("User-Agent", value)
+	r.Header.Set("User-Agent", userAgent)
 	return t.next.RoundTrip(r)
 }
 
-// Client is c with Transport around its transport, a copy: c itself is not
-// changed. A new client with only Transport when c is nil.
-func Client(c *http.Client) *http.Client {
+// UserAgentClient is c with UserAgentTransport around its transport, a copy: c itself is not
+// changed. A new client with only UserAgentTransport when c is nil.
+func UserAgentClient(c *http.Client) *http.Client {
 	if c == nil {
-		return &http.Client{Transport: Transport(nil)}
+		return &http.Client{Transport: UserAgentTransport(nil)}
 	}
 	out := *c
-	out.Transport = Transport(c.Transport)
+	out.Transport = UserAgentTransport(c.Transport)
 	return &out
 }

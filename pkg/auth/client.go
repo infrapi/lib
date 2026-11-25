@@ -20,7 +20,7 @@ import (
 	"time"
 
 	infraerrors "github.com/infrapi/lib/pkg/errors"
-	"github.com/infrapi/lib/pkg/useragent"
+	"github.com/infrapi/lib/pkg/std"
 )
 
 // UserinfoPath is the endpoint a token is verified against.
@@ -89,8 +89,8 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		}
 		httpClient = &http.Client{Timeout: timeout}
 	}
-	// Kayra's logs name the service calling (useragent), a copy of the caller's client
-	httpClient = useragent.Client(httpClient)
+	// Kayra's logs name the service calling (std.UserAgent), a copy of the caller's client
+	httpClient = std.UserAgentClient(httpClient)
 
 	c := &Client{baseURL: strings.TrimRight(opts.BaseURL, "/"), publicURL: strings.TrimRight(opts.PublicURL, "/"), http: httpClient}
 	switch {

@@ -36,7 +36,7 @@ else has a default:
 | `Protocol` | `string` | `https` |
 | `Port` | `int` | `443` |
 | `Namespace` | `string` | none: each request must then name one |
-| `UserAgent` | `string` | `infrapi-lib-client-{group}` |
+| `UserAgent` | `string` | `<service>/<version>`, the calling binary's module and version: `tofu-api/v0.13.0` |
 | `Headers` | `map[string]string` | `Content-Type` and `Accept` set to `application/json` |
 | `GlobalTimeout` | `int` (seconds) | `60` |
 | `RetryCount` | `int` | `3` |

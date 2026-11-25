@@ -1,4 +1,4 @@
-package useragent
+package std
 
 import (
 	"net/http"
@@ -16,7 +16,7 @@ func info(main, mainVersion string) func() (*debug.BuildInfo, bool) {
 	}
 }
 
-func TestBuild(t *testing.T) {
+func TestUserAgent_build(t *testing.T) {
 	for name, c := range map[string]struct {
 		read func() (*debug.BuildInfo, bool)
 		want string
@@ -31,9 +31,9 @@ func TestBuild(t *testing.T) {
 	}
 }
 
-// Transport sets the User-Agent of a request without one, keeps one set,
-// and leaves the caller's request as it was; Client wraps a copy.
-func TestTransport(t *testing.T) {
+// UserAgentTransport sets the User-Agent of a request without one, keeps one set,
+// and leaves the caller's request as it was; UserAgentClient wraps a copy.
+func TestUserAgentTransport(t *testing.T) {
 	var got []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = append(got, r.UserAgent())
@@ -41,7 +41,7 @@ func TestTransport(t *testing.T) {
 	defer srv.Close()
 
 	base := &http.Client{}
-	c := Client(base)
+	c := UserAgentClient(base)
 	assert.Nil(t, base.Transport, "the caller's client is not changed")
 
 	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
@@ -55,10 +55,10 @@ func TestTransport(t *testing.T) {
 	own, err := http.NewRequest(http.MethodGet, srv.URL, nil)
 	require.NoError(t, err)
 	own.Header.Set("User-Agent", "mine/1")
-	resp, err = Client(nil).Do(own)
+	resp, err = UserAgentClient(nil).Do(own)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 
-	assert.Equal(t, []string{String(), "mine/1"}, got)
-	assert.NotEmpty(t, String())
+	assert.Equal(t, []string{UserAgent(), "mine/1"}, got)
+	assert.NotEmpty(t, UserAgent())
 }

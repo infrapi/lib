@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/infrapi/lib/pkg/logger"
-	"github.com/infrapi/lib/pkg/useragent"
+	"github.com/infrapi/lib/pkg/std"
 )
 
 // Sender sends events somewhere: Kayra, or the service's log.
@@ -40,7 +40,7 @@ func Kayra(baseURL string, token func(ctx context.Context) (string, error), clie
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
 	}
-	client = useragent.Client(client) // Kayra's logs name the service
+	client = std.UserAgentClient(client) // Kayra's logs name the service
 	return &kayra{base: strings.TrimRight(baseURL, "/"), token: token, http: client}
 }
 
