@@ -113,6 +113,10 @@ func testOperations(t *testing.T, path string) {
 	assert.Len(t, worker.Parameters, 1)
 	assert.Equal(t, map[string]any{"type": "object"}, worker.Responses["200"].Content["application/json"].Schema)
 	assert.Contains(t, spec.Paths[testRoot+"/-/workers"]["get"].Responses, "default")
+
+	// a section of their own, not Swagger UI's "default"
+	assert.Equal(t, []string{OperationsTag}, readyz.Tags)
+	assert.Equal(t, []string{OperationsTag}, spec.Paths[testRoot+"/-/workers"]["get"].Tags)
 }
 
 func TestWithOperations_refuses(t *testing.T) {

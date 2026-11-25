@@ -65,7 +65,12 @@ type openAPIServer struct {
 	URL string `json:"url"`
 }
 
+// OperationsTag is the section of the operational endpoints, those under
+// <root>/-/, in the generated specification and -/docs.
+const OperationsTag = "Operations"
+
 type operation struct {
+	Tags       []string            `json:"tags,omitempty"`
 	Summary    string              `json:"summary,omitempty"`
 	Parameters []parameter         `json:"parameters,omitempty"`
 	Responses  map[string]response `json:"responses"`
@@ -178,6 +183,11 @@ func openAPISpec(app *gin.Engine, rs roots, root string, cfg *config.AppConfig, 
 			Responses: map[string]response{
 				"default": {Description: "Undocumented: this specification is generated from the route table."},
 			},
+		}
+		// the operational endpoints, a section of their own in -/docs
+		// beside the contracts' tags, not Swagger UI's "default"
+		if strings.HasPrefix(route.Path, root+"/-/") {
+			op.Tags = []string{OperationsTag}
 		}
 		if doc, ok := documented[route.Method+" "+route.Path]; ok {
 			op.Summary, op.Responses = doc.Summary, map[string]response{}
