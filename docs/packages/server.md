@@ -112,7 +112,7 @@ curl -s http://compute.example.com/.well-known/api.json
 its `name` and `version` are its last segments. The path is `server.APIIndexPath`, the
 document `server.APIIndex`. A group whose service mounted an MCP endpoint at
 `<root>/-/mcp` (`server.MCPPath`) also has `links.mcp`: where an MCP client such as
-ulgen finds it.
+Ülgen finds it.
 
 The paths are exported relative to the root, as `server.MetadataPath`,
 `server.MetricsPath`, `server.HealthzPath`, `server.ReadyzPath`, `server.OpenAPIPath`
@@ -363,7 +363,7 @@ each request: a 503 while Kayra cannot be reached.
 `WithResource(url)` names another resource: a URL every root is under, the
 gateway's. A client then gets a token good for every API behind the gateway,
 which a service passing its caller's token on to other APIs needs (an MCP
-gateway such as ulgen: a token for its own root alone would be refused by
+gateway such as Ülgen: a token for its own root alone would be refused by
 them). The token is still checked against the request's root, which it
 covers. A URL a root is not under stops the service at start.
 

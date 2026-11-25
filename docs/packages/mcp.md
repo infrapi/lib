@@ -180,9 +180,9 @@ The bridge keeps one session with the server, shared by every call, each
 call with its own headers; a session the server dropped (a restart) is
 opened again. The request's `X-Request-Id` is passed on.
 
-## Behind ulgen
+## Behind Ülgen
 
-[ulgen](https://infrapi.github.io/ulgen/) serves several services' MCP
+[Ülgen](https://infrapi.github.io/ulgen/) serves several services' MCP
 endpoints, and other MCP servers, behind a single endpoint, after a single
 login at Kayra. It passes the caller's token on, and the service keeps
 checking every call itself.
