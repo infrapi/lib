@@ -6,7 +6,7 @@ Packages: [`api`](docs/packages/api.md), [`auth`](docs/packages/auth.md),
 [`client`](docs/packages/client.md), [`config`](docs/packages/config.md),
 [`errors`](docs/packages/errors.md), [`events`](docs/packages/events.md), [`identity`](docs/packages/identity.md), [`listener`](docs/packages/listener.md),
 [`logger`](docs/packages/logger.md), [`mcp`](docs/packages/mcp.md), [`server`](docs/packages/server.md),
-[`tofu`](docs/packages/tofu.md), [`tracing`](docs/packages/tracing.md) and
+[`tofu`](docs/packages/tofu.md), [`tracing`](docs/packages/tracing.md), [`useragent`](docs/packages/useragent.md) and
 [`vault`](docs/packages/vault.md). The [package table](docs/index.md#packages) says what
 each one does and lists its import path.
 

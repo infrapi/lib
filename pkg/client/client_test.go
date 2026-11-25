@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/infrapi/lib/pkg/api"
+	"github.com/infrapi/lib/pkg/useragent"
 )
 
 // compute is the API the test server exposes.
@@ -213,7 +214,7 @@ func TestAPIClient_DefaultUserAgent(t *testing.T) {
 		t.Fatalf("client_test.go(NewClient): %s", err)
 	}
 
-	expectedAgent := "infrapi-lib-client-compute.infrapi.test"
+	expectedAgent := useragent.String() // <service>/<version>
 	if client.RestyClient.Header().Get("User-Agent") != expectedAgent {
 		t.Fatalf("client_test.go(DefaultUserAgent): expected '%s' but got '%s'", expectedAgent, client.RestyClient.Header().Get("User-Agent"))
 	}

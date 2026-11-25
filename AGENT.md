@@ -17,6 +17,7 @@ pkg/identity  the service's own identity at Kayra (system:api:<group>): EC P-256
 pkg/listener  service socket, TCP or systemd socket activation
 pkg/server    gin.Engine factory (CORS, proxies, <root>/-/{metadata,healthz,readyz,metrics,openapi.json,docs} per API group root, /.well-known/api.json, all open), APIGroup
 pkg/tofu      drive any OpenTofu provider plugin/resource type, and a declarative apply/destroy on top
+pkg/useragent the service and its version (<service>/<version>) in the User-Agent of lib's HTTP requests
 examples/     one runnable program per package
 docs/         Markdown pages, published by the infrapi/docs Hugo portal
 ```
