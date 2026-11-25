@@ -360,6 +360,19 @@ engine, err := server.NewServerGin(cfg, roots,
 The resource is `AppUrl` and the root. The authorization server is read at
 each request: a 503 while Kayra cannot be reached.
 
+`WithResource(url)` names another resource: a URL every root is under, the
+gateway's. A client then gets a token good for every API behind the gateway,
+which a service passing its caller's token on to other APIs needs (an MCP
+gateway such as ulgen: a token for its own root alone would be refused by
+them). The token is still checked against the request's root, which it
+covers. A URL a root is not under stops the service at start.
+
+```go
+engine, err := server.NewServerGin(cfg, roots,
+	server.WithAuth(client.Middleware()), server.WithProtectedResource(client.AuthorizationServer),
+	server.WithResource("https://gateway.example.com"))
+```
+
 ## Identity keys
 
 `WithIdentity(keys...)` serves the public half of the service's

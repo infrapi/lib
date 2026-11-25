@@ -128,7 +128,15 @@ func NewServerGin(cfg *config.AppConfig, roots []string, opts ...Option) (*gin.E
 			open[root+p] = true
 		}
 		if o.authorizationServer != nil {
-			h := protectedResourceHandler(strings.TrimRight(cfg.AppUrl, "/")+root, o.authorizationServer)
+			resource := strings.TrimRight(cfg.AppUrl, "/") + root
+			if o.resource != "" {
+				// a token for it must be good here: the root is under it
+				if resource != o.resource && !strings.HasPrefix(resource, o.resource+"/") {
+					return nil, fmt.Errorf("server: WithResource %s: the root %s is not under it", o.resource, resource)
+				}
+				resource = o.resource
+			}
+			h := protectedResourceHandler(resource, o.authorizationServer)
 			ops.GET(ProtectedResourcePath, h)
 			app.GET(WellKnownProtectedResource+root, h)
 			open[root+ProtectedResourcePath] = true
