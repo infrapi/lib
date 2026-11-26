@@ -4,7 +4,7 @@ package std
 
 // The User-Agent of the HTTP requests infrapi/lib makes for a service: to
 // Kayra (auth, events), to a bridged MCP server, to another API (client).
-// The service's module and version, from the binary's build information,
+// The service's binary and version, from the binary's build information,
 // as one product token (RFC 9110):
 //
 //	tofu-api/v0.13.0
@@ -17,6 +17,7 @@ import (
 	"path"
 	"regexp"
 	"runtime/debug"
+	"strings"
 )
 
 var userAgent = build(debug.ReadBuildInfo)
@@ -26,15 +27,22 @@ func UserAgent() string { return userAgent }
 
 var majorSuffix = regexp.MustCompile(`^v[0-9]+$`)
 
-// build reads the main module's last path element and version.
+// build reads the binary's name, its main package's last path element
+// (cmd/kayra: kayra), and its module's version. A test binary
+// (<package>.test) or a build without the package path is named after its
+// module instead.
 func build(read func() (*debug.BuildInfo, bool)) string {
 	info, ok := read()
 	if !ok || info == nil {
 		return "infrapi-service"
 	}
-	name := path.Base(info.Main.Path)
+	p := info.Path
+	if p == "" || strings.HasSuffix(p, ".test") {
+		p = info.Main.Path
+	}
+	name := path.Base(p)
 	if majorSuffix.MatchString(name) { // github.com/acme/compute/v2
-		name = path.Base(path.Dir(info.Main.Path))
+		name = path.Base(path.Dir(p))
 	}
 	if name == "." || name == "/" || name == "" {
 		name = "infrapi-service"

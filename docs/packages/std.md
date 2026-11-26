@@ -27,7 +27,8 @@ neither.
 tofu-api/v0.13.0
 ```
 
-The name is the last element of the main module's path, skipping a `/v2`
+The name is the binary's: the last element of its main package's path
+(`github.com/infrapi/kayra/cmd/kayra` gives `kayra`), skipping a `/v2`
 major version suffix. The version is the one Go stamps in the binary: the tag
 the binary was built from, or `devel` when there is none.
 
